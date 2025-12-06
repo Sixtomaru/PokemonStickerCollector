@@ -1721,7 +1721,7 @@ def main():
         CommandHandler("resetmoney", resetmoney_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
-        CallbackQueryHandler(event_step_handler, pattern="^ev\|"),
+        CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
 
         CallbackQueryHandler(albumdex_cmd, pattern="^album_main_"),
         CallbackQueryHandler(album_close_handler, pattern="^album_close_"),
@@ -1750,4 +1750,5 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()
