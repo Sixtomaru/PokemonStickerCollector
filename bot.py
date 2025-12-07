@@ -85,7 +85,7 @@ DAILY_PRIZES = [
     {'type': 'money', 'value': 200, 'emoji': '🟢', 'msg': '¡Genial, *200₽* 💰 para ti!'},
     {'type': 'money', 'value': 400, 'emoji': '🔵', 'msg': '¡Fantástico! ¡Has ganado *400₽* 💰!'},
     {'type': 'item', 'value': 'pack_magic_medium_national', 'emoji': '🟡',
-     'msg': '¡¡PREMIO GORDO!! ¡Has conseguido un Sobre Mágico Mediano Nacional! 📦'}
+     'msg': '¡¡PREMIO GORDO!! ¡Has conseguido un Sobre Mágico Mediano Nacional! 🎴'}
 ]
 
 ITEM_NAMES['pack_magic_medium_national'] = SHOP_CONFIG['pack_magic_medium_national']['name']
@@ -123,6 +123,22 @@ def schedule_message_deletion(context: ContextTypes.DEFAULT_TYPE, message: Messa
             data={'chat_id': message.chat_id, 'message_id': message.message_id},
             name=f"delete_{message.chat_id}_{message.message_id}"
         )
+
+def cancel_scheduled_deletion(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
+    """Cancela la eliminación programada de un mensaje si existe."""
+    if context.job_queue:
+        job_name = f"delete_{chat_id}_{message_id}"
+        jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in jobs:
+            job.schedule_removal()
+            logger.info(f"Cancelado borrado automático para mensaje {message_id}")
+
+def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message, timeout: int = 60):
+    """Reinicia el temporizador de borrado: cancela el anterior y crea uno nuevo."""
+    if not message: return
+    cancel_scheduled_deletion(context, message.chat_id, message.message_id)
+    schedule_message_deletion(context, message, timeout)
+
 
 # --- RANKING MENSUAL ---
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
@@ -216,6 +232,11 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cmd_msg_id = update.message.message_id
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
+    
+    # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (SI ES GRUPO) ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(owner_user.id, update.effective_chat.id)
+
     user_collection = db.get_all_user_stickers(owner_user.id)
     total_pokemon_count = len(ALL_POKEMON)
     owned_normal = len({s[0] for s in user_collection if s[1] == 0})
@@ -248,9 +269,14 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query:
         await query.answer()
+        # Refrescar temporizador si interactúan con botones
+        refresh_deletion_timer(context, query.message, 60)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Iniciar temporizador de borrado (60s)
+        schedule_message_deletion(context, update.message, 60)
+        schedule_message_deletion(context, msg, 60)
 
 
 async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -275,6 +301,10 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("Región no encontrada.", show_alert=True)
         return
     await query.answer()
+    
+    # Refrescar temporizador
+    refresh_deletion_timer(context, query.message, 60)
+
     user_collection = db.get_all_user_stickers(owner_id)
     total_region, total_pages = len(pokemon_list_region), math.ceil(len(pokemon_list_region) / POKEMON_PER_PAGE)
     start_index, end_index = page * POKEMON_PER_PAGE, (page + 1) * POKEMON_PER_PAGE
@@ -339,7 +369,9 @@ async def album_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if interactor_user.id != owner_id:
             await query.answer("No puedes cerrar el álbum de otra persona.", show_alert=True)
             return
-
+        
+        # Cancelamos el borrado programado porque ya lo vamos a borrar manualmente
+        cancel_scheduled_deletion(context, message.chat_id, message.message_id)
         await message.delete()
 
         if cmd_msg_id:
@@ -358,7 +390,7 @@ async def missing_sticker_handler(update: Update, _context: ContextTypes.DEFAULT
     await query.answer("No tienes este sticker.", show_alert=True)
 
 
-async def choose_sticker_version_handler(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+async def choose_sticker_version_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
     try:
@@ -375,6 +407,10 @@ async def choose_sticker_version_handler(update: Update, _context: ContextTypes.
     except (ValueError, IndexError):
         await query.answer("Error al obtener el sticker.", show_alert=True)
         return
+    
+    # Refrescar temporizador
+    refresh_deletion_timer(context, query.message, 60)
+
     user_collection = db.get_all_user_stickers(owner_id)
     has_normal = (pokemon_id, 0) in user_collection
     has_shiny = (pokemon_id, 1) in user_collection
@@ -419,7 +455,7 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         rarity_emoji = RARITY_VISUALS.get(final_rarity, "")
         message_text = f"{interactor_user.first_name} mostró su *{pokemon_data['name']}{shiny_text}* {rarity_emoji}"
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
-        image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_id}{'s' if is_shiny else ''}.png"
+        image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
         with open(image_path, 'rb') as sticker_file:
             await context.bot.send_sticker(chat_id=message.chat_id, sticker=sticker_file)
         await query.answer()
@@ -560,9 +596,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not current_jobs:
             # Usamos run_once para iniciar la cadena
             context.job_queue.run_once(spawn_pokemon, 10, chat_id=chat.id, name=f"spawn_{chat.id}")
-            await update.message.reply_text("✅ Aparición de Pokémon salvajes activada.")
+            msg = await update.message.reply_text("✅ Aparición de Pokémon salvajes activada.")
         else:
-            await update.message.reply_text("El bot ya está en funcionamiento.")
+            msg = await update.message.reply_text("El bot ya está en funcionamiento.")
+        
+        # Borrar comando y respuesta
+        schedule_message_deletion(context, update.message, 30)
+        schedule_message_deletion(context, msg, 30)
+
     else:
         await update.message.reply_text("¡Hola! Añádeme a un grupo para empezar.")
 
@@ -582,13 +623,17 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Detener el job programado (rompe la cadena de run_once)
     jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
     if not jobs:
-        await update.message.reply_text("El juego ya está detenido.")
+        msg = await update.message.reply_text("El juego ya está detenido.")
+        schedule_message_deletion(context, update.message, 30)
+        schedule_message_deletion(context, msg, 30)
         return
     for job in jobs:
         job.schedule_removal()
     
     db.set_group_active(chat.id, False)
-    await update.message.reply_text("❌ La aparición de Pokémon salvajes se ha desactivado.")
+    msg = await update.message.reply_text("❌ La aparición de Pokémon salvajes se ha desactivado.")
+    schedule_message_deletion(context, update.message, 30)
+    schedule_message_deletion(context, msg, 30)
 
 
 async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -735,6 +780,11 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     event_info['claimed_by'] = user.id
     event_id = event_info['event_id']
     await query.answer("¡Has aceptado el evento!")
+    
+    # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (Al aceptar evento) ---
+    # Importante para que sus Pokémon de evento cuenten para el reto grupal
+    if message.chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, message.chat.id)
 
     await message.delete()
 
@@ -964,10 +1014,14 @@ async def tombola_start(update: Update, _context: ContextTypes.DEFAULT_TYPE):
             "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
             "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!")
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data=f"tombola_claim_{user.id}")]]
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    # Auto-borrado de la pregunta y el comando
+    schedule_message_deletion(_context, update.message, 40)
+    schedule_message_deletion(_context, msg, 40)
 
 
-async def tombola_claim(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
 
@@ -992,6 +1046,11 @@ async def tombola_claim(update: Update, _context: ContextTypes.DEFAULT_TYPE):
         db.update_money(owner_id, prize['value'])
     else:
         db.add_item_to_inventory(owner_id, prize['value'])
+    
+    # IMPORTANTE: Cancelar el borrado del mensaje porque ahora es el resultado y queremos que se quede
+    if query.message:
+        cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
+
     await query.edit_message_text(f"¡Sacaste la bola {prize['emoji']}!\n\n{prize['msg']}", parse_mode='Markdown')
     await query.answer()
 
@@ -1055,7 +1114,10 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error al actualizar tienda: {e}")
                 await query.answer("Ocurrió un error al actualizar.", show_alert=True)
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Auto-borrado tienda
+        schedule_message_deletion(context, update.message, 60)
+        schedule_message_deletion(context, msg, 60)
 
 
 async def buy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1228,6 +1290,11 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.chat_data['is_opening_pack'] = True
         await query.answer(f"Abriendo {ITEM_NAMES.get(item_id)}...")
+        
+        # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (Al abrir sobre) ---
+        if message.chat.type in ['group', 'supergroup']:
+            db.register_user_in_group(user.id, message.chat.id)
+
         await message.delete()
 
         db.remove_item_from_inventory(user.id, item_id, 1)
@@ -1387,7 +1454,6 @@ async def _get_target_user_from_command(update: Update, context: ContextTypes.DE
     return target_user, args
 
 
-# --- COMANDO PARA DAR OBJETO A UN USUARIO (ADMIN) ---
 async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, args = await _get_target_user_from_command(update, context)
@@ -1396,15 +1462,6 @@ async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         item_id = args[0]
-        # Mapeo simple para facilitar nombres largos si fuera necesario, o usar directo
-        # Si el admin escribe el nombre exacto del config
-        
-        # Verificamos si existe en la tienda o es un objeto especial conocido
-        valid_items = list(SHOP_CONFIG.keys()) + ['pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket']
-        
-        # Nota: No validamos estrictamente para permitir flexibilidad si añades cosas nuevas, 
-        # pero avisamos si parece raro.
-        
         msg = " ".join(args[1:]) # Mensaje opcional
         if not msg: msg = "¡Un regalo de la administración!"
 
@@ -1485,12 +1542,10 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             item_details = f"{int(args[1])}_{int(args[2])}"
             message = ' '.join(args[3:]) or "¡Un sticker de regalo!"
         elif first_arg in USER_FRIENDLY_ITEM_IDS:
-            # Caso nombre amigable (ej: sobremagicomedianonacional)
             item_type = 'inventory_item'
             item_details = USER_FRIENDLY_ITEM_IDS[first_arg]
             message = ' '.join(args[1:]) or "¡Un regalo especial!"
         elif first_arg in ITEM_NAMES:
-            # Caso ID directo (ej: pack_medium_national)
             item_type = 'inventory_item'
             item_details = first_arg
             message = ' '.join(args[1:]) or "¡Un regalo especial!"
@@ -1610,8 +1665,10 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sender_money = db.get_user_money(sender.id)
     if sender_money < amount:
-        await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
+        msg = await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
                                         parse_mode='Markdown')
+        schedule_message_deletion(context, update.message, 40)
+        schedule_message_deletion(context, msg, 40)
         return
 
     db.get_or_create_user(target_user.id, target_user.first_name)
@@ -1620,10 +1677,14 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sender_mention = sender.mention_markdown()
     recipient_mention = target_user.mention_markdown()
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado a {recipient_mention}: *{format_money(amount)}₽*",
         parse_mode='Markdown'
     )
+    
+    # Auto-borrado regalar
+    schedule_message_deletion(context, update.message, 40)
+    schedule_message_deletion(context, msg, 40)
 
 
 async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1661,6 +1722,11 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    # REGISTRAMOS AL USUARIO POR SI ACASO NO LO ESTABA
+    db.get_or_create_user(user_id, update.effective_user.first_name)
+    db.register_user_in_group(user_id, chat_id)
     
     # Obtenemos los IDs únicos que tienen los MIEMBROS DE ESTE GRUPO
     group_ids = db.get_group_unique_kanto_ids(chat_id)
@@ -1694,7 +1760,11 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if total_group >= 151:
          text += "\n\n✅ **¡COMPLETADO!**"
 
-    await update.message.reply_text(text, parse_mode='Markdown')
+    msg = await update.message.reply_text(text, parse_mode='Markdown')
+    
+    # Auto-borrado retos
+    schedule_message_deletion(context, update.message, 30)
+    schedule_message_deletion(context, msg, 30)
 
 
 async def clemailbox_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1790,7 +1860,7 @@ def main():
         CommandHandler("removemail", removemail_cmd),
         CommandHandler("clearalbum", clearalbum_cmd),
         CommandHandler("resetmoney", resetmoney_cmd),
-        CommandHandler("darobjeto", darobjeto_cmd), # <--- Nuevo comando añadido
+        CommandHandler("darobjeto", darobjeto_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
