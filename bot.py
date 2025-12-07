@@ -7,6 +7,12 @@ from datetime import datetime
 import pytz
 import math
 from typing import cast
+import os
+from threading import Thread
+
+# --- Importamos Flask y Waitress ---
+from flask import Flask
+from waitress import serve
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand,
@@ -23,6 +29,23 @@ from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
 from events import EVENTS
 
+# --- CONFIGURACIÓN DEL SERVIDOR WEB (KEEP ALIVE ROBUSTO) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "¡El bot está vivo y coleando!"
+
+def run():
+    # Usamos waitress en lugar de app.run para evitar el error 502
+    port = int(os.environ.get("PORT", 8080))
+    serve(app, host="0.0.0.0", port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+# ---------------------------------------------------------
+
 # --- Configuración Inicial ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +57,7 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 EVENT_CHANCE = 0.15
 
 # --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
-MIN_SPAWN_TIME = 3600  # 1 hora
+MIN_SPAWN_TIME = 3600   # 1 hora
 MAX_SPAWN_TIME = 14400  # 4 horas
 
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
@@ -101,7 +124,6 @@ def schedule_message_deletion(context: ContextTypes.DEFAULT_TYPE, message: Messa
             name=f"delete_{message.chat_id}_{message.message_id}"
         )
 
-
 # --- RANKING MENSUAL ---
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
     """Tarea diaria que verifica si es día 1 para enviar premios."""
@@ -109,29 +131,26 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
     # Verificar si es el día 1 del mes
     if now.day == 1:
         # Recuperamos el ranking del mes anterior
-        ranking = db.get_monthly_ranking()  # [(user_id, username, count), ...]
-
+        ranking = db.get_monthly_ranking() # [(user_id, username, count), ...]
+        
         if not ranking:
             db.reset_monthly_stickers()
             return
 
         message_lines = ["🏆 Ranking de mayor número de stickers conseguidos este mes:\n"]
         medals = ["🥇", "🥈", "🥉"]
-
+        
         for index, (uid, uname, count) in enumerate(ranking):
             medal = medals[index] if index < 3 else "-"
             # Definir premios
             prize = 300
-            if index == 0:
-                prize = 1000
-            elif index == 1:
-                prize = 800
-            elif index == 2:
-                prize = 500
-
+            if index == 0: prize = 1000
+            elif index == 1: prize = 800
+            elif index == 2: prize = 500
+            
             line = f"{medal} {uname}: {count} stickers - (Premio: {format_money(prize)}₽)"
             message_lines.append(line)
-
+            
             # Enviar premio al buzón
             db.add_mail(uid, 'money', str(prize), "Premio mensual")
 
@@ -145,7 +164,7 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='Markdown')
             except Exception as e:
                 logger.error(f"Error enviando ranking mensual al chat {chat_id}: {e}")
-
+        
         # Reiniciar contadores
         db.reset_monthly_stickers()
 
@@ -445,15 +464,15 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id  # Recuperamos el chat_id del job
-
+    chat_id = context.job.chat_id # Recuperamos el chat_id del job
+    
     if random.random() < EVENT_CHANCE:
         await spawn_event(context)
         # Importante: aunque sea evento, reprogramamos el siguiente spawn
         if chat_id in db.get_active_groups():
             next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
             context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
-            logger.info(f"Próximo spawn (tras evento) en chat {chat_id} en {next_delay} segundos.")
+            logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
         return
 
     context.chat_data.setdefault('active_spawns', {})
@@ -535,7 +554,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         db.add_group(chat.id)
         db.set_group_active(chat.id, True)
-
+        
         # Comprobar si ya existe un job programado
         current_jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
         if not current_jobs:
@@ -559,7 +578,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if member.status not in ['administrator', 'creator']:
         await update.message.reply_text("⛔ Este comando solo puede ser usado por administradores.")
         return
-
+    
     # Detener el job programado (rompe la cadena de run_once)
     jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
     if not jobs:
@@ -567,7 +586,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     for job in jobs:
         job.schedule_removal()
-
+    
     db.set_group_active(chat.id, False)
     await update.message.reply_text("❌ La aparición de Pokémon salvajes se ha desactivado.")
 
@@ -581,7 +600,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     user = query.from_user
     db.get_or_create_user(user.id, user.first_name)
-
+    
     # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL ---
     if message.chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, message.chat.id)
@@ -625,7 +644,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
-
+        
         # Incrementar contador mensual
         db.increment_monthly_stickers(user.id)
 
@@ -637,7 +656,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
         pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-
+        
         message_text = ""
 
         if db.check_sticker_owned(user.id, pokemon_id, is_shiny):
@@ -647,7 +666,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             db.add_sticker_to_collection(user.id, pokemon_id, is_shiny)
             message_text = f"🎉 ¡Felicidades, {user.mention_markdown()}! Has conseguido un sticker de *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}*. Lo has registrado en tu Álbumdex."
-
+        
         # --- VERIFICAR KANTO COMPLETADO (INDIVIDUAL) ---
         if not db.is_kanto_completed_by_user(user.id):
             unique_count = db.get_user_unique_kanto_count(user.id)
@@ -663,15 +682,15 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
                 # Contamos pokémon únicos ENTRE LOS MIEMBROS DE ESTE GRUPO
                 group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
-
+                
                 if len(group_unique_ids) >= 151:
                     db.mark_event_completed(chat_id, 'kanto_group_challenge')
-
+                    
                     # Premiar solo a los miembros de este grupo
                     group_users = db.get_users_in_group(chat_id)
                     for uid in group_users:
                         db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-
+                    
                     message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto entre todos! Cada jugador ha recibido 2000₽ en su buzón."
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
@@ -1264,7 +1283,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
-
+            
             # Incrementar contador mensual
             db.increment_monthly_stickers(user.id)
 
@@ -1275,7 +1294,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 db.add_sticker_to_collection(user.id, p['id'], s)
                 summary_parts.append(f"🔸🆕 {p_name} {r_emoji}")
-
+        
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         vertical_summary = "\n".join(summary_parts)
 
@@ -1368,6 +1387,36 @@ async def _get_target_user_from_command(update: Update, context: ContextTypes.DE
     return target_user, args
 
 
+# --- COMANDO PARA DAR OBJETO A UN USUARIO (ADMIN) ---
+async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, args = await _get_target_user_from_command(update, context)
+    if not target_user:
+        return await update.message.reply_text("Uso: `/darobjeto [@usuario|ID] <item_id>`")
+    
+    try:
+        item_id = args[0]
+        # Mapeo simple para facilitar nombres largos si fuera necesario, o usar directo
+        # Si el admin escribe el nombre exacto del config
+        
+        # Verificamos si existe en la tienda o es un objeto especial conocido
+        valid_items = list(SHOP_CONFIG.keys()) + ['pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket']
+        
+        # Nota: No validamos estrictamente para permitir flexibilidad si añades cosas nuevas, 
+        # pero avisamos si parece raro.
+        
+        msg = " ".join(args[1:]) # Mensaje opcional
+        if not msg: msg = "¡Un regalo de la administración!"
+
+        db.add_mail(target_user.id, 'inventory_item', item_id, msg)
+        
+        item_name = ITEM_NAMES.get(item_id, item_id)
+        await update.message.reply_text(f"✅ Enviado *{item_name}* al buzón de {target_user.mention_markdown()}.", parse_mode='Markdown')
+
+    except (IndexError, ValueError):
+        await update.message.reply_text("Uso: `/darobjeto [@usuario|ID] <item_id> [mensaje opcional]`\nEj: `/darobjeto @pepe pack_small_national`")
+
+
 async def moddinero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID:
         return
@@ -1414,25 +1463,44 @@ async def resetmoney_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💸 ¡Se ha eliminado todo el dinero de {target_user.mention_markdown()}! Ahora tiene *0₽*.",
         parse_mode='Markdown')
 
-
 async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     try:
-        args, all_users = context.args, db.get_all_user_ids()
-        item_type, details, msg = args[0].lower(), "", ' '.join(args[1:])
-        if item_type in USER_FRIENDLY_ITEM_IDS:
-            details, msg, item_type = USER_FRIENDLY_ITEM_IDS[item_type], msg or "¡Un regalo especial!", 'inventory_item'
-        elif item_type == 'money':
-            details, msg = str(int(args[1])), ' '.join(args[2:]) or "¡Regalo para la comunidad!"
-        elif item_type == 'sticker':
-            details, msg, item_type = f"{int(args[1])}_{int(args[2])}", ' '.join(
-                args[3:]) or "¡Un sticker de regalo!", 'single_sticker'
+        args = context.args
+        if not args: return await update.message.reply_text("Uso: /sendtoall <tipo/id> [args] [mensaje]")
+        
+        all_users = db.get_all_user_ids()
+        first_arg = args[0].lower()
+        
+        item_type = ''
+        item_details = ''
+        message = ''
+
+        if first_arg == 'money':
+            item_type = 'money'
+            item_details = str(int(args[1]))
+            message = ' '.join(args[2:]) or "¡Regalo para la comunidad!"
+        elif first_arg == 'sticker':
+            item_type = 'single_sticker'
+            item_details = f"{int(args[1])}_{int(args[2])}"
+            message = ' '.join(args[3:]) or "¡Un sticker de regalo!"
+        elif first_arg in USER_FRIENDLY_ITEM_IDS:
+            # Caso nombre amigable (ej: sobremagicomedianonacional)
+            item_type = 'inventory_item'
+            item_details = USER_FRIENDLY_ITEM_IDS[first_arg]
+            message = ' '.join(args[1:]) or "¡Un regalo especial!"
+        elif first_arg in ITEM_NAMES:
+            # Caso ID directo (ej: pack_medium_national)
+            item_type = 'inventory_item'
+            item_details = first_arg
+            message = ' '.join(args[1:]) or "¡Un regalo especial!"
         else:
-            return await update.message.reply_text(f"Tipo no reconocido: '{item_type}'.")
-        for uid in all_users: db.add_mail(uid, item_type, details, msg)
+            return await update.message.reply_text(f"Tipo no reconocido: '{first_arg}'.")
+
+        for uid in all_users: db.add_mail(uid, item_type, item_details, message)
         await update.message.reply_text(f"✅ Regalo enviado a los {len(all_users)} jugadores.")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Uso incorrecto.")
+    except (IndexError, ValueError) as e:
+        await update.message.reply_text(f"Uso incorrecto: {e}")
 
 
 async def send_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1467,10 +1535,10 @@ async def add_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await update.message.reply_text(f"❌ Error: El Pokémon con ID {poke_id} no existe.")
         db.get_or_create_user(target_user.id, target_user.first_name)
         db.add_sticker_to_collection(target_user.id, poke_id, is_shiny)
-
+        
         # Incrementar mensual también si el admin lo añade
         db.increment_monthly_stickers(target_user.id)
-
+        
         shiny_text = " brillante" if is_shiny else ""
         await update.message.reply_text(
             f"✅ Añadido {poke_name}{shiny_text} a la colección de {target_user.first_name}.")
@@ -1517,12 +1585,11 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_user, args = await _get_target_user_from_command(update, context)
 
     if not target_user:
-        await update.message.reply_text(
-            "Puedes regalarle a otro jugador parte de tu dinero. Así funciona el comando '/regalar':\n\n"
-            "🔹 Responde a un mensaje de la persona y escribe:\n"
-            "'/regalar <cantidad>'\n\n"
-            "🔹 O bien, menciona a la persona; escribe:\n"
-            "'/regalar @usuario <cantidad>'")
+        await update.message.reply_text("Puedes regalarle a otro jugador parte de tu dinero. Así funciona el comando '/regalar':\n\n"
+                                        "🔹 Responde a un mensaje de la persona y escribe:\n"
+                                        "'/regalar <cantidad>'\n\n"
+                                        "🔹 O bien, menciona a la persona; escribe:\n"
+                                        "'/regalar @usuario <cantidad>'")
         return
     if sender.id == target_user.id:
         await update.message.reply_text("😅 No puedes regalarte dinero a ti mismo.")
@@ -1594,11 +1661,11 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-
+    
     # Obtenemos los IDs únicos que tienen los MIEMBROS DE ESTE GRUPO
     group_ids = db.get_group_unique_kanto_ids(chat_id)
     total_group = len(group_ids)
-
+    
     # Calculamos totales por rareza en Kanto (1-151)
     kanto_rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
     for p in ALL_POKEMON:
@@ -1615,17 +1682,17 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "🤝 **Retos Grupales** 🤝\n\n"
     text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto**\n"
     text += "_El progreso se comparte entre todos los miembros de este grupo._\n\n"
-
+    
     rarity_texts = []
     for cat in ['C', 'B', 'A', 'S']:
         emoji = RARITY_VISUALS[cat]
         rarity_texts.append(f"{emoji} {group_rarity_counts[cat]}/{kanto_rarity_totals[cat]}")
-
+    
     text += ", ".join(rarity_texts) + "\n\n"
     text += f"📊 **Total: {total_group}/151**"
 
     if total_group >= 151:
-        text += "\n\n✅ **¡COMPLETADO!**"
+         text += "\n\n✅ **¡COMPLETADO!**"
 
     await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -1690,8 +1757,12 @@ async def post_init(application: Application):
 
 
 def main():
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    # --- NUEVO: Iniciamos el servidor web en un hilo aparte ---
+    keep_alive()
+    # ---------------------------------------------------------
 
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    
     # Tarea diaria para verificar ranking mensual (se ejecuta cada 24h)
     application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
 
@@ -1719,6 +1790,7 @@ def main():
         CommandHandler("removemail", removemail_cmd),
         CommandHandler("clearalbum", clearalbum_cmd),
         CommandHandler("resetmoney", resetmoney_cmd),
+        CommandHandler("darobjeto", darobjeto_cmd), # <--- Nuevo comando añadido
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -1743,12 +1815,11 @@ def main():
     application.add_handlers(all_handlers)
     for chat_id in db.get_active_groups():
         # Inicializar el spawn aleatorio en el reinicio
-        initial_delay = random.randint(10, 60)  # Delay inicial pequeño al reiniciar
+        initial_delay = random.randint(10, 60) # Delay inicial pequeño al reiniciar
         application.job_queue.run_once(spawn_pokemon, initial_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
         logger.info(f"Trabajo de spawn reanudado para el chat activo {chat_id}")
     application.run_polling()
 
 
 if __name__ == '__main__':
-
     main()
