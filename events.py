@@ -97,10 +97,8 @@ def evento_pesca_ruta_12(user, decision_parts, original_text):
         if choice == 'lo_hare':
             costo_caña = 200
             if db.get_user_money(user_id) < costo_caña:
-                result_text = ("🔸¡Oh, no! El pescadero te mira el bolsillo y ve que no tienes "
-                               "suficiente dinero.\n\n"
-                               f"🔸*Necesitas {format_money(costo_caña)}₽* y no quieres quedar mal. "
-                               "Mejor seguir tu camino...")
+                result_text = f"🔸*Necesitas {format_money(costo_caña)}₽*, no tienes suficiente dinero, mejor seguir tu camino..."
+
             else:
                 db.update_money(user_id, -costo_caña)
                 pokemon_id = random.choice(PESCA_RUTA_12_PEQUEÑOS)
@@ -1158,4 +1156,5 @@ EVENTS = {
             }
         }
     }
+
 }
