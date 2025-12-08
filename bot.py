@@ -81,11 +81,17 @@ PACK_CONFIG = {item_id: {'size': details['size'], 'is_magic': details['is_magic'
 
 # --- Emojis de dinero añadidos y formato corregido ---
 DAILY_PRIZES = [
-    {'type': 'money', 'value': 100, 'emoji': '🟤', 'msg': '¡Obtuviste *100₽* 💰! ¡Menos es nada!'},
-    {'type': 'money', 'value': 200, 'emoji': '🟢', 'msg': '¡Genial, *200₽* 💰 para ti!'},
-    {'type': 'money', 'value': 400, 'emoji': '🔵', 'msg': '¡Fantástico! ¡Has ganado *400₽* 💰!'},
+    {'type': 'money', 'value': 100, 'emoji': '🟤', 
+     'msg': '¡{usuario} sacó la bola 🟤!\n\n¡Obtuvo *100₽* 💰! ¡Menos es nada!'},
+    
+    {'type': 'money', 'value': 200, 'emoji': '🟢', 
+     'msg': '¡{usuario} sacó la bola 🟢!\n\n¡Genial, *200₽* 💰 que se llevó!'},
+    
+    {'type': 'money', 'value': 400, 'emoji': '🔵', 
+     'msg': '¡{usuario} sacó la bola 🔵!\n\n¡Fantástico! ¡Ha ganado *400₽* 💰!'},
+    
     {'type': 'item', 'value': 'pack_magic_medium_national', 'emoji': '🟡',
-     'msg': '¡¡PREMIO GORDO!! ¡Has conseguido un Sobre Mágico Mediano Nacional! 🎴'}
+     'msg': '¡Sacaste la bola 🟡!\n\n¡¡PREMIO GORDO!! ¡{usuario} ha conseguido un *Sobre Mágico Mediano Nacional*! 🎴'}
 ]
 
 ITEM_NAMES['pack_magic_medium_national'] = SHOP_CONFIG['pack_magic_medium_national']['name']
@@ -545,20 +551,29 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
     text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
     image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
     try:
+        # --- CORRECCIÓN BUG ID=0 ---
+        # Enviamos el sticker PRIMERO (Visualmente arriba)
         with open(image_path, 'rb') as sticker_file:
             sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
-            callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-            button_text = "¡Capturar! 📷"
-            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
-            text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
-                                                      reply_markup=reply_markup)
-            new_callback_data = f"claim_{text_msg.message_id}_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-            await context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=text_msg.message_id,
-                                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                                                            button_text, callback_data=new_callback_data)]]))
-            context.chat_data['active_spawns'][text_msg.message_id] = {'sticker_id': sticker_msg.message_id,
-                                                                       'text_id': text_msg.message_id,
-                                                                       'timestamp': current_time}
+
+        # Enviamos el mensaje de TEXTO (Sin botones aún)
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown')
+        
+        # GUARDAMOS LOS DATOS AHORA (Antes de poner el botón)
+        context.chat_data['active_spawns'][text_msg.message_id] = {'sticker_id': sticker_msg.message_id,
+                                                                   'text_id': text_msg.message_id,
+                                                                   'timestamp': current_time}
+
+        # AÑADIMOS EL BOTÓN AL MENSAJE DE TEXTO
+        callback_data = f"claim_{text_msg.message_id}_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
+        button_text = "¡Capturar! 📷"
+        
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id, 
+            message_id=text_msg.message_id,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+        )
+
     except FileNotFoundError:
         logger.error(f"No se encontró la imagen: {image_path}")
 
@@ -568,6 +583,54 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
         next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
         context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
         logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
+
+
+# --- COMANDO SECRETO PARA EL ADMIN: FORZAR APARICIÓN ---
+async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1. Comprobación de seguridad: SOLO TU ID
+    if update.effective_user.id != ADMIN_USER_ID:
+        return # Ignorar si no es el admin
+
+    chat_id = update.effective_chat.id
+
+    # 2. Lógica de spawn (copiada y adaptada de spawn_pokemon, pero SIN re-programar ni eventos)
+    pokemon_data, is_shiny, rarity = choose_random_pokemon()
+
+    # Mensajes y nombres
+    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+    text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
+    image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+
+    try:
+        # Enviar Sticker
+        with open(image_path, 'rb') as sticker_file:
+            sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+
+        # Enviar Texto (sin botón)
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown')
+
+        # Guardar datos
+        context.chat_data.setdefault('active_spawns', {})
+        context.chat_data['active_spawns'][text_msg.message_id] = {
+            'sticker_id': sticker_msg.message_id,
+            'text_id': text_msg.message_id,
+            'timestamp': time.time()
+        }
+
+        # Poner botón
+        callback_data = f"claim_{text_msg.message_id}_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
+        button_text = "¡Capturar! 📷"
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=text_msg.message_id,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+        )
+        
+        # Borrar el mensaje del comando "/forcespawn" para que quede limpio
+        await update.message.delete()
+
+    except FileNotFoundError:
+        logger.error(f"No se encontró la imagen: {image_path}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1051,7 +1114,9 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.message:
         cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
 
-    await query.edit_message_text(f"¡Sacaste la bola {prize['emoji']}!\n\n{prize['msg']}", parse_mode='Markdown')
+    # MODIFICADO: Formatear el mensaje con el nombre del usuario
+    msg_text = prize['msg'].format(usuario=interactor_user.mention_markdown())
+    await query.edit_message_text(msg_text, parse_mode='Markdown')
     await query.answer()
 
 
@@ -1454,6 +1519,7 @@ async def _get_target_user_from_command(update: Update, context: ContextTypes.DE
     return target_user, args
 
 
+# --- COMANDO PARA DAR OBJETO A UN USUARIO (ADMIN) ---
 async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, args = await _get_target_user_from_command(update, context)
@@ -1462,6 +1528,15 @@ async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         item_id = args[0]
+        # Mapeo simple para facilitar nombres largos si fuera necesario, o usar directo
+        # Si el admin escribe el nombre exacto del config
+        
+        # Verificamos si existe en la tienda o es un objeto especial conocido
+        valid_items = list(SHOP_CONFIG.keys()) + ['pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket']
+        
+        # Nota: No validamos estrictamente para permitir flexibilidad si añades cosas nuevas, 
+        # pero avisamos si parece raro.
+        
         msg = " ".join(args[1:]) # Mensaje opcional
         if not msg: msg = "¡Un regalo de la administración!"
 
@@ -1861,6 +1936,7 @@ def main():
         CommandHandler("clearalbum", clearalbum_cmd),
         CommandHandler("resetmoney", resetmoney_cmd),
         CommandHandler("darobjeto", darobjeto_cmd),
+        CommandHandler("forcespawn", force_spawn_command),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
