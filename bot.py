@@ -551,28 +551,27 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
     text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
     image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
     try:
-        # --- CORRECCIÓN BUG ID=0 ---
-        # Enviamos el sticker PRIMERO (Visualmente arriba)
+        # --- ATOMIC SPAWN (BOTÓN INCLUIDO) ---
+        
+        # 1. Enviamos Sticker
         with open(image_path, 'rb') as sticker_file:
             sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
 
-        # Enviamos el mensaje de TEXTO (Sin botones aún)
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown')
-        
-        # GUARDAMOS LOS DATOS AHORA (Antes de poner el botón)
-        context.chat_data['active_spawns'][text_msg.message_id] = {'sticker_id': sticker_msg.message_id,
-                                                                   'text_id': text_msg.message_id,
-                                                                   'timestamp': current_time}
-
-        # AÑADIMOS EL BOTÓN AL MENSAJE DE TEXTO
-        callback_data = f"claim_{text_msg.message_id}_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
+        # 2. Preparamos el botón CON ID 0 (Comodín)
+        callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
         button_text = "¡Capturar! 📷"
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+
+        # 3. Enviamos Texto YA CON EL BOTÓN
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown', reply_markup=reply_markup)
         
-        await context.bot.edit_message_reply_markup(
-            chat_id=chat_id, 
-            message_id=text_msg.message_id,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
-        )
+        # 4. Guardamos los datos USANDO LA ID REAL DEL MENSAJE ENVIADO
+        context.chat_data['active_spawns'][text_msg.message_id] = {
+            'sticker_id': sticker_msg.message_id,
+            'text_id': text_msg.message_id,
+            'timestamp': current_time
+        }
+        # FIN. Ahora el botón se ve siempre porque sale junto con el mensaje.
 
     except FileNotFoundError:
         logger.error(f"No se encontró la imagen: {image_path}")
@@ -606,25 +605,21 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         with open(image_path, 'rb') as sticker_file:
             sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
 
-        # Enviar Texto (sin botón)
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown')
+        # Botón con ID 0
+        callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
+        button_text = "¡Capturar! 📷"
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
-        # Guardar datos
+        # Texto con botón
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown', reply_markup=reply_markup)
+
+        # Guardar datos con ID real
         context.chat_data.setdefault('active_spawns', {})
         context.chat_data['active_spawns'][text_msg.message_id] = {
             'sticker_id': sticker_msg.message_id,
             'text_id': text_msg.message_id,
             'timestamp': time.time()
         }
-
-        # Poner botón
-        callback_data = f"claim_{text_msg.message_id}_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-        button_text = "¡Capturar! 📷"
-        await context.bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=text_msg.message_id,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
-        )
         
         # Borrar el mensaje del comando "/forcespawn" para que quede limpio
         await update.message.delete()
@@ -714,8 +709,11 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.register_user_in_group(user.id, message.chat.id)
 
     try:
-        _, msg_id_str, pokemon_id_str, is_shiny_str, rarity = query.data.split('_')
-        msg_id, pokemon_id, is_shiny = int(msg_id_str), int(pokemon_id_str), int(is_shiny_str)
+        # AHORA IGNORAMOS EL msg_id QUE VIENE EN EL STRING (PORQUE ES 0)
+        _, _, pokemon_id_str, is_shiny_str, rarity = query.data.split('_')
+        # Y USAMOS LA ID REAL DEL MENSAJE DONDE SE PULSÓ EL BOTÓN
+        msg_id = message.message_id
+        pokemon_id, is_shiny = int(pokemon_id_str), int(is_shiny_str)
     except (ValueError, IndexError):
         await query.answer()
         return
