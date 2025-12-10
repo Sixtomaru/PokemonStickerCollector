@@ -29,21 +29,25 @@ from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
 from events import EVENTS
 
-# --- CONFIGURACIÓN DEL SERVIDOR WEB (KEEP ALIVE ROBUSTO) ---
+# --- CONFIGURACIÓN DEL SERVIDOR WEB ---
 app = Flask('')
+
 
 @app.route('/')
 def home():
     return "¡El bot está vivo y coleando!"
 
+
 def run():
-    # Usamos waitress en lugar de app.run para evitar el error 502
     port = int(os.environ.get("PORT", 8080))
     serve(app, host="0.0.0.0", port=port)
+
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
+
+
 # ---------------------------------------------------------
 
 # --- Configuración Inicial ---
@@ -57,7 +61,7 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 EVENT_CHANCE = 0.15
 
 # --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
-MIN_SPAWN_TIME = 3600   # 1 hora
+MIN_SPAWN_TIME = 3600  # 1 hora
 MAX_SPAWN_TIME = 14400  # 4 horas
 
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
@@ -79,24 +83,19 @@ ITEM_NAMES = {item_id: details['name'] for item_id, details in SHOP_CONFIG.items
 PACK_CONFIG = {item_id: {'size': details['size'], 'is_magic': details['is_magic']} for item_id, details in
                SHOP_CONFIG.items()}
 
-# --- Emojis de dinero añadidos y formato corregido ---
+# --- Emojis de dinero ---
 DAILY_PRIZES = [
-    {'type': 'money', 'value': 100, 'emoji': '🟤', 
+    {'type': 'money', 'value': 100, 'emoji': '🟤',
      'msg': '¡{usuario} sacó la bola 🟤!\n\n¡Obtuvo *100₽* 💰! ¡Menos es nada!'},
-    
-    {'type': 'money', 'value': 200, 'emoji': '🟢', 
+    {'type': 'money', 'value': 200, 'emoji': '🟢',
      'msg': '¡{usuario} sacó la bola 🟢!\n\n¡Genial, *200₽* 💰 que se llevó!'},
-    
-    {'type': 'money', 'value': 400, 'emoji': '🔵', 
+    {'type': 'money', 'value': 400, 'emoji': '🔵',
      'msg': '¡{usuario} sacó la bola 🔵!\n\n¡Fantástico! ¡Ha ganado *400₽* 💰!'},
-    
     {'type': 'item', 'value': 'pack_magic_medium_national', 'emoji': '🟡',
      'msg': '¡Sacaste la bola 🟡!\n\n¡¡PREMIO GORDO!! ¡{usuario} ha conseguido un *Sobre Mágico Mediano Nacional*! 🎴'}
 ]
 
 ITEM_NAMES['pack_magic_medium_national'] = SHOP_CONFIG['pack_magic_medium_national']['name']
-
-# --- Nombres para objetos especiales ---
 ITEM_NAMES['pluma_naranja'] = 'Pluma Naranja'
 ITEM_NAMES['pluma_amarilla'] = 'Pluma Amarilla'
 ITEM_NAMES['pluma_azul'] = 'Pluma Azul'
@@ -112,6 +111,30 @@ PACK_OPEN_COOLDOWN = 15
 
 
 # --- FUNCIONES AUXILIARES ---
+
+async def is_group_qualified(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """
+    Verifica si el grupo cumple los requisitos de actividad.
+    Devuelve True si:
+    1. El ADMIN_USER_ID está en el grupo.
+    2. O hay al menos 3 usuarios registrados en la base de datos para este chat.
+    """
+    # 1. Chequeo de Admin (Llave Maestra)
+    try:
+        member = await context.bot.get_chat_member(chat_id, ADMIN_USER_ID)
+        if member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
+            return True
+    except BadRequest:
+        pass  # El admin no está o no se puede leer
+
+    # 2. Chequeo de Usuarios Activos
+    users_in_group = db.get_users_in_group(chat_id)
+    if len(users_in_group) >= 3:
+        return True
+
+    return False
+
+
 async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.delete_message(chat_id=context.job.data['chat_id'], message_id=context.job.data['message_id'])
@@ -130,17 +153,16 @@ def schedule_message_deletion(context: ContextTypes.DEFAULT_TYPE, message: Messa
             name=f"delete_{message.chat_id}_{message.message_id}"
         )
 
+
 def cancel_scheduled_deletion(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    """Cancela la eliminación programada de un mensaje si existe."""
     if context.job_queue:
         job_name = f"delete_{chat_id}_{message_id}"
         jobs = context.job_queue.get_jobs_by_name(job_name)
         for job in jobs:
             job.schedule_removal()
-            logger.info(f"Cancelado borrado automático para mensaje {message_id}")
+
 
 def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message, timeout: int = 60):
-    """Reinicia el temporizador de borrado: cancela el anterior y crea uno nuevo."""
     if not message: return
     cancel_scheduled_deletion(context, message.chat_id, message.message_id)
     schedule_message_deletion(context, message, timeout)
@@ -150,54 +172,40 @@ def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message,
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
     """Tarea diaria que verifica si es día 1 para enviar premios."""
     now = datetime.now(TZ_SPAIN)
-    # Verificar si es el día 1 del mes
     if now.day == 1:
-        # Recuperamos el ranking del mes anterior
-        ranking = db.get_monthly_ranking() # [(user_id, username, count), ...]
-        
+        ranking = db.get_monthly_ranking()
         if not ranking:
             db.reset_monthly_stickers()
             return
-
         message_lines = ["🏆 Ranking de mayor número de stickers conseguidos este mes:\n"]
         medals = ["🥇", "🥈", "🥉"]
-        
         for index, (uid, uname, count) in enumerate(ranking):
             medal = medals[index] if index < 3 else "-"
-            # Definir premios
             prize = 300
-            if index == 0: prize = 1000
-            elif index == 1: prize = 800
-            elif index == 2: prize = 500
-            
+            if index == 0:
+                prize = 1000
+            elif index == 1:
+                prize = 800
+            elif index == 2:
+                prize = 500
             line = f"{medal} {uname}: {count} stickers - (Premio: {format_money(prize)}₽)"
             message_lines.append(line)
-            
-            # Enviar premio al buzón
             db.add_mail(uid, 'money', str(prize), "Premio mensual")
-
         message_lines.append("\n_Los premios han sido enviados_")
         final_text = "\n".join(message_lines)
-
-        # Enviar mensaje a todos los grupos activos
         active_groups = db.get_active_groups()
         for chat_id in active_groups:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='Markdown')
             except Exception as e:
                 logger.error(f"Error enviando ranking mensual al chat {chat_id}: {e}")
-        
-        # Reiniciar contadores
         db.reset_monthly_stickers()
 
 
 # --- MENSAJE DE BIENVENIDA ---
 async def welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía un mensaje cuando el bot es añadido a un grupo."""
     result = update.my_chat_member
     new_member = result.new_chat_member
-
-    # Verificar si el bot fue añadido (estado cambia a MEMBER o ADMINISTRATOR)
     if new_member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR]:
         text = (
             "💬 ¡Hola, gracias por invitarme al grupo! Me presento, soy Amelia. He sido periodista, pero llevo tiempo queriendo abrir un negocio propio, os cuento:\n\n"
@@ -238,8 +246,6 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cmd_msg_id = update.message.message_id
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
-    
-    # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (SI ES GRUPO) ---
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(owner_user.id, update.effective_chat.id)
 
@@ -275,12 +281,10 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query:
         await query.answer()
-        # Refrescar temporizador si interactúan con botones
         refresh_deletion_timer(context, query.message, 60)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
         msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        # Iniciar temporizador de borrado (60s)
         schedule_message_deletion(context, update.message, 60)
         schedule_message_deletion(context, msg, 60)
 
@@ -307,8 +311,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("Región no encontrada.", show_alert=True)
         return
     await query.answer()
-    
-    # Refrescar temporizador
     refresh_deletion_timer(context, query.message, 60)
 
     user_collection = db.get_all_user_stickers(owner_id)
@@ -341,23 +343,19 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     pagination_row = []
     if page > 0:
         prev_cb = f"album_{region_name}_{page - 1}_{owner_id}"
-        if cmd_msg_id:
-            prev_cb += f"_{cmd_msg_id}"
+        if cmd_msg_id: prev_cb += f"_{cmd_msg_id}"
         pagination_row.append(InlineKeyboardButton("⬅️ Anterior", callback_data=prev_cb))
     if end_index < total_region:
         next_cb = f"album_{region_name}_{page + 1}_{owner_id}"
-        if cmd_msg_id:
-            next_cb += f"_{cmd_msg_id}"
+        if cmd_msg_id: next_cb += f"_{cmd_msg_id}"
         pagination_row.append(InlineKeyboardButton("Siguiente ➡️", callback_data=next_cb))
     if pagination_row:
         keyboard.append(pagination_row)
     back_cb = f"album_main_{owner_id}"
-    if cmd_msg_id:
-        back_cb += f"_{cmd_msg_id}"
+    if cmd_msg_id: back_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("⬅️ Volver al Álbum Nacional", callback_data=back_cb)])
     close_cb = f"album_close_{owner_id}"
-    if cmd_msg_id:
-        close_cb += f"_{cmd_msg_id}"
+    if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Cerrar Álbum", callback_data=close_cb)])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -369,26 +367,20 @@ async def album_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         parts = query.data.split('_')
         owner_id = int(parts[2])
         cmd_msg_id = int(parts[3]) if len(parts) > 3 else None
-
         message = cast(Message, query.message)
-
         if interactor_user.id != owner_id:
             await query.answer("No puedes cerrar el álbum de otra persona.", show_alert=True)
             return
-        
-        # Cancelamos el borrado programado porque ya lo vamos a borrar manualmente
         cancel_scheduled_deletion(context, message.chat_id, message.message_id)
         await message.delete()
-
         if cmd_msg_id:
             try:
                 await context.bot.delete_message(chat_id=message.chat_id, message_id=cmd_msg_id)
             except BadRequest:
-                logger.info(f"El mensaje de comando a borrar ({cmd_msg_id}) ya no existía.")
+                pass
         await query.answer()
     except (ValueError, IndexError):
         await query.answer("Error al procesar el botón de cerrar.", show_alert=True)
-        return
 
 
 async def missing_sticker_handler(update: Update, _context: ContextTypes.DEFAULT_TYPE):
@@ -413,10 +405,7 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
     except (ValueError, IndexError):
         await query.answer("Error al obtener el sticker.", show_alert=True)
         return
-    
-    # Refrescar temporizador
     refresh_deletion_timer(context, query.message, 60)
-
     user_collection = db.get_all_user_stickers(owner_id)
     has_normal = (pokemon_id, 0) in user_collection
     has_shiny = (pokemon_id, 1) in user_collection
@@ -438,12 +427,10 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
 async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
-
     message = cast(Message, query.message)
     if not message:
         await query.answer("El mensaje original no está disponible.", show_alert=True)
         return
-
     image_path = ""
     try:
         _, pokemon_id_str, is_shiny_str, owner_id_str = query.data.split('_')
@@ -453,7 +440,6 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
         if not pokemon_data:
-            logger.error(f"Data for Pokémon ID {pokemon_id} not found when showing sticker.")
             await query.answer("No se encontraron los datos de este Pokémon.", show_alert=True)
             return
         shiny_text = " Brillante" if is_shiny else ""
@@ -486,9 +472,18 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Limpiando evento activo anterior en el chat {chat_id}")
         context.chat_data['active_events'] = {}
 
+    # --- NUEVA LÓGICA DE FILTRADO (Llave Maestra) ---
+    is_qualified = await is_group_qualified(chat_id, context)
+
     available_events = []
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
+
     for ev_id in EVENTS.keys():
-        if ev_id in ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']:
+        # Si el grupo NO es cualificado, bloqueamos los legendarios
+        if not is_qualified and ev_id in legendary_missions:
+            continue
+
+        if ev_id in legendary_missions:
             if db.is_event_completed(chat_id, ev_id):
                 continue
         available_events.append(ev_id)
@@ -506,8 +501,8 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id # Recuperamos el chat_id del job
-    
+    chat_id = context.job.chat_id  # Recuperamos el chat_id del job
+
     if random.random() < EVENT_CHANCE:
         await spawn_event(context)
         # Importante: aunque sea evento, reprogramamos el siguiente spawn
@@ -552,7 +547,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
     image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
     try:
         # --- ATOMIC SPAWN (BOTÓN INCLUIDO) ---
-        
+
         # 1. Enviamos Sticker
         with open(image_path, 'rb') as sticker_file:
             sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
@@ -563,8 +558,9 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
         # 3. Enviamos Texto YA CON EL BOTÓN
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown', reply_markup=reply_markup)
-        
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
+                                                  reply_markup=reply_markup)
+
         # 4. Guardamos los datos USANDO LA ID REAL DEL MENSAJE ENVIADO
         context.chat_data['active_spawns'][text_msg.message_id] = {
             'sticker_id': sticker_msg.message_id,
@@ -588,7 +584,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Comprobación de seguridad: SOLO TU ID
     if update.effective_user.id != ADMIN_USER_ID:
-        return # Ignorar si no es el admin
+        return  # Ignorar si no es el admin
 
     chat_id = update.effective_chat.id
 
@@ -611,7 +607,8 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
         # Texto con botón
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown', reply_markup=reply_markup)
+        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
+                                                  reply_markup=reply_markup)
 
         # Guardar datos con ID real
         context.chat_data.setdefault('active_spawns', {})
@@ -620,7 +617,7 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             'text_id': text_msg.message_id,
             'timestamp': time.time()
         }
-        
+
         # Borrar el mensaje del comando "/forcespawn" para que quede limpio
         await update.message.delete()
 
@@ -640,24 +637,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⛔ Este comando solo puede ser usado por administradores.")
             return
 
-        # Verificar cantidad de miembros (excepto para el Admin Supremo)
+        # Verificar cantidad de miembros (>= 10)
         member_count = await context.bot.get_chat_member_count(chat.id)
-        if member_count < 5 and user.id != ADMIN_USER_ID:
-            await update.message.reply_text("⚠️ El bot solo funciona en grupos con al menos 5 miembros.")
+        if member_count < 10 and user.id != ADMIN_USER_ID:
+            await update.message.reply_text("⚠️ El bot solo funciona en grupos con al menos 10 miembros.")
             return
 
-        db.add_group(chat.id)
+        db.add_group(chat.id, chat.title)
         db.set_group_active(chat.id, True)
-        
+
         # Comprobar si ya existe un job programado
         current_jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
         if not current_jobs:
-            # Usamos run_once para iniciar la cadena
-            context.job_queue.run_once(spawn_pokemon, 10, chat_id=chat.id, name=f"spawn_{chat.id}")
+            # --- MODIFICADO: Primer spawn aleatorio (entre 1h y 4h), no 10s ---
+            initial_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
+            context.job_queue.run_once(spawn_pokemon, initial_delay, chat_id=chat.id, name=f"spawn_{chat.id}")
             msg = await update.message.reply_text("✅ Aparición de Pokémon salvajes activada.")
+            logger.info(f"Juego iniciado en {chat.id}. Spawn inicial en {initial_delay}s.")
         else:
             msg = await update.message.reply_text("El bot ya está en funcionamiento.")
-        
+
         # Borrar comando y respuesta
         schedule_message_deletion(context, update.message, 30)
         schedule_message_deletion(context, msg, 30)
@@ -677,7 +676,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if member.status not in ['administrator', 'creator']:
         await update.message.reply_text("⛔ Este comando solo puede ser usado por administradores.")
         return
-    
+
     # Detener el job programado (rompe la cadena de run_once)
     jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
     if not jobs:
@@ -687,7 +686,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     for job in jobs:
         job.schedule_removal()
-    
+
     db.set_group_active(chat.id, False)
     msg = await update.message.reply_text("❌ La aparición de Pokémon salvajes se ha desactivado.")
     schedule_message_deletion(context, update.message, 30)
@@ -703,7 +702,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     user = query.from_user
     db.get_or_create_user(user.id, user.first_name)
-    
+
     # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL ---
     if message.chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, message.chat.id)
@@ -750,7 +749,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
-        
+
         # Incrementar contador mensual
         db.increment_monthly_stickers(user.id)
 
@@ -762,7 +761,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
         pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-        
+
         message_text = ""
 
         if db.check_sticker_owned(user.id, pokemon_id, is_shiny):
@@ -772,32 +771,45 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             db.add_sticker_to_collection(user.id, pokemon_id, is_shiny)
             message_text = f"🎉 ¡Felicidades, {user.mention_markdown()}! Has conseguido un sticker de *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}*. Lo has registrado en tu Álbumdex."
-        
+
+        # --- NUEVO: Añadir a Pokédex Grupal ---
+        if message.chat.type in ['group', 'supergroup']:
+            db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
+
+        # --- LÓGICA DE VALIDACIÓN (JUEZ SILENCIOSO) ---
+        is_qualified = await is_group_qualified(message.chat.id, context)
+
         # --- VERIFICAR KANTO COMPLETADO (INDIVIDUAL) ---
         if not db.is_kanto_completed_by_user(user.id):
             unique_count = db.get_user_unique_kanto_count(user.id)
             if unique_count >= 151:
                 db.set_kanto_completed_by_user(user.id)
-                db.update_money(user.id, 3000)
-                message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+                if is_qualified:
+                    db.update_money(user.id, 3000)
+                    message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+                else:
+                    # Mensaje normal SIN premio
+                    message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊"
 
         # --- VERIFICAR RETO GRUPAL (LOCAL PARA ESTE GRUPO) ---
         chat_id = message.chat.id
         if message.chat.type in ['group', 'supergroup']:
             # Usamos el sistema de eventos para marcar si ESTE grupo ya completó el reto Kanto
             if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-                # Contamos pokémon únicos ENTRE LOS MIEMBROS DE ESTE GRUPO
+                # Contamos pokémon únicos capturados EN ESTE GRUPO
                 group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
-                
+
                 if len(group_unique_ids) >= 151:
                     db.mark_event_completed(chat_id, 'kanto_group_challenge')
-                    
-                    # Premiar solo a los miembros de este grupo
-                    group_users = db.get_users_in_group(chat_id)
-                    for uid in group_users:
-                        db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-                    
-                    message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto entre todos! Cada jugador ha recibido 2000₽ en su buzón."
+
+                    if is_qualified:
+                        # Premiar solo a los miembros de este grupo
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
+                    else:
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
 
@@ -841,7 +853,7 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     event_info['claimed_by'] = user.id
     event_id = event_info['event_id']
     await query.answer("¡Has aceptado el evento!")
-    
+
     # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (Al aceptar evento) ---
     # Importante para que sus Pokémon de evento cuenten para el reto grupal
     if message.chat.type in ['group', 'supergroup']:
@@ -955,6 +967,10 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         owner_user = interactor_user
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
+    # --- REGISTRO POR ACTIVIDAD ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(owner_user.id, update.effective_chat.id)
+
     mails = db.get_user_mail(owner_user.id)
     text_empty = "📭 Tu buzón está vacío."
     if not mails:
@@ -1068,6 +1084,10 @@ async def tombola_start(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
     db.get_or_create_user(user.id, user.first_name)
+    # --- REGISTRO POR ACTIVIDAD ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, update.effective_chat.id)
+
     if db.get_last_daily_claim(user.id) == datetime.now(TZ_SPAIN).strftime('%Y-%m-%d'):
         await update.message.reply_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!")
         return
@@ -1076,7 +1096,7 @@ async def tombola_start(update: Update, _context: ContextTypes.DEFAULT_TYPE):
             "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!")
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data=f"tombola_claim_{user.id}")]]
     msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    
+
     # Auto-borrado de la pregunta y el comando
     schedule_message_deletion(_context, update.message, 40)
     schedule_message_deletion(_context, msg, 40)
@@ -1107,7 +1127,7 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.update_money(owner_id, prize['value'])
     else:
         db.add_item_to_inventory(owner_id, prize['value'])
-    
+
     # IMPORTANTE: Cancelar el borrado del mensaje porque ahora es el resultado y queremos que se quede
     if query.message:
         cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
@@ -1139,6 +1159,10 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cmd_msg_id = update.message.message_id
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
+    # --- REGISTRO POR ACTIVIDAD ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(owner_user.id, update.effective_chat.id)
+
     user_money = db.get_user_money(owner_user.id)
 
     descriptions = [f"· *{details['name']}:* {details['desc']}" for details in SHOP_CONFIG.values()]
@@ -1254,6 +1278,10 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db.get_or_create_user(user.id, user.first_name)
+    # --- REGISTRO POR ACTIVIDAD ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, update.effective_chat.id)
+
     items = db.get_user_inventory(user.id)
 
     text = "🎒 Tu mochila está vacía."
@@ -1353,7 +1381,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.chat_data['is_opening_pack'] = True
         await query.answer(f"Abriendo {ITEM_NAMES.get(item_id)}...")
-        
+
         # --- REGISTRO DEL USUARIO EN EL GRUPO ACTUAL (Al abrir sobre) ---
         if message.chat.type in ['group', 'supergroup']:
             db.register_user_in_group(user.id, message.chat.id)
@@ -1413,7 +1441,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
-            
+
             # Incrementar contador mensual
             db.increment_monthly_stickers(user.id)
 
@@ -1424,7 +1452,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 db.add_sticker_to_collection(user.id, p['id'], s)
                 summary_parts.append(f"🔸🆕 {p_name} {r_emoji}")
-        
+
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         vertical_summary = "\n".join(summary_parts)
 
@@ -1523,28 +1551,31 @@ async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_user, args = await _get_target_user_from_command(update, context)
     if not target_user:
         return await update.message.reply_text("Uso: `/darobjeto [@usuario|ID] <item_id>`")
-    
+
     try:
         item_id = args[0]
         # Mapeo simple para facilitar nombres largos si fuera necesario, o usar directo
         # Si el admin escribe el nombre exacto del config
-        
+
         # Verificamos si existe en la tienda o es un objeto especial conocido
-        valid_items = list(SHOP_CONFIG.keys()) + ['pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket']
-        
-        # Nota: No validamos estrictamente para permitir flexibilidad si añades cosas nuevas, 
+        valid_items = list(SHOP_CONFIG.keys()) + ['pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica',
+                                                  'lottery_ticket']
+
+        # Nota: No validamos estrictamente para permitir flexibilidad si añades cosas nuevas,
         # pero avisamos si parece raro.
-        
-        msg = " ".join(args[1:]) # Mensaje opcional
+
+        msg = " ".join(args[1:])  # Mensaje opcional
         if not msg: msg = "¡Un regalo de la administración!"
 
         db.add_mail(target_user.id, 'inventory_item', item_id, msg)
-        
+
         item_name = ITEM_NAMES.get(item_id, item_id)
-        await update.message.reply_text(f"✅ Enviado *{item_name}* al buzón de {target_user.mention_markdown()}.", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ Enviado *{item_name}* al buzón de {target_user.mention_markdown()}.",
+                                        parse_mode='Markdown')
 
     except (IndexError, ValueError):
-        await update.message.reply_text("Uso: `/darobjeto [@usuario|ID] <item_id> [mensaje opcional]`\nEj: `/darobjeto @pepe pack_small_national`")
+        await update.message.reply_text(
+            "Uso: `/darobjeto [@usuario|ID] <item_id> [mensaje opcional]`\nEj: `/darobjeto @pepe pack_small_national`")
 
 
 async def moddinero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1593,15 +1624,16 @@ async def resetmoney_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💸 ¡Se ha eliminado todo el dinero de {target_user.mention_markdown()}! Ahora tiene *0₽*.",
         parse_mode='Markdown')
 
+
 async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     try:
         args = context.args
         if not args: return await update.message.reply_text("Uso: /sendtoall <tipo/id> [args] [mensaje]")
-        
+
         all_users = db.get_all_user_ids()
         first_arg = args[0].lower()
-        
+
         item_type = ''
         item_details = ''
         message = ''
@@ -1663,10 +1695,10 @@ async def add_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await update.message.reply_text(f"❌ Error: El Pokémon con ID {poke_id} no existe.")
         db.get_or_create_user(target_user.id, target_user.first_name)
         db.add_sticker_to_collection(target_user.id, poke_id, is_shiny)
-        
+
         # Incrementar mensual también si el admin lo añade
         db.increment_monthly_stickers(target_user.id)
-        
+
         shiny_text = " brillante" if is_shiny else ""
         await update.message.reply_text(
             f"✅ Añadido {poke_name}{shiny_text} a la colección de {target_user.first_name}.")
@@ -1699,6 +1731,10 @@ async def dinero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
     db.get_or_create_user(user.id, user.first_name)
+    # --- REGISTRO POR ACTIVIDAD ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, update.effective_chat.id)
+
     money = db.get_user_money(user.id)
     sent_message = await update.message.reply_text(f"Tienes *{format_money(money)}₽* 💰.", parse_mode='Markdown')
     schedule_message_deletion(context, sent_message)
@@ -1713,11 +1749,12 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_user, args = await _get_target_user_from_command(update, context)
 
     if not target_user:
-        await update.message.reply_text("Puedes regalarle a otro jugador parte de tu dinero. Así funciona el comando '/regalar':\n\n"
-                                        "🔹 Responde a un mensaje de la persona y escribe:\n"
-                                        "'/regalar <cantidad>'\n\n"
-                                        "🔹 O bien, menciona a la persona; escribe:\n"
-                                        "'/regalar @usuario <cantidad>'")
+        await update.message.reply_text(
+            "Puedes regalarle a otro jugador parte de tu dinero. Así funciona el comando '/regalar':\n\n"
+            "🔹 Responde a un mensaje de la persona y escribe:\n"
+            "'/regalar <cantidad>'\n\n"
+            "🔹 O bien, menciona a la persona; escribe:\n"
+            "'/regalar @usuario <cantidad>'")
         return
     if sender.id == target_user.id:
         await update.message.reply_text("😅 No puedes regalarte dinero a ti mismo.")
@@ -1736,10 +1773,14 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Por favor, especifica una cantidad válida.\nUso: `/regalar [@usuario|ID] <cantidad>`")
         return
 
+    # --- REGISTRO POR ACTIVIDAD (Remitente) ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(sender.id, update.effective_chat.id)
+
     sender_money = db.get_user_money(sender.id)
     if sender_money < amount:
         msg = await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
-                                        parse_mode='Markdown')
+                                              parse_mode='Markdown')
         schedule_message_deletion(context, update.message, 40)
         schedule_message_deletion(context, msg, 40)
         return
@@ -1754,7 +1795,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado a {recipient_mention}: *{format_money(amount)}₽*",
         parse_mode='Markdown'
     )
-    
+
     # Auto-borrado regalar
     schedule_message_deletion(context, update.message, 40)
     schedule_message_deletion(context, msg, 40)
@@ -1777,6 +1818,10 @@ async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db.get_or_create_user(user_to_check.id, user_to_check.first_name)
+    # --- REGISTRO POR ACTIVIDAD (Quien pregunta) ---
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(issuer_user.id, update.effective_chat.id)
+
     capture_chance = db.get_user_capture_chance(user_to_check.id)
     user_mention = user_to_check.mention_markdown()
 
@@ -1796,15 +1841,16 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    
+
     # REGISTRAMOS AL USUARIO POR SI ACASO NO LO ESTABA
     db.get_or_create_user(user_id, update.effective_user.first_name)
     db.register_user_in_group(user_id, chat_id)
-    
+
     # Obtenemos los IDs únicos que tienen los MIEMBROS DE ESTE GRUPO
+    # (Usamos la nueva función Anti-Exploit que consulta group_pokedex)
     group_ids = db.get_group_unique_kanto_ids(chat_id)
     total_group = len(group_ids)
-    
+
     # Calculamos totales por rareza en Kanto (1-151)
     kanto_rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
     for p in ALL_POKEMON:
@@ -1819,22 +1865,22 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             group_rarity_counts[p_data['category']] += 1
 
     text = "🤝 **Retos Grupales** 🤝\n\n"
-    text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto**\n"
-    text += "_El progreso se comparte entre todos los miembros de este grupo._\n\n"
-    
+    text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto AQUÍ**\n"
+    text += "_El progreso solo cuenta los Pokémon capturados dentro de este grupo._\n\n"
+
     rarity_texts = []
     for cat in ['C', 'B', 'A', 'S']:
         emoji = RARITY_VISUALS[cat]
         rarity_texts.append(f"{emoji} {group_rarity_counts[cat]}/{kanto_rarity_totals[cat]}")
-    
+
     text += ", ".join(rarity_texts) + "\n\n"
     text += f"📊 **Total: {total_group}/151**"
 
     if total_group >= 151:
-         text += "\n\n✅ **¡COMPLETADO!**"
+        text += "\n\n✅ **¡COMPLETADO!**"
 
     msg = await update.message.reply_text(text, parse_mode='Markdown')
-    
+
     # Auto-borrado retos
     schedule_message_deletion(context, update.message, 30)
     schedule_message_deletion(context, msg, 30)
@@ -1880,6 +1926,122 @@ async def clearalbum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🗑️ ¡Álbumdex de {target_user.first_name} vaciado!\nSe eliminaron {changes} stickers de su colección.")
 
 
+# --- COMANDOS ADMIN EXTRA ---
+
+async def admin_reset_group_kanto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Elimina todos los Pokémon del reto grupal del grupo actual."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    if update.effective_chat.type == 'private':
+        return await update.message.reply_text("Este comando debe usarse dentro del grupo que quieres limpiar.")
+
+    chat_id = update.effective_chat.id
+    db.reset_group_pokedex(chat_id)
+    await update.message.reply_text("🗑️ Se ha eliminado todo el progreso del reto grupal en este chat.")
+
+
+async def admin_check_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saber el dinero de un usuario mencionando un mensaje suyo."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, _ = await _get_target_user_from_command(update, context)
+    if not target_user:
+        return await update.message.reply_text("Uso: Responde a un mensaje del usuario.")
+
+    money = db.get_user_money(target_user.id)
+    await update.message.reply_text(f"💰 {target_user.first_name} tiene: *{format_money(money)}₽*",
+                                    parse_mode='Markdown')
+
+
+async def admin_set_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Establecer una cantidad de monedas fija a un usuario."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, args = await _get_target_user_from_command(update, context)
+
+    if not target_user or not args:
+        return await update.message.reply_text("Uso: Responde al usuario y pon `/setmoney <cantidad>`")
+
+    try:
+        amount = int(args[0])
+        db.set_money(target_user.id, amount)
+        await update.message.reply_text(
+            f"✅ El dinero de {target_user.first_name} se ha fijado en *{format_money(amount)}₽*.",
+            parse_mode='Markdown')
+    except ValueError:
+        await update.message.reply_text("❌ Cantidad inválida.")
+
+
+async def admin_list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ver en qué grupos se ha añadido el bot."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+
+    groups = db.get_all_groups_info()
+
+    if not groups:
+        return await update.message.reply_text("El bot no está registrado en ningún grupo activo.")
+
+    text = "📂 **Grupos Activos:**\n\n"
+    for g in groups:
+        name = g.get('group_name') or "Desconocido"
+        text += f"🔹 {name} (ID: `{g['chat_id']}`)\n"
+
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+
+# --- COMANDOS OCULTOS NUEVOS ---
+
+async def admin_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Obtiene ID y nombre del usuario respondiendo a su mensaje o mencionándolo."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, _ = await _get_target_user_from_command(update, context)
+
+    if not target_user:
+        return await update.message.reply_text("Responde a un mensaje o menciona al usuario.")
+
+    await update.message.reply_text(f"👤 **Usuario:** {target_user.full_name}\n🆔 **ID:** `{target_user.id}`",
+                                    parse_mode='Markdown')
+
+
+async def admin_view_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ve la mochila de un usuario por su ID."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        target_id = int(context.args[0])
+    except (IndexError, ValueError):
+        return await update.message.reply_text("Uso: `/vermochila <user_id>`")
+
+    items = db.get_user_inventory(target_id)
+    if not items:
+        return await update.message.reply_text(f"🎒 La mochila del usuario `{target_id}` está vacía.",
+                                               parse_mode='Markdown')
+
+    text = f"🎒 **Mochila de {target_id}:**\n\n"
+    for item in items:
+        name = ITEM_NAMES.get(item['item_id'], item['item_id'])
+        text += f"▪️ {name} (ID: `{item['item_id']}`) x{item['quantity']}\n"
+
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+
+async def admin_remove_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Quita un objeto de la mochila de un usuario."""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, args = await _get_target_user_from_command(update, context)
+
+    if not target_user or not args:
+        return await update.message.reply_text("Uso: `/quitarobjeto <usuario> <item_id> [cantidad]`")
+
+    item_id = args[0]
+    qty = 1
+    if len(args) > 1 and args[1].isdigit():
+        qty = int(args[1])
+
+    db.remove_item_from_inventory(target_user.id, item_id, qty)
+    await update.message.reply_text(
+        f"🗑️ Eliminados {qty}x `{item_id}` de la mochila de {target_user.mention_markdown()}.", parse_mode='Markdown')
+
+
+# ----------------------------------------------------
+
 async def post_init(application: Application):
     bot = cast(Bot, getattr(application, "bot"))
     user_commands = [
@@ -1905,7 +2067,7 @@ def main():
     # ---------------------------------------------------------
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
-    
+
     # Tarea diaria para verificar ranking mensual (se ejecuta cada 24h)
     application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
 
@@ -1936,6 +2098,17 @@ def main():
         CommandHandler("darobjeto", darobjeto_cmd),
         CommandHandler("forcespawn", force_spawn_command),
 
+        # Nuevos Comandos Admin (Visibles si sabes que existen)
+        CommandHandler("resetgroup", admin_reset_group_kanto),
+        CommandHandler("checkmoney", admin_check_money),
+        CommandHandler("setmoney", admin_set_money),
+        CommandHandler("listgroups", admin_list_groups),
+
+        # Nuevos Comandos Ocultos (No listados en post_init)
+        CommandHandler("getid", admin_get_id),
+        CommandHandler("vermochila", admin_view_inventory),
+        CommandHandler("quitarobjeto", admin_remove_item),
+
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
 
@@ -1959,7 +2132,7 @@ def main():
     application.add_handlers(all_handlers)
     for chat_id in db.get_active_groups():
         # Inicializar el spawn aleatorio en el reinicio
-        initial_delay = random.randint(10, 60) # Delay inicial pequeño al reiniciar
+        initial_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
         application.job_queue.run_once(spawn_pokemon, initial_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
         logger.info(f"Trabajo de spawn reanudado para el chat activo {chat_id}")
     application.run_polling()
