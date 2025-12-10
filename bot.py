@@ -32,21 +32,17 @@ from events import EVENTS
 # --- CONFIGURACIÓN DEL SERVIDOR WEB ---
 app = Flask('')
 
-
 @app.route('/')
 def home():
     return "¡El bot está vivo y coleando!"
-
 
 def run():
     port = int(os.environ.get("PORT", 8080))
     serve(app, host="0.0.0.0", port=port)
 
-
 def keep_alive():
     t = Thread(target=run)
     t.start()
-
 
 # ---------------------------------------------------------
 
@@ -125,7 +121,7 @@ async def is_group_qualified(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         if member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
             return True
     except BadRequest:
-        pass  # El admin no está o no se puede leer
+        pass # El admin no está o no se puede leer
 
     # 2. Chequeo de Usuarios Activos
     users_in_group = db.get_users_in_group(chat_id)
@@ -133,7 +129,6 @@ async def is_group_qualified(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
         return True
 
     return False
-
 
 async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -182,12 +177,9 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
         for index, (uid, uname, count) in enumerate(ranking):
             medal = medals[index] if index < 3 else "-"
             prize = 300
-            if index == 0:
-                prize = 1000
-            elif index == 1:
-                prize = 800
-            elif index == 2:
-                prize = 500
+            if index == 0: prize = 1000
+            elif index == 1: prize = 800
+            elif index == 2: prize = 500
             line = f"{medal} {uname}: {count} stickers - (Premio: {format_money(prize)}₽)"
             message_lines.append(line)
             db.add_mail(uid, 'money', str(prize), "Premio mensual")
@@ -482,7 +474,7 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
         # Si el grupo NO es cualificado, bloqueamos los legendarios
         if not is_qualified and ev_id in legendary_missions:
             continue
-
+            
         if ev_id in legendary_missions:
             if db.is_event_completed(chat_id, ev_id):
                 continue
@@ -1442,8 +1434,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
-            # Incrementar contador mensual
-            db.increment_monthly_stickers(user.id)
+            # --- MODIFICADO: NO INCREMENTAMOS EL RANKING MENSUAL AQUÍ ---
+            # Solo se incrementa con capturas salvajes y eventos.
 
             if db.check_sticker_owned(user.id, p['id'], s):
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
@@ -1925,7 +1917,6 @@ async def clearalbum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🗑️ ¡Álbumdex de {target_user.first_name} vaciado!\nSe eliminaron {changes} stickers de su colección.")
 
-
 # --- COMANDOS ADMIN EXTRA ---
 
 async def admin_reset_group_kanto(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1933,11 +1924,10 @@ async def admin_reset_group_kanto(update: Update, context: ContextTypes.DEFAULT_
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     if update.effective_chat.type == 'private':
         return await update.message.reply_text("Este comando debe usarse dentro del grupo que quieres limpiar.")
-
+    
     chat_id = update.effective_chat.id
     db.reset_group_pokedex(chat_id)
     await update.message.reply_text("🗑️ Se ha eliminado todo el progreso del reto grupal en este chat.")
-
 
 async def admin_check_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Saber el dinero de un usuario mencionando un mensaje suyo."""
@@ -1945,46 +1935,40 @@ async def admin_check_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_user, _ = await _get_target_user_from_command(update, context)
     if not target_user:
         return await update.message.reply_text("Uso: Responde a un mensaje del usuario.")
-
+    
     money = db.get_user_money(target_user.id)
-    await update.message.reply_text(f"💰 {target_user.first_name} tiene: *{format_money(money)}₽*",
-                                    parse_mode='Markdown')
-
+    await update.message.reply_text(f"💰 {target_user.first_name} tiene: *{format_money(money)}₽*", parse_mode='Markdown')
 
 async def admin_set_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Establecer una cantidad de monedas fija a un usuario."""
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, args = await _get_target_user_from_command(update, context)
-
+    
     if not target_user or not args:
         return await update.message.reply_text("Uso: Responde al usuario y pon `/setmoney <cantidad>`")
-
+    
     try:
         amount = int(args[0])
         db.set_money(target_user.id, amount)
-        await update.message.reply_text(
-            f"✅ El dinero de {target_user.first_name} se ha fijado en *{format_money(amount)}₽*.",
-            parse_mode='Markdown')
+        await update.message.reply_text(f"✅ El dinero de {target_user.first_name} se ha fijado en *{format_money(amount)}₽*.", parse_mode='Markdown')
     except ValueError:
         await update.message.reply_text("❌ Cantidad inválida.")
-
 
 async def admin_list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ver en qué grupos se ha añadido el bot."""
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
-
-    groups = db.get_all_groups_info()
-
+    
+    groups = db.get_all_groups_info() 
+    
     if not groups:
         return await update.message.reply_text("El bot no está registrado en ningún grupo activo.")
-
+    
     text = "📂 **Grupos Activos:**\n\n"
     for g in groups:
         name = g.get('group_name') or "Desconocido"
         text += f"🔹 {name} (ID: `{g['chat_id']}`)\n"
-
+        
     await update.message.reply_text(text, parse_mode='Markdown')
-
 
 # --- COMANDOS OCULTOS NUEVOS ---
 
@@ -1992,53 +1976,83 @@ async def admin_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Obtiene ID y nombre del usuario respondiendo a su mensaje o mencionándolo."""
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, _ = await _get_target_user_from_command(update, context)
-
+    
     if not target_user:
         return await update.message.reply_text("Responde a un mensaje o menciona al usuario.")
-
-    await update.message.reply_text(f"👤 **Usuario:** {target_user.full_name}\n🆔 **ID:** `{target_user.id}`",
-                                    parse_mode='Markdown')
-
+        
+    await update.message.reply_text(f"👤 **Usuario:** {target_user.full_name}\n🆔 **ID:** `{target_user.id}`", parse_mode='Markdown')
 
 async def admin_view_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ve la mochila de un usuario por su ID."""
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
-
+    
     try:
         target_id = int(context.args[0])
     except (IndexError, ValueError):
         return await update.message.reply_text("Uso: `/vermochila <user_id>`")
-
+        
     items = db.get_user_inventory(target_id)
     if not items:
-        return await update.message.reply_text(f"🎒 La mochila del usuario `{target_id}` está vacía.",
-                                               parse_mode='Markdown')
-
+        return await update.message.reply_text(f"🎒 La mochila del usuario `{target_id}` está vacía.", parse_mode='Markdown')
+        
     text = f"🎒 **Mochila de {target_id}:**\n\n"
     for item in items:
         name = ITEM_NAMES.get(item['item_id'], item['item_id'])
         text += f"▪️ {name} (ID: `{item['item_id']}`) x{item['quantity']}\n"
-
+        
     await update.message.reply_text(text, parse_mode='Markdown')
-
 
 async def admin_remove_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Quita un objeto de la mochila de un usuario."""
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, args = await _get_target_user_from_command(update, context)
-
+    
     if not target_user or not args:
         return await update.message.reply_text("Uso: `/quitarobjeto <usuario> <item_id> [cantidad]`")
-
+    
     item_id = args[0]
     qty = 1
     if len(args) > 1 and args[1].isdigit():
         qty = int(args[1])
-
+        
     db.remove_item_from_inventory(target_user.id, item_id, qty)
-    await update.message.reply_text(
-        f"🗑️ Eliminados {qty}x `{item_id}` de la mochila de {target_user.mention_markdown()}.", parse_mode='Markdown')
+    await update.message.reply_text(f"🗑️ Eliminados {qty}x `{item_id}` de la mochila de {target_user.mention_markdown()}.", parse_mode='Markdown')
 
+async def admin_add_bulk_stickers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Añade múltiples stickers a un usuario. Ejemplo: /addbulk @user 1 4s 7"""
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    target_user, args = await _get_target_user_from_command(update, context)
+    
+    if not target_user or not args:
+        return await update.message.reply_text("Uso: `/addbulk @usuario ID [ID_s] ...`\nEj: `/addbulk @Pepe 1 4s 7` (4s = Charmander Shiny)")
+    
+    added = []
+    
+    for arg in args:
+        try:
+            is_shiny = 0
+            if 's' in arg.lower():
+                p_id = int(arg.lower().replace('s', ''))
+                is_shiny = 1
+            elif '_' in arg:
+                parts = arg.split('_')
+                p_id = int(parts[0])
+                is_shiny = int(parts[1])
+            else:
+                p_id = int(arg)
+            
+            p_data = POKEMON_BY_ID.get(p_id)
+            if p_data:
+                db.add_sticker_to_collection(target_user.id, p_id, is_shiny)
+                # NO incrementamos ranking mensual aquí para no romper el competitivo
+                added.append(f"{p_data['name']}{'✨' if is_shiny else ''}")
+        except ValueError:
+            continue
+            
+    if added:
+        await update.message.reply_text(f"✅ Añadidos a {target_user.first_name}:\n" + ", ".join(added))
+    else:
+        await update.message.reply_text("❌ No se pudo añadir ningún Pokémon.")
 
 # ----------------------------------------------------
 
@@ -2097,17 +2111,18 @@ def main():
         CommandHandler("resetmoney", resetmoney_cmd),
         CommandHandler("darobjeto", darobjeto_cmd),
         CommandHandler("forcespawn", force_spawn_command),
-
+        
         # Nuevos Comandos Admin (Visibles si sabes que existen)
         CommandHandler("resetgroup", admin_reset_group_kanto),
         CommandHandler("checkmoney", admin_check_money),
         CommandHandler("setmoney", admin_set_money),
         CommandHandler("listgroups", admin_list_groups),
-
+        
         # Nuevos Comandos Ocultos (No listados en post_init)
         CommandHandler("getid", admin_get_id),
         CommandHandler("vermochila", admin_view_inventory),
         CommandHandler("quitarobjeto", admin_remove_item),
+        CommandHandler("addbulk", admin_add_bulk_stickers),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
