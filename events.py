@@ -42,6 +42,10 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False):
     pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
+    # --- MODIFICACIÓN: Aumentar ranking mensual al ganar en evento ---
+    db.increment_monthly_stickers(user_id)
+    # ---------------------------------------------------------------
+
     if db.check_sticker_owned(user_id, pokemon_id, is_shiny):
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
@@ -97,8 +101,10 @@ def evento_pesca_ruta_12(user, decision_parts, original_text):
         if choice == 'lo_hare':
             costo_caña = 200
             if db.get_user_money(user_id) < costo_caña:
-                result_text = f"🔸*Necesitas {format_money(costo_caña)}₽*, no tienes suficiente dinero, mejor seguir tu camino..."
-
+                result_text = ("🔸¡Oh, no! El pescadero te mira el bolsillo y ve que no tienes "
+                               "suficiente dinero.\n\n"
+                               f"🔸*Necesitas {format_money(costo_caña)}₽* y no quieres quedar mal. "
+                               "Mejor seguir tu camino...")
             else:
                 db.update_money(user_id, -costo_caña)
                 pokemon_id = random.choice(PESCA_RUTA_12_PEQUEÑOS)
@@ -1156,5 +1162,4 @@ EVENTS = {
             }
         }
     }
-
 }
