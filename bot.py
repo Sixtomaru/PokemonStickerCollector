@@ -1434,8 +1434,12 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
-            # --- MODIFICADO: NO INCREMENTAMOS EL RANKING MENSUAL AQUÍ ---
-            # Solo se incrementa con capturas salvajes y eventos.
+            # --- MODIFICADO: NO AUMENTAMOS RANKING MENSUAL (Solo Reto Grupal si es grupo) ---
+            # db.increment_monthly_stickers(user.id) <- ELIMINADO
+
+            # --- NUEVO: Sumar al reto grupal ---
+            if message.chat.type in ['group', 'supergroup']:
+                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
 
             if db.check_sticker_owned(user.id, p['id'], s):
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
@@ -1773,8 +1777,9 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sender_money < amount:
         msg = await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
                                               parse_mode='Markdown')
-        schedule_message_deletion(context, update.message, 40)
-        schedule_message_deletion(context, msg, 40)
+        # Borrar error y comando a los 2 mins
+        schedule_message_deletion(context, update.message, 120)
+        schedule_message_deletion(context, msg, 120)
         return
 
     db.get_or_create_user(target_user.id, target_user.first_name)
@@ -1783,14 +1788,15 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sender_mention = sender.mention_markdown()
     recipient_mention = target_user.mention_markdown()
-    msg = await update.message.reply_text(
+    
+    # Mensaje de ÉXITO (No programamos borrado para este)
+    await update.message.reply_text(
         f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado a {recipient_mention}: *{format_money(amount)}₽*",
         parse_mode='Markdown'
     )
 
-    # Auto-borrado regalar
-    schedule_message_deletion(context, update.message, 40)
-    schedule_message_deletion(context, msg, 40)
+    # Borrar SOLO el comando del usuario a los 2 mins
+    schedule_message_deletion(context, update.message, 120)
 
 
 async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
