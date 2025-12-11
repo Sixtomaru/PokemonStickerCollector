@@ -2005,18 +2005,21 @@ async def admin_set_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ver en qué grupos se ha añadido el bot."""
-    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+    if update.effective_user.id != ADMIN_USER_ID: return
 
-    groups = db.get_all_groups_info()
+    # MODIFICADO: Ahora solo obtiene los grupos donde is_active = 1
+    groups = db.get_active_groups()
 
+    text = "📂 **Grupos con Spawn Activo:**\n"
     if not groups:
-        return await update.message.reply_text("El bot no está registrado en ningún grupo activo.")
-
-    text = "📂 **Grupos Activos:**\n\n"
-    for g in groups:
-        name = g.get('group_name') or "Desconocido"
-        text += f"🔹 {name} (ID: `{g['chat_id']}`)\n"
+        text += "_No hay grupos activos en este momento._"
+    else:
+        for gid in groups:
+            try:
+                chat = await context.bot.get_chat(gid)
+                text += f"- {chat.title} (ID: `{gid}`)\n"
+            except BadRequest:
+                text += f"- Desconocido/Expulsado (ID: `{gid}`)\n"
 
     await update.message.reply_text(text, parse_mode='Markdown')
 
