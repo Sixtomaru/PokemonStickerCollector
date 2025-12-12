@@ -1520,6 +1520,78 @@ async def view_ticket_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("Error al leer el ticket.", show_alert=True)
 
 
+async def regalar_objeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Seguridad: Solo admin puede usarlo
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    args = context.args
+    message = update.message
+    targets = set()  # Usamos un 'set' para evitar enviar doble regalo si mencionas dos veces a la misma persona
+    item_id = None
+
+    # Lista de IDs válidos para reconocerlos en el comando
+    VALID_ITEMS = [
+        'pack_small_national', 'pack_medium_national', 'pack_large_national',
+        'pack_magic_small_national', 'pack_magic_medium_national', 'pack_magic_large_national',
+        'pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket'
+    ]
+
+    # --- A. DETECTAR EL ITEM ---
+    # Buscamos en los argumentos si alguno coincide con un item válido
+    for arg in args:
+        if arg.lower() in VALID_ITEMS:
+            item_id = arg.lower()
+            break  # Ya encontramos el item, dejamos de buscar
+
+    if not item_id:
+        return await message.reply_text(
+            "❌ No has especificado un objeto válido.\n"
+            "Uso: `/regalarobjeto @usuario1 @usuario2 item_id`\n"
+            "Ejemplo: `/regalarobjeto @Pepe pack_medium_national`"
+        )
+
+    # --- B. DETECTAR USUARIOS ---
+
+    # 1. Si estás respondiendo a un mensaje
+    if message.reply_to_message:
+        targets.add(message.reply_to_message.from_user.id)
+
+    # 2. Si hay menciones clicables (entidades) en el mensaje
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == MessageEntity.TEXT_MENTION:
+                # Mención oculta (clicable azul sin @, suele pasar en móviles)
+                targets.add(entity.user.id)
+            elif entity.type == MessageEntity.MENTION:
+                # Mención de texto normal (@usuario)
+                username = message.text[entity.offset:entity.offset + entity.length]
+                # Usamos la función de la base de datos para buscar la ID por el nombre
+                uid = db.get_user_id_by_username(username)
+                if uid: targets.add(uid)
+
+    # 3. Revisar argumentos manuales (por si Telegram no detectó el @ como entidad)
+    for arg in args:
+        if arg.startswith("@"):
+            uid = db.get_user_id_by_username(arg)
+            if uid: targets.add(uid)
+
+    if not targets:
+        return await message.reply_text(
+            "⚠️ No detecté a ningún usuario. Asegúrate de mencionar (@) o responder a un mensaje.")
+
+    # --- C. ENVIAR REGALOS ---
+    count = 0
+    for uid in targets:
+        # Aseguramos que el usuario existe en la DB (por si nunca habló al bot pero quieres regalarle)
+        db.get_or_create_user(uid, None)
+
+        msg = "¡Un regalo especial de la administración!"
+        db.add_mail(uid, 'inventory_item', item_id, msg)
+        count += 1
+
+    item_name = ITEM_NAMES.get(item_id, item_id)
+    await message.reply_text(f"✅ Enviado *{item_name}* al buzón de {count} usuarios.", parse_mode='Markdown')
+
 async def view_special_item_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -1610,6 +1682,60 @@ async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Uso: `/darobjeto [@usuario|ID] <item_id> [mensaje opcional]`\nEj: `/darobjeto @pepe pack_small_national`")
 
+
+async def regalar_objeto_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    args = context.args
+    if not args:
+        return await update.message.reply_text("Uso: `/regalarobjeto <item> @user1 @user2...` (o responde a alguien)")
+
+    # 1. Lista de items válidos
+    VALID_ITEMS = [
+        'pack_small_national', 'pack_medium_national', 'pack_large_national',
+        'pack_magic_small_national', 'pack_magic_medium_national', 'pack_magic_large_national',
+        'pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica'
+    ]
+
+    target_item = None
+    targets = set()  # Usamos un set para no regalar doble si mencionas dos veces
+
+    # 2. Analizar argumentos para encontrar el Item y los Usuarios
+    for arg in args:
+        # ¿Es el item?
+        if arg.lower() in VALID_ITEMS:
+            target_item = arg.lower()
+        # ¿Es una mención por texto (@usuario)?
+        elif arg.startswith("@"):
+            uid = db.get_user_id_by_username(arg)
+            if uid: targets.add(uid)
+
+    # 3. Analizar entidades del mensaje (clics azules)
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == MessageEntity.TEXT_MENTION:
+                targets.add(entity.user.id)
+
+    # 4. Analizar si es una respuesta a un mensaje
+    if update.message.reply_to_message:
+        targets.add(update.message.reply_to_message.from_user.id)
+
+    # Validaciones
+    if not target_item:
+        return await update.message.reply_text(f"❌ Item no reconocido. Usa uno de la lista válida.")
+
+    if not targets:
+        return await update.message.reply_text("❌ No he encontrado usuarios. Menciona (@) o responde a alguien.")
+
+    # 5. Enviar regalos
+    count = 0
+    item_name = ITEM_NAMES.get(target_item, target_item)
+
+    for user_id in targets:
+        db.add_mail(user_id, 'inventory_item', target_item, "🎁 ¡Regalo conjunto de la administración!")
+        count += 1
+
+    await update.message.reply_text(f"✅ Enviado *{item_name}* a {count} usuarios correctamente.", parse_mode='Markdown')
 
 async def moddinero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID:
@@ -2200,6 +2326,7 @@ def main():
         CommandHandler("resetmoney", resetmoney_cmd),
         CommandHandler("darobjeto", darobjeto_cmd),
         CommandHandler("forcespawn", force_spawn_command),
+        CommandHandler("regalarobjeto", regalar_objeto_cmd),
 
         # Nuevos Comandos Admin (Visibles si sabes que existen)
         CommandHandler("resetgroup", admin_reset_group_kanto),
