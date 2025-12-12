@@ -429,6 +429,13 @@ def is_event_completed(chat_id, event_id):
 def set_money(user_id, amount):
     query_db("UPDATE users SET money = ? WHERE user_id = ?", (amount, user_id))
 
+def get_user_id_by_username(username):
+    """Busca la ID de un usuario por su @nombre."""
+    clean_name = username.lstrip('@') # Quitar la @ si la tiene
+    # Buscamos en la base de datos (ignorando mayúsculas/minúsculas)
+    res = query_db("SELECT user_id FROM users WHERE LOWER(username) = ?", (clean_name.lower(),), one=True)
+    return res[0] if res else None
 
 # Iniciar la DB
 init_db()
+
