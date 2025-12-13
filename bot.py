@@ -3,7 +3,7 @@ import logging
 import random
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 import pytz
 import math
 from typing import cast
@@ -1121,37 +1121,67 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
 
-    try:
-        owner_id = int(query.data.split('_')[-1])
-        if interactor_user.id != owner_id:
-            await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
-            return
-    except (ValueError, IndexError):
-        await query.answer("Error en el botón.", show_alert=True)
-        return
+    # Aseguramos que el usuario esté registrado (para que pueda recibir premios)
+    db.get_or_create_user(interactor_user.id, interactor_user.first_name)
 
+    # Detectamos si es el botón público (mensaje diario) o privado (comando /tombola)
+    is_public = (query.data == "tombola_claim_public")
+    owner_id = interactor_user.id  # Por defecto el dueño es quien pulsa
+
+    if not is_public:
+        # Lógica antigua: verificar si el botón pertenece a quien ejecutó el comando
+        try:
+            owner_id_from_data = int(query.data.split('_')[-1])
+            if interactor_user.id != owner_id_from_data:
+                await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
+                return
+            owner_id = owner_id_from_data
+        except (ValueError, IndexError):
+            await query.answer("Error en el botón.", show_alert=True)
+            return
+
+    # Verificar si ya reclamó hoy
     today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
     if db.get_last_daily_claim(owner_id) == today_str:
-        await query.answer("¡Ya has reclamado tu premio de hoy!", show_alert=True)
-        await query.edit_message_text("⏳ Este premio ya fue reclamado.")
+        await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
+        # Si NO es público, editamos el mensaje para tacharlo. Si ES público, no tocamos el mensaje.
+        if not is_public:
+            await query.edit_message_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!")
         return
 
+    # Dar premio
     db.update_last_daily_claim(owner_id, today_str)
     prize = random.choices(DAILY_PRIZES, weights=DAILY_WEIGHTS, k=1)[0]
+
     if prize['type'] == 'money':
         db.update_money(owner_id, prize['value'])
     else:
         db.add_item_to_inventory(owner_id, prize['value'])
 
-    # IMPORTANTE: Cancelar el borrado del mensaje porque ahora es el resultado y queremos que se quede
-    if query.message:
-        cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
-
-    # MODIFICADO: Formatear el mensaje con el nombre del usuario
+    # Formatear mensaje de resultado
     msg_text = prize['msg'].format(usuario=interactor_user.mention_markdown())
-    await query.edit_message_text(msg_text, parse_mode='Markdown')
-    await query.answer()
 
+    if is_public:
+        # Si es público, mostramos el resultado en una alerta (popup) para no ensuciar el chat
+        # Simplificamos el texto para la alerta porque no admite Markdown
+        alert_text = msg_text.replace('*', '').replace('_', '')
+        # Como la alerta tiene límite de caracteres, mostramos lo esencial
+        if prize['type'] == 'money':
+            short_alert = f"¡Ganaste {prize['value']}₽! 💰 (Bola {prize['emoji']})"
+        else:
+            short_alert = f"¡Premio Gordo! Ganaste un {ITEM_NAMES.get(prize['value'], 'Objeto')} (Bola {prize['emoji']})"
+
+        await query.answer(short_alert, show_alert=True)
+        # Opcional: Mandar mensaje al chat también si quieres que se vea públicamente quién ganó qué
+        # await context.bot.send_message(chat_id=query.message.chat_id, text=msg_text, parse_mode='Markdown')
+    else:
+        # Si es el comando personal, editamos el mensaje como antes
+        # IMPORTANTE: Cancelar el borrado del mensaje
+        if query.message:
+            cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
+
+        await query.edit_message_text(msg_text, parse_mode='Markdown')
+        await query.answer()
 
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2273,8 +2303,30 @@ async def post_init(application: Application):
     ]
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     await bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
+
+    # Programar tómbola diaria a las 00:00 hora España
+    application.job_queue.run_daily(daily_tombola_job, time=time(0, 0, tzinfo=TZ_SPAIN), name="daily_tombola_broadcast")
+
     logger.info("Comandos del bot configurados exitosamente.")
 
+    logger.info("Comandos del bot configurados exitosamente.")
+
+async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
+    """Envía el mensaje de la tómbola a todos los grupos activos a las 00:00."""
+    text = (
+        "🎟️ ¡Ya está disponible la *Tómbola diaria*!\n\n"
+        "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
+    )
+    # Usamos un callback especial 'tombola_claim_public'
+    keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    active_groups = db.get_active_groups()
+    for chat_id in active_groups:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"No se pudo enviar la tómbola al chat {chat_id}: {e}")
 
 def main():
     # --- NUEVO: Iniciamos el servidor web en un hilo aparte ---
