@@ -53,7 +53,7 @@ def keep_alive():
 # --- Configuración Inicial ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-PROBABILITIES = {'C': 0.45, 'B': 0.30, 'A': 0.20, 'S': 0.05}
+PROBABILITIES = {'C': 0.50, 'B': 0.32, 'A': 0.16, 'S': 0.02}
 SHINY_CHANCE = 0.02
 TZ_SPAIN = pytz.timezone('Europe/Madrid')
 
@@ -101,17 +101,13 @@ ITEM_NAMES['pluma_amarilla'] = 'Pluma Amarilla'
 ITEM_NAMES['pluma_azul'] = 'Pluma Azul'
 ITEM_NAMES['foto_psiquica'] = 'Foto Psíquica(?)'
 
-DAILY_WEIGHTS = [53, 30, 15, 2]
+DAILY_WEIGHTS = [50, 32, 16, 2]
 USER_FRIENDLY_ITEM_IDS = {'sobremagicomedianonacional': 'pack_magic_medium_national'}
 POKEMON_BY_CATEGORY = {cat: [] for cat in PROBABILITIES.keys()}
 for pokemon_item in ALL_POKEMON:
     POKEMON_BY_CATEGORY[pokemon_item['category']].append(pokemon_item)
 POKEMON_PER_PAGE = 52
 PACK_OPEN_COOLDOWN = 15
-
-# Global Cooldown para evitar multicuentas/multigrupo
-GLOBAL_USER_COOLDOWNS = {}
-CAPTURE_COOLDOWN_SECONDS = 180  # 3 minutos
 
 
 # --- FUNCIONES AUXILIARES ---
@@ -754,14 +750,6 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 show_alert=True)
             return
 
-    # --- NUEVO: Verificación de Cooldown Global (Anti-Multigrupo) ---
-    last_global_capture = GLOBAL_USER_COOLDOWNS.get(user.id, 0)
-    if time.time() - last_global_capture < CAPTURE_COOLDOWN_SECONDS:
-        remaining = int(CAPTURE_COOLDOWN_SECONDS - (time.time() - last_global_capture))
-        await query.answer(f"⏳ Tu Álbumdex se está enfriando. Espera {remaining}s para capturar de nuevo.",
-                           show_alert=True)
-        return
-    # ----------------------------------------------------------------
 
     current_chance = db.get_user_capture_chance(user.id)
 
@@ -773,8 +761,6 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await query.answer()
 
-        # Actualizamos el tiempo de la última captura global exitosa
-        GLOBAL_USER_COOLDOWNS[user.id] = time.time()
 
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
