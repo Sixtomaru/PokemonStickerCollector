@@ -62,8 +62,8 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 EVENT_CHANCE = 0.15
 
 # --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
-MIN_SPAWN_TIME = 30  # 1 hora
-MAX_SPAWN_TIME = 90  # 4 horas
+MIN_SPAWN_TIME = 3600  # 1 hora
+MAX_SPAWN_TIME = 14400  # 4 horas
 
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 SHOP_CONFIG = {
@@ -2224,4 +2224,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
