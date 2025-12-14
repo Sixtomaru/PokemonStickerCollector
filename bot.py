@@ -61,8 +61,8 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 EVENT_CHANCE = 0.15
 
 # --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
-MIN_SPAWN_TIME = 3600  # 1 hora
-MAX_SPAWN_TIME = 14400  # 4 horas
+MIN_SPAWN_TIME = 30  # 1 hora
+MAX_SPAWN_TIME = 90  # 4 horas
 
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 SHOP_CONFIG = {
@@ -503,81 +503,95 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id  # Recuperamos el chat_id del job
 
-    if random.random() < EVENT_CHANCE:
-        await spawn_event(context)
-        # Importante: aunque sea evento, reprogramamos el siguiente spawn
-        if chat_id in db.get_active_groups():
-            next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
-            context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
-            logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
-        return
+    # Usaremos una bandera para saber si ya gestionamos un evento y no duplicar lógica
+    spawned_something = False
 
-    context.chat_data.setdefault('active_spawns', {})
-    current_time = time.time()
-    for msg_id in list(context.chat_data.get('active_spawns', {}).keys()):
-        if current_time - context.chat_data['active_spawns'][msg_id].get('timestamp', 0) > 7200:
-            spawn_data = context.chat_data['active_spawns'].pop(msg_id, None)
-            if spawn_data:
-                for key in ['sticker_id', 'text_id']:
-                    try:
-                        await context.bot.delete_message(chat_id, spawn_data[key])
-                    except BadRequest:
-                        pass
-
-    pokemon_data, is_shiny, rarity = choose_random_pokemon()
-
-    if pokemon_data['id'] == 144 and not db.is_event_completed(chat_id, 'mision_articuno'):
-        pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
-        rarity = get_rarity('C', is_shiny)
-
-    if pokemon_data['id'] == 145 and not db.is_event_completed(chat_id, 'mision_zapdos'):
-        pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
-        rarity = get_rarity('C', is_shiny)
-
-    if pokemon_data['id'] == 146 and not db.is_event_completed(chat_id, 'mision_moltres'):
-        pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
-        rarity = get_rarity('C', is_shiny)
-
-    if pokemon_data['id'] == 150 and not db.is_event_completed(chat_id, 'mision_mewtwo'):
-        pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
-        rarity = get_rarity('C', is_shiny)
-
-    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-    text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
-    image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
     try:
-        # --- ATOMIC SPAWN (BOTÓN INCLUIDO) ---
+        # --- 1. PROBABILIDAD DE EVENTO ---
+        if random.random() < EVENT_CHANCE:
+            await spawn_event(context)
+            spawned_something = True
 
-        # 1. Enviamos Sticker
-        with open(image_path, 'rb') as sticker_file:
-            sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+        # --- 2. SI NO ES EVENTO, ES POKEMON ---
+        if not spawned_something:
+            # Limpieza de mensajes anteriores
+            context.chat_data.setdefault('active_spawns', {})
+            current_time = time.time()
+            for msg_id in list(context.chat_data.get('active_spawns', {}).keys()):
+                if current_time - context.chat_data['active_spawns'][msg_id].get('timestamp', 0) > 7200:
+                    spawn_data = context.chat_data['active_spawns'].pop(msg_id, None)
+                    if spawn_data:
+                        for key in ['sticker_id', 'text_id']:
+                            try:
+                                await context.bot.delete_message(chat_id, spawn_data[key])
+                            except BadRequest:
+                                pass
 
-        # 2. Preparamos el botón CON ID 0 (Comodín)
-        callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-        button_text = "¡Capturar! 📷"
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+            # Selección del Pokémon
+            pokemon_data, is_shiny, rarity = choose_random_pokemon()
 
-        # 3. Enviamos Texto YA CON EL BOTÓN
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
-                                                  reply_markup=reply_markup)
+            # Lógica de Legendarios (Misiones)
+            if pokemon_data['id'] == 144 and not db.is_event_completed(chat_id, 'mision_articuno'):
+                pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
+                rarity = get_rarity('C', is_shiny)
 
-        # 4. Guardamos los datos USANDO LA ID REAL DEL MENSAJE ENVIADO
-        context.chat_data['active_spawns'][text_msg.message_id] = {
-            'sticker_id': sticker_msg.message_id,
-            'text_id': text_msg.message_id,
-            'timestamp': current_time
-        }
-        # FIN. Ahora el botón se ve siempre porque sale junto con el mensaje.
+            if pokemon_data['id'] == 145 and not db.is_event_completed(chat_id, 'mision_zapdos'):
+                pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
+                rarity = get_rarity('C', is_shiny)
 
-    except FileNotFoundError:
-        logger.error(f"No se encontró la imagen: {image_path}")
+            if pokemon_data['id'] == 146 and not db.is_event_completed(chat_id, 'mision_moltres'):
+                pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
+                rarity = get_rarity('C', is_shiny)
 
-    # --- REPROGRAMAR EL SIGUIENTE SPAWN ---
-    # Verificamos si el grupo sigue activo en BD antes de programar
-    if chat_id in db.get_active_groups():
-        next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
-        context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
-        logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
+            if pokemon_data['id'] == 150 and not db.is_event_completed(chat_id, 'mision_mewtwo'):
+                pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
+                rarity = get_rarity('C', is_shiny)
+
+            # Preparación del mensaje
+            pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+            text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
+            image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+
+            # Envío (Protegido contra FileNotFoundError, pero dentro del Try principal por si falla Telegram)
+            try:
+                # 1. Enviamos Sticker
+                with open(image_path, 'rb') as sticker_file:
+                    sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+
+                # 2. Preparamos el botón
+                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
+                button_text = "¡Capturar! 📷"
+                reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+
+                # 3. Enviamos Texto
+                text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
+                                                          reply_markup=reply_markup)
+
+                # 4. Guardamos datos
+                context.chat_data['active_spawns'][text_msg.message_id] = {
+                    'sticker_id': sticker_msg.message_id,
+                    'text_id': text_msg.message_id,
+                    'timestamp': current_time
+                }
+            except FileNotFoundError:
+                logger.error(f"No se encontró la imagen: {image_path}")
+
+    except Exception as e:
+        # Si algo falla (red, base de datos, etc), lo registramos pero NO detenemos la cadena
+        logger.error(f"⚠️ Error en el ciclo de spawn para el chat {chat_id}: {e}")
+
+    finally:
+        # --- ESTE BLOQUE SE EJECUTA SIEMPRE, HAYA ERROR O NO ---
+        # Verificamos si el grupo sigue activo en BD antes de programar
+        try:
+            if chat_id in db.get_active_groups():
+                next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
+                context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
+                logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
+            else:
+                logger.info(f"Grupo {chat_id} ya no está activo. Deteniendo spawns.")
+        except Exception as e:
+            logger.error(f"Error crítico al reprogramar el spawn: {e}")
 
 
 # --- COMANDO SECRETO PARA EL ADMIN: FORZAR APARICIÓN ---
