@@ -477,7 +477,7 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         seconds = wait_time % 60
 
         await query.answer(
-            f"⛔ Calma, vaquero. Para evitar spam, solo puedes mostrar 2 Pokémon cada 30 minutos.\n\n"
+            f"⛔ Para evitar spam, solo puedes mostrar 2 Pokémon cada 30 minutos.\n\n"
             f"Podrás mostrar otro en: {minutes}m {seconds}s.",
             show_alert=True
         )
@@ -1439,7 +1439,6 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # --- Lógica de Objetos Especiales (Ver y Mostrar) ---
             if item_id.startswith('lottery_ticket_'):
                 item_name = "Ticket de lotería ganador"
-                # El ticket solo se ve (privado) y se muestra (público)
                 row = [
                     InlineKeyboardButton("👀 Ver", callback_data=f"viewticket_{item_id}_{user.id}"),
                     InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
@@ -1472,18 +1471,12 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
 
-    # SILENCIO APLICADO
+    # --- SOLO UN ENVÍO (Con Silencio) ---
     sent_message = await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown',
                                                    disable_notification=True)
     schedule_message_deletion(context, sent_message)
     if update.message:
         schedule_message_deletion(context, update.message)
-
-    sent_message = await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
-    schedule_message_deletion(context, sent_message)
-    if update.message:
-        schedule_message_deletion(context, update.message)
-
 
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
@@ -2322,24 +2315,29 @@ async def admin_force_stop_remote(update: Update, context: ContextTypes.DEFAULT_
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
 
     if not context.args:
+        # Aquí SÍ va el disable_notification (en el reply_text)
         return await update.message.reply_text("Uso: `/forcestop <chat_id>`", disable_notification=True)
 
     try:
         target_chat_id = int(context.args[0])
 
-        jobs = context.job_queue.get_jobs_by_name(f"spawn_{target_chat_id}", disable_notification=True)
+        # --- CORRECCIÓN AQUÍ: Quitar disable_notification de get_jobs_by_name ---
+        jobs = context.job_queue.get_jobs_by_name(f"spawn_{target_chat_id}")
+        # ------------------------------------------------------------------------
+
         for job in jobs:
             job.schedule_removal()
 
         db.set_group_active(target_chat_id, False)
 
-        await update.message.reply_text(f"🛑 Juego detenido forzosamente en el grupo `{target_chat_id}`.")
+        await update.message.reply_text(f"🛑 Juego detenido forzosamente en el grupo `{target_chat_id}`.",
+                                        disable_notification=True)
 
     except ValueError:
-        await update.message.reply_text("❌ ID de chat inválida.")
+        await update.message.reply_text("❌ ID de chat inválida.", disable_notification=True)
     except Exception as e:
         logger.error(f"Error en forcestop: {e}")
-        await update.message.reply_text("❌ Error al detener el juego.")
+        await update.message.reply_text("❌ Error al detener el juego.", disable_notification=True)
 
 
 async def post_init(application: Application):
