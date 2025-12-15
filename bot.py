@@ -1025,6 +1025,7 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     mails = db.get_user_mail(owner_user.id)
     text_empty = "📭 Tu buzón está vacío."
+
     if not mails:
         if query:
             try:
@@ -1033,10 +1034,11 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except BadRequest:
                 pass
         else:
-            sent_message = await update.message.reply_text(text_empty)
+            # Caso comando /buzon y está vacío
+            sent_message = await update.message.reply_text(text_empty, disable_notification=True)
             schedule_message_deletion(context, sent_message)
             if update.message:
-                schedule_message_deletion(context, update.message)
+                schedule_message_deletion(context, update.message)  # <--- AHORA SÍ BORRA EL COMANDO
         return
 
     text = "📬 Tienes los siguientes regalos pendientes:\n\n"
@@ -1060,6 +1062,7 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
+        # Caso comando /buzon y tiene cosas
         sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard),
                                                        parse_mode='Markdown', disable_notification=True)
         schedule_message_deletion(context, sent_message)
@@ -1131,7 +1134,7 @@ async def buzon_refresh_handler(update: Update, context: ContextTypes.DEFAULT_TY
     await buzon(update, context)
 
 
-async def tombola_start(update: Update, _context: ContextTypes.DEFAULT_TYPE):
+async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user:
         return
@@ -1139,17 +1142,25 @@ async def tombola_start(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, update.effective_chat.id)
 
+    # Verificar si ya jugó
     if db.get_last_daily_claim(user.id) == datetime.now(TZ_SPAIN).strftime('%Y-%m-%d'):
-        await update.message.reply_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", disable_notification=True)
+        # Enviamos mensaje y lo borramos muy rápido (5s) junto con el comando
+        msg = await update.message.reply_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", disable_notification=True)
+        schedule_message_deletion(context, msg, 5)
+        schedule_message_deletion(context, update.message, 5)
         return
-    text = ("🎟️ *Tómbola Diaria* 🎟️\n"
+
+    text = ("🎟️ *Tómbola Diaria* 🎟️\n\n"
             "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
             "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!")
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data=f"tombola_claim_{user.id}")]]
-    msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
 
-    schedule_message_deletion(_context, update.message, 40)
-    schedule_message_deletion(_context, msg, 40)
+    msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                          disable_notification=True)
+
+    # Borrar menú y comando a los 40s
+    schedule_message_deletion(context, update.message, 40)
+    schedule_message_deletion(context, msg, 40)
 
 
 # --- MODIFICADO: Lógica de Tómbola Pública ---
@@ -1999,35 +2010,55 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target_user, args = await _get_target_user_from_command(update, context)
 
+    # Caso: Ayuda (no puso destinatario)
     if not target_user:
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             "Puedes regalarle a otro jugador parte de tu dinero. Así funciona el comando '/regalar':\n\n"
             "🔹 Responde a un mensaje de la persona y escribe:\n"
             "'/regalar <cantidad>'\n\n"
             "🔹 O bien, menciona a la persona; escribe:\n"
             "'/regalar @usuario <cantidad>'", disable_notification=True)
-        return
-    if sender.id == target_user.id:
-        await update.message.reply_text("😅 No puedes regalarte dinero a ti mismo.", disable_notification=True)
-        return
-    if target_user.is_bot:
-        await update.message.reply_text("🤖 No puedes enviarle dinero a un bot.", disable_notification=True)
+        # Borrar ayuda y comando en 60 segundos
+        schedule_message_deletion(context, msg, 60)
+        schedule_message_deletion(context, update.message, 60)
         return
 
+    # Caso: Auto-regalo
+    if sender.id == target_user.id:
+        msg = await update.message.reply_text("😅 No puedes regalarte dinero a ti mismo.", disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        schedule_message_deletion(context, update.message, 10)
+        return
+
+    # Caso: Regalo a bot
+    if target_user.is_bot:
+        msg = await update.message.reply_text("🤖 No puedes enviarle dinero a un bot.", disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        schedule_message_deletion(context, update.message, 10)
+        return
+
+    # Caso: Cantidad inválida
     try:
         amount = int(args[0])
         if amount <= 0:
-            await update.message.reply_text("¿A quién intentas engañar? 🤨")
+            msg = await update.message.reply_text("¿A quién intentas engañar? 🤨", disable_notification=True)
+            schedule_message_deletion(context, msg, 10)
+            schedule_message_deletion(context, update.message, 10)
             return
     except (IndexError, ValueError):
-        await update.message.reply_text(
-            "Por favor, especifica una cantidad válida.\nUso: `/regalar [@usuario|ID] <cantidad>`")
+        msg = await update.message.reply_text(
+            "Por favor, especifica una cantidad válida.\nUso: `/regalar [@usuario|ID] <cantidad>`",
+            disable_notification=True)
+        schedule_message_deletion(context, msg, 20)
+        schedule_message_deletion(context, update.message, 20)
         return
 
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(sender.id, update.effective_chat.id)
 
     sender_money = db.get_user_money(sender.id)
+
+    # Caso: No tiene dinero
     if sender_money < amount:
         msg = await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
                                               parse_mode='Markdown', disable_notification=True)
@@ -2035,6 +2066,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 120)
         return
 
+    # ÉXITO
     db.get_or_create_user(target_user.id, target_user.first_name)
     db.update_money(sender.id, -amount)
     db.update_money(target_user.id, amount)
@@ -2042,11 +2074,13 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_mention = sender.mention_markdown()
     recipient_mention = target_user.mention_markdown()
 
+    # Mensaje de éxito (este no se suele borrar rápido para que quede constancia, pero borramos el comando del usuario)
     await update.message.reply_text(
         f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado a {recipient_mention}: *{format_money(amount)}₽*",
         parse_mode='Markdown', disable_notification=True
     )
 
+    # Borramos SOLO el comando del usuario que inició todo
     schedule_message_deletion(context, update.message, 120)
 
 
