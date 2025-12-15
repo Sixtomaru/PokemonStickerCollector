@@ -1306,7 +1306,7 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            if query.data.startswith("buy_"):
+            if query.data.startswith("shop_refresh_"):
                 await query.answer()
         except BadRequest as e:
             if "Message is not modified" in str(e):
@@ -1315,10 +1315,11 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error al actualizar tienda: {e}")
                 await query.answer("Ocurrió un error al actualizar.", show_alert=True)
     else:
-        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # --- AQUÍ AÑADIMOS EL SILENCIO ---
+        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
+        # ---------------------------------
         schedule_message_deletion(context, update.message, 60)
         schedule_message_deletion(context, msg, 60)
-
 
 # --- NUEVO: PRE-COMPRA (Pantalla de Confirmación) ---
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
