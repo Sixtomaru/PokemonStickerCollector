@@ -1168,6 +1168,7 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
     message = cast(Message, query.message)
+    chat_id = message.chat_id
 
     db.get_or_create_user(interactor_user.id, interactor_user.first_name)
 
@@ -1189,10 +1190,12 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
     if db.get_last_daily_claim(owner_id) == today_str:
         await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
-        # Si NO es público, tachamos el mensaje personal
-        if not is_public and message:
-            cancel_scheduled_deletion(context, message.chat_id, message.message_id)
-            await query.edit_message_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!")
+        # Si viene de un comando /tombola, borramos el mensaje del comando para no ensuciar
+        if not is_public:
+            try:
+                await message.delete()
+            except BadRequest:
+                pass
         return
 
     # Dar premio
@@ -1204,51 +1207,66 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if prize['type'] == 'money':
         db.update_money(owner_id, prize['value'])
-        list_line = f"- {interactor_user.first_name}: {prize['emoji']} {prize['value']}₽"
+        # Usamos nombre limpio para evitar errores de Markdown
+        safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
+        list_line = f"- {safe_name}: {prize['emoji']} {prize['value']}₽"
         alert_text = f"¡{prize['emoji']} Has ganado {prize['value']}₽!"
     else:
         db.add_item_to_inventory(owner_id, prize['value'])
-        list_line = f"- {interactor_user.first_name}: {prize['emoji']} Sobre Mágico"
+        safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
+        list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
         alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
 
-    # --- LÓGICA DE EDICIÓN DEL MENSAJE (LISTA) ---
-    if message:
-        original_text = message.text_markdown  # Usamos markdown para respetar formato si es posible
+    # --- LÓGICA CENTRALIZADA DE LISTA ---
+    # 1. Recuperamos/Inicializamos la lista de ganadores de este chat
+    if 'tombola_winners' not in context.chat_data:
+        context.chat_data['tombola_winners'] = []
 
-        # Cabecera base para reconstruir si es necesario
-        base_text_clean = (
-            "🎟️ *Tómbola Diaria* 🎟️\n"
-            "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
-            "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
-        )
+    # 2. Añadimos al nuevo ganador
+    context.chat_data['tombola_winners'].append(list_line)
 
-        final_text = ""
+    # 3. Construimos el texto completo
+    base_header = (
+        "🎟️ *Tómbola Diaria* 🎟️\n\n"
+        "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
+        "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
+    )
 
-        if "Resultados:" in message.text:  # Chequeamos texto plano para buscar la cabecera
-            # Ya existe la lista, añadimos debajo
-            # Truco: Usamos el texto original recibido para no perder la lista anterior
-            final_text = original_text + "\n" + list_line
-        else:
-            # Primera vez que se crea la lista hoy
-            final_text = base_text_clean + "\n\nResultados:\n" + list_line
+    full_text = base_header + "\n\nResultados:\n" + "\n".join(context.chat_data['tombola_winners'])
 
+    # 4. Buscamos la ID del mensaje oficial de hoy
+    daily_msg_id = context.chat_data.get('tombola_msg_id')
+
+    # Teclado público
+    keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
+
+    # 5. Intentamos editar el mensaje OFICIAL (el de las 00:00)
+    if daily_msg_id:
         try:
-            # Editamos el mensaje (sea el público o el del comando)
-            if not is_public:
-                cancel_scheduled_deletion(context, message.chat_id, message.message_id)
-
-            await query.edit_message_text(text=final_text, reply_markup=message.reply_markup, parse_mode='Markdown')
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=daily_msg_id,
+                text=full_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
         except BadRequest:
-            # Si falla (raro, pero posible por markdown en nombres), reintentamos sin markdown en el nombre
-            safe_line = f"- {interactor_user.first_name.replace('*', '').replace('_', '')}: {prize['emoji']}"
-            if "Resultados:" in message.text:
-                final_text = original_text + "\n" + safe_line
-            else:
-                final_text = base_text_clean + "\n\nResultados:\n" + safe_line
-            try:
-                await query.edit_message_text(text=final_text, reply_markup=message.reply_markup, parse_mode='Markdown')
-            except:
-                pass  # Si falla aquí, simplemente no se actualiza la lista, pero se da el premio
+            # Si falla (ej: mensaje borrado), enviamos uno nuevo y actualizamos la ID
+            msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            context.chat_data['tombola_msg_id'] = msg.message_id
+    else:
+        # Si no había mensaje oficial registrado (ej: reinicio), enviamos uno nuevo
+        msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
+                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        context.chat_data['tombola_msg_id'] = msg.message_id
+
+    # 6. Si el usuario usó el comando /tombola (mensaje privado), lo borramos para limpiar
+    if not is_public and message.message_id != daily_msg_id:
+        try:
+            await message.delete()
+        except BadRequest:
+            pass
 
     # Pop-up al usuario
     await query.answer(alert_text, show_alert=True)
@@ -2401,7 +2419,8 @@ async def post_init(application: Application):
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🎟️ ¡Ya está disponible la *Tómbola diaria*!\n\n"
+        "🎟️ *Tómbola Diaria* 🎟️\n\n"
+        "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
         "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
     )
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
@@ -2410,7 +2429,14 @@ async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     active_groups = db.get_active_groups()
     for chat_id in active_groups:
         try:
-            await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
+            # Limpiamos la memoria del chat para el nuevo día
+            context.application.chat_data[chat_id]['tombola_winners'] = []
+
+            msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
+
+            # Guardamos la ID del mensaje oficial de hoy
+            context.application.chat_data[chat_id]['tombola_msg_id'] = msg.message_id
+
         except Exception as e:
             logger.error(f"No se pudo enviar la tómbola al chat {chat_id}: {e}")
 
