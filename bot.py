@@ -687,6 +687,70 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"No se encontró la imagen: {image_path}")
 
 
+# --- PANEL DE CONTROL / MENÚ FIJO ---
+
+async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Solo para el admin (tú)
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    text = (
+        "🎮 **MENÚ DE COMANDOS** 🎮\n\n"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🎒 Mochila", callback_data="panel_mochila"),
+         InlineKeyboardButton("📖 Álbumdex", callback_data="panel_album")],
+        [InlineKeyboardButton("🏪 Tienda", callback_data="panel_tienda"),
+         InlineKeyboardButton("🎰 Tómbola", callback_data="panel_tombola")],
+        [InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon"),
+         InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero")],
+        [InlineKeyboardButton("🤝 Retos Grupales", callback_data="panel_retos")]
+    ]
+
+    # Enviamos el panel (este mensaje NO se borra nunca)
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    # Borramos tu comando /setup para dejarlo limpio
+    await update.message.delete()
+
+
+async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    # Redirigimos los botones a las funciones existentes
+
+    if query.data == "panel_mochila":
+        await inventory_cmd(update, context)
+        await query.answer()
+
+    elif query.data == "panel_dinero":
+        await dinero(update, context)
+        await query.answer()
+
+    elif query.data == "panel_retos":
+        await retos_cmd(update, context)
+        await query.answer()
+
+    elif query.data == "panel_buzon":
+        await buzon(update, context)
+        await query.answer()
+
+    elif query.data == "panel_tienda":
+        # Simulamos entrar al menú principal de tienda
+        update.callback_query.data = f"shop_refresh_{user_id}"
+        await tienda_cmd(update, context)
+
+    elif query.data == "panel_album":
+        # Simulamos entrar al álbum principal
+        update.callback_query.data = f"album_main_{user_id}"
+        await albumdex_cmd(update, context)
+
+    elif query.data == "panel_tombola":
+        # Simulamos pulsar el botón de probar suerte (la función ya comprueba si puede jugar)
+        # Pasamos ID 0 para que no intente borrar ningún mensaje de texto
+        update.callback_query.data = f"tombola_claim_{user_id}_0"
+        await tombola_claim(update, context)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
@@ -1136,32 +1200,36 @@ async def buzon_refresh_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not user:
-        return
+    if not user: return
+
     db.get_or_create_user(user.id, user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, update.effective_chat.id)
 
+    # Obtenemos la ID del mensaje del usuario para borrarlo luego
+    cmd_msg_id = update.message.message_id if update.message else 0
+
     # Verificar si ya jugó
     if db.get_last_daily_claim(user.id) == datetime.now(TZ_SPAIN).strftime('%Y-%m-%d'):
-        # Enviamos mensaje y lo borramos muy rápido (5s) junto con el comando
         msg = await update.message.reply_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", disable_notification=True)
         schedule_message_deletion(context, msg, 5)
         schedule_message_deletion(context, update.message, 5)
         return
 
     text = ("🎟️ *Tómbola Diaria* 🎟️\n\n"
-            "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
+            "Prueba suerte una vez al día para ganar premios.\n"
             "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!")
-    keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data=f"tombola_claim_{user.id}")]]
+
+    # PASAMOS LA ID DEL MENSAJE DEL USUARIO EN EL CALLBACK
+    # Estructura: tombola_claim_USERID_MSGID
+    keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data=f"tombola_claim_{user.id}_{cmd_msg_id}")]]
 
     msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                           disable_notification=True)
 
-    # Borrar menú y comando a los 40s
-    schedule_message_deletion(context, update.message, 40)
-    schedule_message_deletion(context, msg, 40)
-
+    # Programamos borrado por si no pulsa el botón
+    schedule_message_deletion(context, update.message, 60)
+    schedule_message_deletion(context, msg, 60)
 
 # --- MODIFICADO: Lógica de Tómbola Pública ---
 async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1174,26 +1242,34 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_public = (query.data == "tombola_claim_public")
     owner_id = interactor_user.id
+    user_cmd_msg_id = None
 
     if not is_public:
         try:
-            owner_id_from_data = int(query.data.split('_')[-1])
-            if interactor_user.id != owner_id_from_data:
+            parts = query.data.split('_')
+            # tombola_claim_USERID_MSGID
+            owner_id = int(parts[2])
+            # Intentamos obtener la ID del mensaje del usuario si existe
+            if len(parts) > 3:
+                user_cmd_msg_id = int(parts[3])
+
+            if interactor_user.id != owner_id:
                 await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
                 return
-            owner_id = owner_id_from_data
         except (ValueError, IndexError):
             await query.answer("Error en el botón.", show_alert=True)
             return
 
-    # Verificar si ya jugó hoy
+    # Verificar si ya jugó
     today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
     if db.get_last_daily_claim(owner_id) == today_str:
         await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
-        # Si viene de un comando /tombola, borramos el mensaje del comando para no ensuciar
+        # Limpieza si era menú personal
         if not is_public:
             try:
-                await message.delete()
+                await message.delete()  # Borrar menú bot
+                if user_cmd_msg_id:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)  # Borrar comando user
             except BadRequest:
                 pass
         return
@@ -1202,12 +1278,8 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.update_last_daily_claim(owner_id, today_str)
     prize = random.choices(DAILY_PRIZES, weights=DAILY_WEIGHTS, k=1)[0]
 
-    list_line = ""
-    alert_text = ""
-
     if prize['type'] == 'money':
         db.update_money(owner_id, prize['value'])
-        # Usamos nombre limpio para evitar errores de Markdown
         safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
         list_line = f"- {safe_name}: {prize['emoji']} {prize['value']}₽"
         alert_text = f"¡{prize['emoji']} Has ganado {prize['value']}₽!"
@@ -1217,15 +1289,12 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
         alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
 
-    # --- LÓGICA CENTRALIZADA DE LISTA ---
-    # 1. Recuperamos/Inicializamos la lista de ganadores de este chat
+    # --- ACTUALIZAR LISTA EN MENSAJE OFICIAL ---
     if 'tombola_winners' not in context.chat_data:
         context.chat_data['tombola_winners'] = []
 
-    # 2. Añadimos al nuevo ganador
     context.chat_data['tombola_winners'].append(list_line)
 
-    # 3. Construimos el texto completo
     base_header = (
         "🎟️ *Tómbola Diaria* 🎟️\n\n"
         "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
@@ -1233,14 +1302,10 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     full_text = base_header + "\n\nResultados:\n" + "\n".join(context.chat_data['tombola_winners'])
-
-    # 4. Buscamos la ID del mensaje oficial de hoy
     daily_msg_id = context.chat_data.get('tombola_msg_id')
-
-    # Teclado público
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
-    # 5. Intentamos editar el mensaje OFICIAL (el de las 00:00)
+    # Editar mensaje oficial
     if daily_msg_id:
         try:
             await context.bot.edit_message_text(
@@ -1251,24 +1316,29 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
         except BadRequest:
-            # Si falla (ej: mensaje borrado), enviamos uno nuevo y actualizamos la ID
+            # Si no existe, enviamos uno nuevo
             msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
-                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                                 disable_notification=True)
             context.chat_data['tombola_msg_id'] = msg.message_id
     else:
-        # Si no había mensaje oficial registrado (ej: reinicio), enviamos uno nuevo
         msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
-                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                             disable_notification=True)
         context.chat_data['tombola_msg_id'] = msg.message_id
 
-    # 6. Si el usuario usó el comando /tombola (mensaje privado), lo borramos para limpiar
-    if not is_public and message.message_id != daily_msg_id:
+    # --- LIMPIEZA INMEDIATA (Si no es público) ---
+    if not is_public:
         try:
+            # 1. Borrar mensaje del bot con el botón
             await message.delete()
+            # 2. Borrar mensaje del usuario (/tombola)
+            if user_cmd_msg_id:
+                await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
         except BadRequest:
-            pass
+            pass  # Si ya no existen, ignoramos
 
-    # Pop-up al usuario
+    # Pop-up con el premio
     await query.answer(alert_text, show_alert=True)
 
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2485,6 +2555,7 @@ def main():
         CommandHandler("quitarobjeto", admin_remove_item),
         CommandHandler("addbulk", admin_add_bulk_stickers),
         CommandHandler("forcestop", admin_force_stop_remote),
+        CommandHandler("setup", setup_panel),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -2507,6 +2578,7 @@ def main():
         CallbackQueryHandler(view_ticket_handler, pattern="^viewticket_"),
         CallbackQueryHandler(view_special_item_handler, pattern="^viewspecial_"),
         CallbackQueryHandler(show_special_item_handler, pattern="^showspecial_"),
+        CallbackQueryHandler(panel_handler, pattern="^panel_"),
     ]
     application.add_handlers(all_handlers)
     for chat_id in db.get_active_groups():
