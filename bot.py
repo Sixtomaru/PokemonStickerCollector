@@ -246,19 +246,23 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     owner_user = None
 
     if query:
-        try:
-            parts = query.data.split('_')
-            owner_id_str = parts[-2] if len(parts) > 2 and parts[-1].isdigit() else parts[-1]
-            owner_id = int(owner_id_str)
-            if len(parts) > 2 and parts[-1].isdigit():
-                cmd_msg_id = int(parts[-1])
-            if interactor_user.id != owner_id:
-                await query.answer("Este álbumdex no es tuyo.", show_alert=True)
-                return
+        # --- LÓGICA NUEVA PARA EL PANEL ---
+        if query.data == "panel_album":
             owner_user = interactor_user
-        except (ValueError, IndexError):
-            await query.answer("Error en el botón.", show_alert=True)
-            return
+        else:
+            try:
+                parts = query.data.split('_')
+                owner_id_str = parts[-2] if len(parts) > 2 and parts[-1].isdigit() else parts[-1]
+                owner_id = int(owner_id_str)
+                if len(parts) > 2 and parts[-1].isdigit():
+                    cmd_msg_id = int(parts[-1])
+                if interactor_user.id != owner_id:
+                    await query.answer("Este álbumdex no es tuyo.", show_alert=True)
+                    return
+                owner_user = interactor_user
+            except (ValueError, IndexError):
+                await query.answer("Error en el botón.", show_alert=True)
+                return
     else:
         owner_user = interactor_user
         if update.message:
@@ -289,19 +293,23 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for name in POKEMON_REGIONS.keys():
         cb_data = f"album_{name}_0_{owner_user.id}"
-        if cmd_msg_id:
-            cb_data += f"_{cmd_msg_id}"
+        if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
         keyboard.append([InlineKeyboardButton(f"Ver Álbum de {name}", callback_data=cb_data)])
 
     close_cb_data = f"album_close_{owner_user.id}"
-    if cmd_msg_id:
-        close_cb_data += f"_{cmd_msg_id}"
+    if cmd_msg_id: close_cb_data += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Cerrar Álbum", callback_data=close_cb_data)])
 
     if query:
         await query.answer()
-        refresh_deletion_timer(context, query.message, 60)
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Nota: aquí NO editamos el mensaje del panel, el álbum envía uno nuevo temporal
+        # porque el panel debe quedarse fijo.
+        if query.data == "panel_album":
+             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
+             schedule_message_deletion(context, msg, 60)
+        else:
+             refresh_deletion_timer(context, query.message, 60)
+             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
         msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
         schedule_message_deletion(context, update.message, 60)
@@ -694,7 +702,7 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
 
     text = (
-        "🎮 **MENÚ DE COMANDOS** 🎮\n\n"
+        "🔷**MENÚ DE COMANDOS**🔷\n\n"
     )
 
     keyboard = [
@@ -715,10 +723,8 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
 
     # Redirigimos los botones a las funciones existentes
-
     if query.data == "panel_mochila":
         await inventory_cmd(update, context)
         await query.answer()
@@ -736,19 +742,12 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
     elif query.data == "panel_tienda":
-        # Simulamos entrar al menú principal de tienda
-        update.callback_query.data = f"shop_refresh_{user_id}"
         await tienda_cmd(update, context)
 
     elif query.data == "panel_album":
-        # Simulamos entrar al álbum principal
-        update.callback_query.data = f"album_main_{user_id}"
         await albumdex_cmd(update, context)
 
     elif query.data == "panel_tombola":
-        # Simulamos pulsar el botón de probar suerte (la función ya comprueba si puede jugar)
-        # Pasamos ID 0 para que no intente borrar ningún mensaje de texto
-        update.callback_query.data = f"tombola_claim_{user_id}_0"
         await tombola_claim(update, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1235,23 +1234,24 @@ async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
-    message = cast(Message, query.message)
+    # Si viene del panel, effective_message es el panel.
+    message = update.effective_message
     chat_id = message.chat_id
 
     db.get_or_create_user(interactor_user.id, interactor_user.first_name)
 
     is_public = (query.data == "tombola_claim_public")
+    # --- NUEVO: Detectar si viene del panel ---
+    is_panel = (query.data == "panel_tombola")
+
     owner_id = interactor_user.id
     user_cmd_msg_id = None
 
-    if not is_public:
+    if not is_public and not is_panel:  # Solo parseamos si no es público ni panel
         try:
             parts = query.data.split('_')
-            # tombola_claim_USERID_MSGID
             owner_id = int(parts[2])
-            # Intentamos obtener la ID del mensaje del usuario si existe
-            if len(parts) > 3:
-                user_cmd_msg_id = int(parts[3])
+            if len(parts) > 3: user_cmd_msg_id = int(parts[3])
 
             if interactor_user.id != owner_id:
                 await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
@@ -1260,16 +1260,15 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("Error en el botón.", show_alert=True)
             return
 
-    # Verificar si ya jugó
+    # Verificar si ya jugó hoy
     today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
     if db.get_last_daily_claim(owner_id) == today_str:
         await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
-        # Limpieza si era menú personal
-        if not is_public:
+        # Limpieza: Si NO es público y NO es panel (es decir, comando /tombola), borramos
+        if not is_public and not is_panel:
             try:
-                await message.delete()  # Borrar menú bot
-                if user_cmd_msg_id:
-                    await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)  # Borrar comando user
+                await message.delete()
+                if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
             except BadRequest:
                 pass
         return
@@ -1305,18 +1304,13 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     daily_msg_id = context.chat_data.get('tombola_msg_id')
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
-    # Editar mensaje oficial
     if daily_msg_id:
         try:
             await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=daily_msg_id,
-                text=full_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
+                chat_id=chat_id, message_id=daily_msg_id, text=full_text,
+                reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
             )
         except BadRequest:
-            # Si no existe, enviamos uno nuevo
             msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                                  disable_notification=True)
@@ -1327,18 +1321,14 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                              disable_notification=True)
         context.chat_data['tombola_msg_id'] = msg.message_id
 
-    # --- LIMPIEZA INMEDIATA (Si no es público) ---
-    if not is_public:
+    # --- LIMPIEZA INMEDIATA (Si es comando /tombola) ---
+    if not is_public and not is_panel:
         try:
-            # 1. Borrar mensaje del bot con el botón
             await message.delete()
-            # 2. Borrar mensaje del usuario (/tombola)
-            if user_cmd_msg_id:
-                await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
+            if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
         except BadRequest:
-            pass  # Si ya no existen, ignoramos
+            pass
 
-    # Pop-up con el premio
     await query.answer(alert_text, show_alert=True)
 
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1348,28 +1338,31 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     owner_user = None
 
     if query:
-        parts = query.data.split('_')
-        owner_id = int(parts[-2])
-        if len(parts) > 2:
-            cmd_msg_id = int(parts[-1])
-        if interactor_user.id != owner_id:
-            await query.answer("Esta tienda no es tuya.", show_alert=True)
-            return
-        owner_user = interactor_user
+        # --- LÓGICA NUEVA PARA EL PANEL ---
+        if query.data == "panel_tienda":
+            owner_user = interactor_user
+        else:
+            parts = query.data.split('_')
+            owner_id = int(parts[-2])
+            if len(parts) > 2:
+                cmd_msg_id = int(parts[-1])
+            if interactor_user.id != owner_id:
+                await query.answer("Esta tienda no es tuya.", show_alert=True)
+                return
+            owner_user = interactor_user
     else:
         owner_user = interactor_user
         if update.message:
             cmd_msg_id = update.message.message_id
 
+    # ... (El resto de la función es igual, pero cópialo todo para asegurar) ...
     db.get_or_create_user(owner_user.id, owner_user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(owner_user.id, update.effective_chat.id)
 
     user_money = db.get_user_money(owner_user.id)
-
     descriptions = [f"· *{details['name']}:* {details['desc']}" for details in SHOP_CONFIG.values()]
     desc_text = "\n".join(descriptions)
-
     text = (f"🏪 *Tienda de Sobres* 🏪\n\n"
             f"¡Bienvenido, {owner_user.first_name}!\n"
             f"Tu dinero actual: *{format_money(user_money)}₽*\n\n"
@@ -1394,22 +1387,19 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            if query.data.startswith("shop_refresh_"):
+            # Si venimos del panel, no empieza por shop_refresh, así que hacemos un answer genérico
+            if query.data.startswith("shop_refresh_") or query.data == "panel_tienda":
                 await query.answer()
         except BadRequest as e:
-            if "Message is not modified" in str(e):
-                await query.answer("Tu saldo no ha cambiado.")
+            if "Message is not modified" in str(e): await query.answer("Tu saldo no ha cambiado.")
             else:
-                logger.error(f"Error al actualizar tienda: {e}")
-                await query.answer("Ocurrió un error al actualizar.", show_alert=True)
+                logger.error(f"Error tienda: {e}")
+                await query.answer("Error.", show_alert=True)
     else:
-        # --- AQUÍ AÑADIMOS EL SILENCIO ---
         msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
-        # ---------------------------------
         schedule_message_deletion(context, update.message, 60)
         schedule_message_deletion(context, msg, 60)
 
-# --- NUEVO: PRE-COMPRA (Pantalla de Confirmación) ---
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
@@ -2080,16 +2070,21 @@ async def remove_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def dinero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not user:
-        return
+    if not user: return
+
     db.get_or_create_user(user.id, user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, update.effective_chat.id)
 
     money = db.get_user_money(user.id)
-    sent_message = await update.message.reply_text(f"Tienes *{format_money(money)}₽* 💰.", parse_mode='Markdown', disable_notification=True)
+    # --- CORRECCIÓN: Usamos effective_message ---
+    sent_message = await update.effective_message.reply_text(
+        f"Tienes *{format_money(money)}₽* 💰.",
+        parse_mode='Markdown',
+        disable_notification=True
+    )
     schedule_message_deletion(context, sent_message)
-    if update.message:
+    if update.message:  # Solo borramos si hay comando de texto
         schedule_message_deletion(context, update.message)
 
 
@@ -2206,12 +2201,11 @@ async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type not in ['group', 'supergroup']:
-        await update.message.reply_text("Este comando solo funciona en grupos.")
+        await update.effective_message.reply_text("Este comando solo funciona en grupos.", disable_notification=True)
         return
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-
     db.get_or_create_user(user_id, update.effective_user.first_name)
     db.register_user_in_group(user_id, chat_id)
 
@@ -2220,34 +2214,27 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     kanto_rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
     for p in ALL_POKEMON:
-        if p['id'] <= 151:
-            kanto_rarity_totals[p['category']] += 1
-
+        if p['id'] <= 151: kanto_rarity_totals[p['category']] += 1
     group_rarity_counts = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
     for pid in group_ids:
         p_data = POKEMON_BY_ID.get(pid)
-        if p_data:
-            group_rarity_counts[p_data['category']] += 1
+        if p_data: group_rarity_counts[p_data['category']] += 1
 
     text = "🤝 **Retos Grupales** 🤝\n\n"
     text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto AQUÍ**\n"
     text += "_El progreso solo cuenta los Pokémon capturados dentro de este grupo._\n\n"
-
     rarity_texts = []
     for cat in ['C', 'B', 'A', 'S']:
         emoji = RARITY_VISUALS[cat]
         rarity_texts.append(f"{emoji} {group_rarity_counts[cat]}/{kanto_rarity_totals[cat]}")
-
     text += ", ".join(rarity_texts) + "\n\n"
     text += f"📊 **Total: {total_group}/151**"
+    if total_group >= 151: text += "\n\n✅ **¡COMPLETADO!**"
 
-    if total_group >= 151:
-        text += "\n\n✅ **¡COMPLETADO!**"
-
-    msg = await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
-
-    schedule_message_deletion(context, update.message, 30)
+    # --- CORRECCIÓN: Usamos effective_message ---
+    msg = await update.effective_message.reply_text(text, parse_mode='Markdown', disable_notification=True)
     schedule_message_deletion(context, msg, 30)
+    if update.message: schedule_message_deletion(context, update.message, 30)
 
 
 async def clemailbox_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
