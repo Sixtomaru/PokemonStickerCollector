@@ -245,17 +245,17 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmd_msg_id = None
     owner_user = None
 
+    is_panel = (query and query.data == "panel_album")
+
     if query:
-        # --- LÓGICA NUEVA PARA EL PANEL ---
-        if query.data == "panel_album":
+        if is_panel:
             owner_user = interactor_user
         else:
             try:
                 parts = query.data.split('_')
                 owner_id_str = parts[-2] if len(parts) > 2 and parts[-1].isdigit() else parts[-1]
                 owner_id = int(owner_id_str)
-                if len(parts) > 2 and parts[-1].isdigit():
-                    cmd_msg_id = int(parts[-1])
+                if len(parts) > 2 and parts[-1].isdigit(): cmd_msg_id = int(parts[-1])
                 if interactor_user.id != owner_id:
                     await query.answer("Este álbumdex no es tuyo.", show_alert=True)
                     return
@@ -265,8 +265,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
     else:
         owner_user = interactor_user
-        if update.message:
-            cmd_msg_id = update.message.message_id
+        if update.message: cmd_msg_id = update.message.message_id
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
@@ -281,8 +280,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
         if pokemon_data:
             final_rarity = get_rarity(pokemon_data['category'], is_shiny)
-            if final_rarity in rarity_counts:
-                rarity_counts[final_rarity] += 1
+            if final_rarity in rarity_counts: rarity_counts[final_rarity] += 1
     rarity_lines = [f"{rarity_counts[code]} {emoji}" for code, emoji in RARITY_VISUALS.items()]
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
             f"Stickers: *{owned_normal}/{total_pokemon_count}*\n"
@@ -300,20 +298,20 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: close_cb_data += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Cerrar Álbum", callback_data=close_cb_data)])
 
-    if query:
+    # --- LÓGICA CORREGIDA ---
+    if query and not is_panel:
+        # Navegación interna (Páginas, volver) -> EDITAR
         await query.answer()
-        # Nota: aquí NO editamos el mensaje del panel, el álbum envía uno nuevo temporal
-        # porque el panel debe quedarse fijo.
-        if query.data == "panel_album":
-             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
-             schedule_message_deletion(context, msg, 60)
-        else:
-             refresh_deletion_timer(context, query.message, 60)
-             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        refresh_deletion_timer(context, query.message, 60)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
-        schedule_message_deletion(context, update.message, 60)
+        # Comando o PANEL -> MENSAJE NUEVO
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
+                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                             disable_notification=True)
         schedule_message_deletion(context, msg, 60)
+        if update.message:
+            schedule_message_deletion(context, update.message, 60)
 
 
 async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1069,16 +1067,20 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     owner_user = None
 
     if query:
-        try:
-            parts = query.data.split('_')
-            owner_id = int(parts[-1]) if len(parts) > 1 else interactor_user.id
-            if interactor_user.id != owner_id:
-                await query.answer("Este buzón no es tuyo.", show_alert=True)
-                return
+        # --- CORRECCIÓN: Detectar si viene del panel ---
+        if query.data == "panel_buzon":
             owner_user = interactor_user
-        except (ValueError, IndexError):
-            await query.answer("Error en el botón.", show_alert=True)
-            return
+        else:
+            try:
+                parts = query.data.split('_')
+                owner_id = int(parts[-1]) if len(parts) > 1 else interactor_user.id
+                if interactor_user.id != owner_id:
+                    await query.answer("Este buzón no es tuyo.", show_alert=True)
+                    return
+                owner_user = interactor_user
+            except (ValueError, IndexError):
+                await query.answer("Error en el botón.", show_alert=True)
+                return
     else:
         owner_user = interactor_user
 
@@ -1089,19 +1091,20 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mails = db.get_user_mail(owner_user.id)
     text_empty = "📭 Tu buzón está vacío."
 
+    # Lógica de visualización
     if not mails:
-        if query:
+        if query and query.data != "panel_buzon":  # Si es refresco interno, editamos
             try:
                 if getattr(query.message, 'text', '') != text_empty:
                     await query.edit_message_text(text_empty)
             except BadRequest:
                 pass
         else:
-            # Caso comando /buzon y está vacío
-            sent_message = await update.message.reply_text(text_empty, disable_notification=True)
+            # Si es comando o viene del panel, mandamos mensaje nuevo temporal
+            sent_message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text_empty,
+                                                          disable_notification=True)
             schedule_message_deletion(context, sent_message)
-            if update.message:
-                schedule_message_deletion(context, update.message)  # <--- AHORA SÍ BORRA EL COMANDO
+            if update.message: schedule_message_deletion(context, update.message)
         return
 
     text = "📬 Tienes los siguientes regalos pendientes:\n\n"
@@ -1121,13 +1124,15 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(button_text, callback_data=f"claimmail_{mail['mail_id']}_{owner_user.id}")])
     keyboard.append([InlineKeyboardButton("🔄 Actualizar", callback_data=f"buzon_refresh_{owner_user.id}")])
 
-    if query:
+    if query and query.data != "panel_buzon":
+        # Navegación interna (refrescar) -> Editar
         await query.answer()
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        # Caso comando /buzon y tiene cosas
-        sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard),
-                                                       parse_mode='Markdown', disable_notification=True)
+        # Comando o Panel -> Mensaje Nuevo
+        sent_message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
+                                                      reply_markup=InlineKeyboardMarkup(keyboard),
+                                                      parse_mode='Markdown', disable_notification=True)
         schedule_message_deletion(context, sent_message)
         if update.message:
             schedule_message_deletion(context, update.message)
@@ -1337,9 +1342,11 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmd_msg_id = None
     owner_user = None
 
+    # Detectar si viene del panel
+    is_panel = (query and query.data == "panel_tienda")
+
     if query:
-        # --- LÓGICA NUEVA PARA EL PANEL ---
-        if query.data == "panel_tienda":
+        if is_panel:
             owner_user = interactor_user
         else:
             parts = query.data.split('_')
@@ -1355,7 +1362,6 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message:
             cmd_msg_id = update.message.message_id
 
-    # ... (El resto de la función es igual, pero cópialo todo para asegurar) ...
     db.get_or_create_user(owner_user.id, owner_user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(owner_user.id, update.effective_chat.id)
@@ -1384,21 +1390,20 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Salir de la tienda", callback_data=close_cb)])
 
-    if query:
+    # --- LÓGICA CORREGIDA ---
+    if query and not is_panel:
+        # Si es navegación interna (comprar, volver, refrescar) -> EDITAMOS
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            # Si venimos del panel, no empieza por shop_refresh, así que hacemos un answer genérico
-            if query.data.startswith("shop_refresh_") or query.data == "panel_tienda":
-                await query.answer()
-        except BadRequest as e:
-            if "Message is not modified" in str(e): await query.answer("Tu saldo no ha cambiado.")
-            else:
-                logger.error(f"Error tienda: {e}")
-                await query.answer("Error.", show_alert=True)
+            if query.data.startswith("shop_refresh_"): await query.answer()
+        except BadRequest:
+            await query.answer("Tu saldo no ha cambiado.")
     else:
-        msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
-        schedule_message_deletion(context, update.message, 60)
+        # Si es comando o PANEL -> MENSAJE NUEVO
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
         schedule_message_deletion(context, msg, 60)
+        if update.message:
+            schedule_message_deletion(context, update.message, 60)
 
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1525,8 +1530,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🎒 *Tu Mochila:*\n\n"
         for item in items:
             item_id = item['item_id']
-
-            # --- Lógica de Objetos Especiales (Ver y Mostrar) ---
+            # --- Objetos Especiales ---
             if item_id.startswith('lottery_ticket_'):
                 item_name = "Ticket de lotería ganador"
                 row = [
@@ -1535,7 +1539,6 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 keyboard_buttons.append(row)
                 text += f"🔸️ {item_name} 🎫 x{item['quantity']}\n"
-
             elif item_id in SPECIAL_ITEMS_DATA:
                 data = SPECIAL_ITEMS_DATA[item_id]
                 item_name = f"{data['name']} {data['emoji']}"
@@ -1545,25 +1548,28 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 keyboard_buttons.append(row)
                 text += f"🔸️ {item_name} x{item['quantity']}\n"
-
-            # --- Lógica de Sobres ---
+            # --- Sobres ---
             elif item_id in PACK_CONFIG:
                 raw_name = ITEM_NAMES.get(item_id, 'Objeto')
                 item_name = f"{raw_name} 🎴"
                 keyboard_buttons.append(
                     [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user.id}")])
                 text += f"🔸️ {item_name} x{item['quantity']}\n"
-
-            # --- Otros objetos ---
+            # --- Otros ---
             else:
                 item_name = ITEM_NAMES.get(item_id, 'Objeto')
                 text += f"🔸️ {item_name} x{item['quantity']}\n"
 
     keyboard = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
 
-    # --- SOLO UN ENVÍO (Con Silencio) ---
-    sent_message = await update.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown',
-                                                   disable_notification=True)
+    # --- CORRECCIÓN: Usar context.bot.send_message para asegurar mensaje nuevo ---
+    sent_message = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text,
+        reply_markup=keyboard,
+        parse_mode='Markdown',
+        disable_notification=True
+    )
     schedule_message_deletion(context, sent_message)
     if update.message:
         schedule_message_deletion(context, update.message)
