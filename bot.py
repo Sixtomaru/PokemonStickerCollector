@@ -707,7 +707,7 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎒 Mochila", callback_data="panel_mochila"),
          InlineKeyboardButton("📖 Álbumdex", callback_data="panel_album")],
         [InlineKeyboardButton("🏪 Tienda", callback_data="panel_tienda"),
-         InlineKeyboardButton("🎰 Tómbola", callback_data="panel_tombola")],
+         InlineKeyboardButton("🎟️ Tómbola", callback_data="panel_tombola")],
         [InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon"),
          InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero")],
         [InlineKeyboardButton("🤝 Retos Grupales", callback_data="panel_retos")]
@@ -2583,3 +2583,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
