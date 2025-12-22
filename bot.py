@@ -1488,17 +1488,27 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 # --- NUEVO: COMPRA REAL (Confirmada) ---
 async def confirm_buy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # interactor_user = query.from_user (No se usa, usamos el ID del callback)
+    interactor_user = query.from_user
 
     try:
         parts = query.data.split('_')
-        owner_id_str = parts[-2]
-        item_id = '_'.join(parts[1:-2])
-        owner_id = int(owner_id_str)
-        # Verificamos seguridad básica
-        if query.from_user.id != owner_id:
+        # Formatos posibles:
+        # confirmbuy_item_id_OWNERID (Desde Panel)
+        # confirmbuy_item_id_OWNERID_MSGID (Desde Comando)
+
+        if len(parts) > 3 and parts[-1].isdigit() and parts[-2].isdigit():
+            # Caso con MSG_ID
+            owner_id = int(parts[-2])
+            item_id = '_'.join(parts[1:-2])
+        else:
+            # Caso sin MSG_ID (Panel)
+            owner_id = int(parts[-1])
+            item_id = '_'.join(parts[1:-1])
+
+        if interactor_user.id != owner_id:
             await query.answer("Esta tienda no es tuya.", show_alert=True)
             return
+
     except (ValueError, IndexError):
         await query.answer("Error en el botón de compra.", show_alert=True)
         return
@@ -1516,6 +1526,7 @@ async def confirm_buy_pack_handler(update: Update, context: ContextTypes.DEFAULT
         db.add_item_to_inventory(owner_id, item_id, 1)
         await query.answer(f"✅ ¡Comprado! Tienes un {pack_details['name']} en tu mochila.", show_alert=True)
         # Volvemos a la tienda automáticamente para que vea su saldo actualizado
+        # Importante: tienda_cmd sabrá leer el ID desde el callback 'confirmbuy...'
         await tienda_cmd(update, context)
     else:
         needed = pack_price - user_money
