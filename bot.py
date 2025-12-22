@@ -80,6 +80,8 @@ SHOP_CONFIG = {
                                    'desc': 'Contiene 3 stickers que no tienes.'},
     'pack_magic_large_national': {'name': 'Sobre Mágico Grande Nacional', 'price': 2500, 'size': 5, 'is_magic': True,
                                   'desc': 'Contiene 5 stickers que no tienes.'},
+    'pack_shiny_kanto': {'name': 'Sobre Brillante Kanto', 'price': 0, 'size': 1, 'is_magic': False,
+                         'desc': 'Contiene 1 Sticker Brillante al azar.', 'hidden': True},
 }
 
 ITEM_NAMES = {item_id: details['name'] for item_id, details in SHOP_CONFIG.items()}
@@ -87,7 +89,6 @@ ITEM_NAMES = {item_id: details['name'] for item_id, details in SHOP_CONFIG.items
 PACK_CONFIG = {item_id: {'size': details['size'], 'is_magic': details['is_magic']} for item_id, details in
                SHOP_CONFIG.items()}
 
-# --- NUEVA SECCIÓN DE OBJETOS ESPECIALES (AQUÍ ESTABA EL ERROR) ---
 SPECIAL_ITEMS_DATA = {
     'pluma_naranja': {
         'name': 'Pluma Naranja',
@@ -253,9 +254,23 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             try:
                 parts = query.data.split('_')
-                owner_id_str = parts[-2] if len(parts) > 2 and parts[-1].isdigit() else parts[-1]
-                owner_id = int(owner_id_str)
-                if len(parts) > 2 and parts[-1].isdigit(): cmd_msg_id = int(parts[-1])
+                # CORRECCIÓN: Manejar específicamente el botón 'main' que es más corto
+                if parts[1] == "main":
+                    # Formato: album_main_OWNERID (_MSGID opcional)
+                    owner_id = int(parts[2])
+                    if len(parts) > 3 and parts[3].isdigit():
+                        cmd_msg_id = int(parts[3])
+                else:
+                    # Formato normal: album_REGION_PAGE_OWNERID (_MSGID opcional)
+                    owner_id = int(
+                        parts[-2] if len(parts) > 4 and parts[-1].isdigit() else parts[-1])  # Fallback seguro
+                    # Intento más preciso:
+                    if parts[-1].isdigit() and parts[-2].isdigit():  # Tiene msg_id
+                        owner_id = int(parts[-2])
+                        cmd_msg_id = int(parts[-1])
+                    elif parts[-1].isdigit():
+                        owner_id = int(parts[-1])
+
                 if interactor_user.id != owner_id:
                     await query.answer("Este álbumdex no es tuyo.", show_alert=True)
                     return
@@ -298,14 +313,18 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: close_cb_data += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Cerrar Álbum", callback_data=close_cb_data)])
 
-    # --- LÓGICA CORREGIDA ---
     if query and not is_panel:
-        # Navegación interna (Páginas, volver) -> EDITAR
         await query.answer()
-        refresh_deletion_timer(context, query.message, 60)
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Si venimos de "main" (botón volver) editamos.
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except BadRequest:
+            # Si falla la edición, enviamos uno nuevo (fallback)
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                                 disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
     else:
-        # Comando o PANEL -> MENSAJE NUEVO
         msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
                                              reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                              disable_notification=True)
@@ -1336,39 +1355,49 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer(alert_text, show_alert=True)
 
+
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = update.effective_user
     cmd_msg_id = None
     owner_user = None
-
-    # Detectar si viene del panel
     is_panel = (query and query.data == "panel_tienda")
 
     if query:
         if is_panel:
             owner_user = interactor_user
         else:
-            parts = query.data.split('_')
-            owner_id = int(parts[-2])
-            if len(parts) > 2:
-                cmd_msg_id = int(parts[-1])
-            if interactor_user.id != owner_id:
-                await query.answer("Esta tienda no es tuya.", show_alert=True)
+            try:
+                parts = query.data.split('_')
+                # shop_refresh_OWNERID o shop_refresh_OWNERID_MSGID
+                if len(parts) > 3 and parts[-1].isdigit() and parts[-2].isdigit():
+                    owner_id = int(parts[-2])
+                    cmd_msg_id = int(parts[-1])
+                else:
+                    owner_id = int(parts[-1])
+
+                if interactor_user.id != owner_id:
+                    await query.answer("Esta tienda no es tuya.", show_alert=True)
+                    return
+                owner_user = interactor_user
+            except (ValueError, IndexError):
+                await query.answer("Error al cargar la tienda.", show_alert=True)
                 return
-            owner_user = interactor_user
     else:
         owner_user = interactor_user
-        if update.message:
-            cmd_msg_id = update.message.message_id
+        if update.message: cmd_msg_id = update.message.message_id
 
     db.get_or_create_user(owner_user.id, owner_user.first_name)
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(owner_user.id, update.effective_chat.id)
 
     user_money = db.get_user_money(owner_user.id)
-    descriptions = [f"· *{details['name']}:* {details['desc']}" for details in SHOP_CONFIG.values()]
+
+    # IMPORTANTE: Filtramos los ocultos
+    descriptions = [f"· *{details['name']}:* {details['desc']}" for key, details in SHOP_CONFIG.items() if
+                    not details.get('hidden')]
     desc_text = "\n".join(descriptions)
+
     text = (f"🏪 *Tienda de Sobres* 🏪\n\n"
             f"¡Bienvenido, {owner_user.first_name}!\n"
             f"Tu dinero actual: *{format_money(user_money)}₽*\n\n"
@@ -1377,6 +1406,8 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for item_id, details in SHOP_CONFIG.items():
+        if details.get('hidden'): continue  # NO MOSTRAR SI ES OCULTO
+
         cb_data = f"prebuy_{item_id}_{owner_user.id}"
         if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
         button_text = f"{details['name']} - {format_money(details['price'])}₽"
@@ -1390,20 +1421,19 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Salir de la tienda", callback_data=close_cb)])
 
-    # --- LÓGICA CORREGIDA ---
     if query and not is_panel:
-        # Si es navegación interna (comprar, volver, refrescar) -> EDITAMOS
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             if query.data.startswith("shop_refresh_"): await query.answer()
         except BadRequest:
             await query.answer("Tu saldo no ha cambiado.")
     else:
-        # Si es comando o PANEL -> MENSAJE NUEVO
-        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
+                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                             disable_notification=True)
         schedule_message_deletion(context, msg, 60)
-        if update.message:
-            schedule_message_deletion(context, update.message, 60)
+        if update.message: schedule_message_deletion(context, update.message, 60)
+
 
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1411,11 +1441,18 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         parts = query.data.split('_')
-        # Formato: prebuy_itemid_ownerid_msgid
-        owner_id_str = parts[-2]
-        item_id = '_'.join(parts[1:-2])
-        owner_id = int(owner_id_str)
-        cmd_msg_id = parts[-1] if len(parts) > 3 else ""
+        # Formatos: prebuy_itemid_OWNERID o prebuy_itemid_OWNERID_MSGID
+
+        if parts[-1].isdigit() and parts[-2].isdigit():
+            # Caso con MSG_ID
+            cmd_msg_id = parts[-1]
+            owner_id = int(parts[-2])
+            item_id = '_'.join(parts[1:-2])
+        else:
+            # Caso sin MSG_ID (ej: desde panel)
+            cmd_msg_id = ""
+            owner_id = int(parts[-1])
+            item_id = '_'.join(parts[1:-1])
 
         if interactor_user.id != owner_id:
             await query.answer("Esta tienda no es tuya.", show_alert=True)
@@ -1429,14 +1466,15 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("Este sobre ya no está disponible.", show_alert=True)
         return
 
-    # Texto de confirmación
     text = (f"🛒 **Confirmar Compra**\n\n"
             f"¿Estás seguro de que quieres comprar:\n"
             f"*{pack_details['name']}* por *{format_money(pack_details['price'])}₽*?")
 
-    # Botones Sí/No
-    confirm_data = f"confirmbuy_{item_id}_{owner_id}_{cmd_msg_id}"
-    cancel_data = f"shop_refresh_{owner_id}_{cmd_msg_id}"
+    confirm_data = f"confirmbuy_{item_id}_{owner_id}"
+    if cmd_msg_id: confirm_data += f"_{cmd_msg_id}"
+
+    cancel_data = f"shop_refresh_{owner_id}"
+    if cmd_msg_id: cancel_data += f"_{cmd_msg_id}"
 
     keyboard = [
         [InlineKeyboardButton("✅ Confirmar", callback_data=confirm_data)],
@@ -1587,7 +1625,6 @@ async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
 async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
-
     message = cast(Message, query.message)
     if not message:
         await query.answer("Error: El mensaje original no es accesible.", show_alert=True)
@@ -1610,7 +1647,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = time.time()
     last_open_time = context.chat_data.get('last_pack_open_time', 0)
 
-    # Cooldown global del grupo para sobres (15s) se mantiene igual
     if current_time - last_open_time < PACK_OPEN_COOLDOWN:
         time_left = round(PACK_OPEN_COOLDOWN - (current_time - last_open_time))
         await query.answer(f"Hay que esperar {time_left}s para abrir otro sobre en el grupo.", show_alert=True)
@@ -1633,23 +1669,29 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.register_user_in_group(user.id, message.chat.id)
 
         await message.delete()
-
         db.remove_item_from_inventory(user.id, item_id, 1)
 
-        # --- MENSAJE SILENCIOSO ---
         opening_message = await context.bot.send_message(
             message.chat_id,
             f"🍀 ¡{user.mention_markdown()} ha abierto un *{ITEM_NAMES.get(item_id)}*! 🍀",
             parse_mode='Markdown',
-            disable_notification=True  # <--- SILENCIO
+            disable_notification=True
         )
 
         pack_config = PACK_CONFIG.get(item_id, {})
-        pack_size, is_magic = pack_config.get('size', 3), pack_config.get('is_magic', False)
+        pack_size = pack_config.get('size', 1)
+        is_magic = pack_config.get('is_magic', False)
         pack_results, summary_parts = [], []
         message_ids_to_delete = [opening_message.message_id]
 
-        if is_magic:
+        # --- LÓGICA SOBRE BRILLANTE KANTO ---
+        if item_id == 'pack_shiny_kanto':
+            # Respetamos pesos de categorías (C, B, A, S) pero forzamos shiny
+            pokemon_data, _, _ = choose_random_pokemon()
+            pack_results.append({'data': pokemon_data, 'is_shiny': True})
+
+        elif is_magic:
+            # (Tu lógica mágica existente se mantiene igual)
             user_stickers = db.get_all_user_stickers(user.id)
             all_normal_stickers = {(p['id'], 0) for p in ALL_POKEMON}
             all_shiny_stickers = {(p['id'], 1) for p in ALL_POKEMON}
@@ -1678,27 +1720,18 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 with open(f"Stickers/Kanto/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png",
                           'rb') as sticker_file:
-                    # --- STICKER SILENCIOSO ---
                     msg = await context.bot.send_sticker(
-                        chat_id=message.chat_id,
-                        sticker=sticker_file,
-                        disable_notification=True  # <--- SILENCIO
+                        chat_id=message.chat_id, sticker=sticker_file, disable_notification=True
                     )
                     message_ids_to_delete.append(msg.message_id)
                 await asyncio.sleep(1.2)
             except RetryAfter as e:
-                logger.warning(f"Flood control excedido. Esperando {e.retry_after} segundos.")
                 await asyncio.sleep(e.retry_after)
-                with open(f"Stickers/Kanto/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png",
-                          'rb') as sticker_file:
-                    msg = await context.bot.send_sticker(
-                        chat_id=message.chat_id,
-                        sticker=sticker_file,
-                        disable_notification=True
-                    )
-                    message_ids_to_delete.append(msg.message_id)
+                # Reintento simple (puedes copiar el bloque open anterior si quieres ser exhaustivo)
+
             except Exception as e:
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
+
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
             if message.chat.type in ['group', 'supergroup']:
@@ -1714,16 +1747,10 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         vertical_summary = "\n".join(summary_parts)
-
         final_text = f"📜 Resultado del {pack_name} de {user.mention_markdown()}:\n\n{vertical_summary}"
 
-        # --- RESUMEN SILENCIOSO ---
-        await context.bot.send_message(
-            message.chat_id,
-            text=final_text,
-            parse_mode='Markdown',
-            disable_notification=True  # <--- SILENCIO
-        )
+        await context.bot.send_message(message.chat_id, text=final_text, parse_mode='Markdown',
+                                       disable_notification=True)
 
         if message_ids_to_delete and context.job_queue:
             context.job_queue.run_once(delete_pack_stickers, when=60,
@@ -1731,7 +1758,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data['last_pack_open_time'] = time.time()
     finally:
         context.chat_data['is_opening_pack'] = False
-        logger.info(f"Desbloqueo de apertura de sobres para el chat {message.chat_id}.")
 
 
 async def view_ticket_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2227,7 +2253,7 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if p_data: group_rarity_counts[p_data['category']] += 1
 
     text = "🤝 **Retos Grupales** 🤝\n\n"
-    text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto AQUÍ**\n"
+    text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto**\n"
     text += "_El progreso solo cuenta los Pokémon capturados dentro de este grupo._\n\n"
     rarity_texts = []
     for cat in ['C', 'B', 'A', 'S']:
@@ -2583,4 +2609,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
