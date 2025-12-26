@@ -833,7 +833,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.is_group_banned(chat.id):
             # Mensaje de error genérico para despistar
             msg = await update.message.reply_text(
-                "⚠️ Error: No se pudo sincronizar con la base de datos regional. Inténtalo más tarde.",
+                "⚠️ Error: No se pudo encontrar el grupo.",
                 disable_notification=True
             )
             return
