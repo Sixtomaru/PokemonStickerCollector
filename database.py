@@ -124,7 +124,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS capture_chance INTEGER DEFAULT 100",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stickers_this_month INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS kanto_completed INTEGER DEFAULT 0",
-        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_name TEXT"
+        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_name TEXT",
+        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0"
     ]
 
     if is_sqlite:
@@ -429,6 +430,7 @@ def is_event_completed(chat_id, event_id):
 def set_money(user_id, amount):
     query_db("UPDATE users SET money = ? WHERE user_id = ?", (amount, user_id))
 
+
 def get_user_id_by_username(username):
     """Busca la ID de un usuario por su @nombre."""
     clean_name = username.lstrip('@') # Quitar la @ si la tiene
@@ -436,6 +438,26 @@ def get_user_id_by_username(username):
     res = query_db("SELECT user_id FROM users WHERE LOWER(username) = ?", (clean_name.lower(),), one=True)
     return res[0] if res else None
 
+# --- SISTEMA DE BANEOS ---
+
+def ban_group(chat_id):
+    """Banea un grupo y lo desactiva."""
+    # Primero nos aseguramos de que el grupo exista en la BD
+    add_group(chat_id, "Banned Group")
+    query_db("UPDATE groups SET is_banned = 1, is_active = 0 WHERE chat_id = ?", (chat_id,))
+
+def unban_group(chat_id):
+    """Desbanea un grupo (pero lo deja inactivo hasta que usen /start)."""
+    query_db("UPDATE groups SET is_banned = 0 WHERE chat_id = ?", (chat_id,))
+
+def is_group_banned(chat_id):
+    """Comprueba si un grupo está baneado."""
+    res = query_db("SELECT is_banned FROM groups WHERE chat_id = ?", (chat_id,), one=True)
+    return res[0] == 1 if res else False
+
+def get_banned_groups():
+    """Obtiene la lista de grupos baneados."""
+    return query_db("SELECT chat_id, group_name FROM groups WHERE is_banned = 1", dict_cursor=True)
+
 # Iniciar la DB
 init_db()
-
