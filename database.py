@@ -31,119 +31,71 @@ def init_db():
     id_type = "INTEGER" if is_sqlite else "BIGINT"
     serial_type = "INTEGER PRIMARY KEY AUTOINCREMENT" if is_sqlite else "SERIAL PRIMARY KEY"
 
-    # Tabla USERS
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id {id_type} PRIMARY KEY,
-        username TEXT,
-        money INTEGER DEFAULT 1000,
-        last_daily_claim TEXT DEFAULT NULL,
-        capture_chance INTEGER DEFAULT 100,
-        stickers_this_month INTEGER DEFAULT 0,
-        kanto_completed INTEGER DEFAULT 0
+    # Tablas Principales
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS users (
+        user_id {id_type} PRIMARY KEY, username TEXT, money INTEGER DEFAULT 1000,
+        last_daily_claim TEXT DEFAULT NULL, capture_chance INTEGER DEFAULT 100,
+        stickers_this_month INTEGER DEFAULT 0, kanto_completed INTEGER DEFAULT 0
     )''')
 
-    # Tabla COLLECTION (Inventario personal)
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS collection (
-        user_id {id_type},
-        pokemon_id INTEGER,
-        is_shiny INTEGER DEFAULT 0,
-        FOREIGN KEY(user_id) REFERENCES users(user_id),
-        PRIMARY KEY (user_id, pokemon_id, is_shiny)
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS collection (
+        user_id {id_type}, pokemon_id INTEGER, is_shiny INTEGER DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(user_id), PRIMARY KEY (user_id, pokemon_id, is_shiny)
     )''')
 
-    # Tabla GROUPS
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS groups (
-        chat_id {id_type} PRIMARY KEY,
-        group_name TEXT, 
-        is_active INTEGER DEFAULT 1
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS groups (
+        chat_id {id_type} PRIMARY KEY, group_name TEXT, is_active INTEGER DEFAULT 1, is_banned INTEGER DEFAULT 0
     )''')
 
-    # Tabla GROUP_MEMBERS
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS group_members (
-        chat_id {id_type},
-        user_id {id_type},
-        PRIMARY KEY (chat_id, user_id)
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS group_members (
+        chat_id {id_type}, user_id {id_type}, PRIMARY KEY (chat_id, user_id)
     )''')
 
-    # --- NUEVA TABLA: GROUP_POKEDEX ---
-    # Esto soluciona que un usuario complete el reto solo por entrar al grupo.
-    # Aquí se guardarán los IDs de los pokémon capturados EN ESTE GRUPO.
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS group_pokedex (
-        chat_id {id_type},
-        pokemon_id INTEGER,
-        PRIMARY KEY (chat_id, pokemon_id)
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS group_pokedex (
+        chat_id {id_type}, pokemon_id INTEGER, PRIMARY KEY (chat_id, pokemon_id)
     )''')
 
-    # Tabla MAILBOX
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS mailbox (
-        mail_id {serial_type},
-        recipient_user_id {id_type} NOT NULL,
-        item_type TEXT NOT NULL,
-        item_details TEXT NOT NULL,
-        message TEXT,
-        claimed INTEGER DEFAULT 0,
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS mailbox (
+        mail_id {serial_type}, recipient_user_id {id_type} NOT NULL, item_type TEXT NOT NULL,
+        item_details TEXT NOT NULL, message TEXT, claimed INTEGER DEFAULT 0,
         FOREIGN KEY(recipient_user_id) REFERENCES users(user_id)
     )''')
 
-    # Tabla INVENTORY
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS inventory (
-        user_id {id_type},
-        item_id TEXT NOT NULL,
-        quantity INTEGER NOT NULL,
-        FOREIGN KEY(user_id) REFERENCES users(user_id),
-        PRIMARY KEY (user_id, item_id)
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS inventory (
+        user_id {id_type}, item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(user_id), PRIMARY KEY (user_id, item_id)
     )''')
 
-    # Tabla GROUP_EVENTS
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS group_events (
-        chat_id {id_type},
-        event_id TEXT,
-        completed INTEGER DEFAULT 1,
-        PRIMARY KEY (chat_id, event_id)
+    cursor.execute(f'''CREATE TABLE IF NOT EXISTS group_events (
+        chat_id {id_type}, event_id TEXT, completed INTEGER DEFAULT 1, PRIMARY KEY (chat_id, event_id)
     )''')
 
-    # Tabla SYSTEM_FLAGS
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS system_flags (
-            flag_name TEXT PRIMARY KEY,
-            value INTEGER DEFAULT 0
-        )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS system_flags (flag_name TEXT PRIMARY KEY, value INTEGER DEFAULT 0)''')
 
-    # Migraciones (Añadir columnas si no existen en versiones viejas)
-    alter_commands = [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_claim TEXT DEFAULT NULL",
-        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS capture_chance INTEGER DEFAULT 100",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stickers_this_month INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS kanto_completed INTEGER DEFAULT 0",
-        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_name TEXT",
-        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0"
+    # --- MIGRACIONES MANUALES (A prueba de fallos) ---
+    # Intentamos añadir las columnas una a una. Si ya existen, el error se ignora.
+    migraciones = [
+        "ALTER TABLE users ADD COLUMN last_daily_claim TEXT DEFAULT NULL",
+        "ALTER TABLE groups ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN capture_chance INTEGER DEFAULT 100",
+        "ALTER TABLE users ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN kanto_completed INTEGER DEFAULT 0",
+        "ALTER TABLE groups ADD COLUMN group_name TEXT",
+        "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0" # <--- ESTA ES LA IMPORTANTE
     ]
 
-    if is_sqlite:
-        for cmd in alter_commands:
-            try:
-                clean_cmd = cmd.replace("IF NOT EXISTS", "")  # SQLite antiguo no soporta IF NOT EXISTS en ALTER
-                cursor.execute(clean_cmd)
-            except:
-                pass
-    else:
-        for cmd in alter_commands:
-            try:
-                cursor.execute(cmd)
-            except psycopg2.Error:
-                conn.rollback()
+    for cmd in migraciones:
+        try:
+            cursor.execute(cmd)
+            if not is_sqlite: conn.commit()
+        except Exception:
+            # Si falla es porque la columna ya existe, ignoramos el error
+            if not is_sqlite: conn.rollback()
+            pass
 
-    conn.commit()
+    if is_sqlite: conn.commit()
     conn.close()
+
 
 
 # --- HELPERS DE CONSULTA ---
@@ -441,22 +393,31 @@ def get_user_id_by_username(username):
 # --- SISTEMA DE BANEOS ---
 
 def ban_group(chat_id):
-    """Banea un grupo y lo desactiva."""
-    # Primero nos aseguramos de que el grupo exista en la BD
-    add_group(chat_id, "Banned Group")
-    query_db("UPDATE groups SET is_banned = 1, is_active = 0 WHERE chat_id = ?", (chat_id,))
+    """Banea un grupo asegurándose de que existe en la BD."""
+    # Insertamos el grupo si no existe, o actualizamos si existe
+    if DATABASE_URL: # Postgres
+        sql = """
+        INSERT INTO groups (chat_id, group_name, is_active, is_banned)
+        VALUES (%s, 'Banned Group', 0, 1)
+        ON CONFLICT (chat_id) DO UPDATE SET is_active = 0, is_banned = 1;
+        """
+    else: # SQLite
+        sql = """
+        INSERT INTO groups (chat_id, group_name, is_active, is_banned)
+        VALUES (?, 'Banned Group', 0, 1)
+        ON CONFLICT(chat_id) DO UPDATE SET is_active = 0, is_banned = 1;
+        """
+    query_db(sql, (chat_id,))
 
 def unban_group(chat_id):
-    """Desbanea un grupo (pero lo deja inactivo hasta que usen /start)."""
     query_db("UPDATE groups SET is_banned = 0 WHERE chat_id = ?", (chat_id,))
 
 def is_group_banned(chat_id):
-    """Comprueba si un grupo está baneado."""
+    # Devuelve True si is_banned es 1
     res = query_db("SELECT is_banned FROM groups WHERE chat_id = ?", (chat_id,), one=True)
     return res[0] == 1 if res else False
 
 def get_banned_groups():
-    """Obtiene la lista de grupos baneados."""
     return query_db("SELECT chat_id, group_name FROM groups WHERE is_banned = 1", dict_cursor=True)
 
 # Iniciar la DB
