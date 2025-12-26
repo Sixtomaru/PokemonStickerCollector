@@ -343,17 +343,22 @@ async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Marcar en BD
         db.ban_group(target_chat_id)
 
-        # 2. Detener procesos activos inmediatamente
+        # 2. Detener procesos activos
         jobs = context.job_queue.get_jobs_by_name(f"spawn_{target_chat_id}")
         for job in jobs:
             job.schedule_removal()
 
-        # 3. Confirmar SOLO al admin
+        # 3. Confirmar
         await update.message.reply_text(f"🚫 Grupo `{target_chat_id}` ha sido **BANEADO** silenciosamente.",
                                         parse_mode='Markdown', disable_notification=True)
 
     except (IndexError, ValueError):
         await update.message.reply_text("Uso: `/bangroup <chat_id>`", disable_notification=True)
+    except Exception as e:
+        # AQUÍ ATRAPAMOS CUALQUIER OTRO ERROR (Como el de la base de datos)
+        logger.error(f"Error al banear grupo: {e}")
+        await update.message.reply_text(f"❌ Error interno al banear: `{e}`", parse_mode='Markdown',
+                                        disable_notification=True)
 
 async def admin_unban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Desbanea un grupo."""
@@ -875,7 +880,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     else:
         await update.message.reply_text("¡Hola! Añádeme a un grupo para empezar.", disable_notification=True)
-        
+
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not update.effective_user:
