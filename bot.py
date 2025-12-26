@@ -333,6 +333,56 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, update.message, 60)
 
 
+async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Banea un grupo por su ID de forma silenciosa."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        target_chat_id = int(context.args[0])
+
+        # 1. Marcar en BD
+        db.ban_group(target_chat_id)
+
+        # 2. Detener procesos activos inmediatamente
+        jobs = context.job_queue.get_jobs_by_name(f"spawn_{target_chat_id}")
+        for job in jobs:
+            job.schedule_removal()
+
+        # 3. Confirmar SOLO al admin
+        await update.message.reply_text(f"🚫 Grupo `{target_chat_id}` ha sido **BANEADO** silenciosamente.",
+                                        parse_mode='Markdown', disable_notification=True)
+
+    except (IndexError, ValueError):
+        await update.message.reply_text("Uso: `/bangroup <chat_id>`", disable_notification=True)
+
+async def admin_unban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Desbanea un grupo."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        target_chat_id = int(context.args[0])
+        db.unban_group(target_chat_id)
+        await update.message.reply_text(f"✅ Grupo `{target_chat_id}` ha sido **DESBANEADO**.", parse_mode='Markdown',
+                                        disable_notification=True)
+    except (IndexError, ValueError):
+        await update.message.reply_text("Uso: `/unbangroup <chat_id>`", disable_notification=True)
+
+
+async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista los grupos baneados."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    banned = db.get_banned_groups()
+    if not banned:
+        await update.message.reply_text("🟢 No hay grupos baneados.", disable_notification=True)
+        return
+
+    text = "🚫 **GRUPOS BANEADOS:**\n\n"
+    for group in banned:
+        text += f"▪️ {group['group_name']} (ID: `{group['chat_id']}`)\n"
+
+    await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+
 async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
@@ -767,20 +817,33 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "panel_tombola":
         await tombola_claim(update, context)
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
-    if not chat or not user:
-        return
+    if not chat or not user: return
+
     if chat.type in ['group', 'supergroup']:
+        # --- CHEQUEO DE BANEO (SHADOW BAN) ---
+        if db.is_group_banned(chat.id):
+            # Mensaje de error genérico para despistar
+            msg = await update.message.reply_text(
+                "⚠️ Error: No se pudo sincronizar con la base de datos regional. Inténtalo más tarde.",
+                disable_notification=True
+            )
+            return
+        # -------------------------------------
+
         member = await context.bot.get_chat_member(chat.id, user.id)
         if member.status not in ['administrator', 'creator'] and user.id != ADMIN_USER_ID:
-            await update.message.reply_text("⛔ Este comando solo puede ser usado por administradores.", disable_notification=True)
+            await update.message.reply_text("⛔ Este comando solo puede ser usado por administradores.",
+                                            disable_notification=True)
             return
 
         member_count = await context.bot.get_chat_member_count(chat.id)
         if member_count < 10 and user.id != ADMIN_USER_ID:
-            await update.message.reply_text("⚠️ El bot solo funciona en grupos con al menos 10 miembros.")
+            await update.message.reply_text("⚠️ El bot solo funciona en grupos con al menos 10 miembros.",
+                                            disable_notification=True)
             return
 
         is_creator = (user.id == ADMIN_USER_ID)
@@ -790,7 +853,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"⛔ Para comenzar la aventura, necesito calibrar el Álbumdex. Se requiere que al menos 4 personas usen algún comando (como /albumdex, /tienda, /mochila, /tombola, /buzon, /retos, /dinero, o /regalar) en este grupo.\n\n"
                 f"📉 *Progreso actual:* {active_users_count}/4 usuarios validados.",
-                parse_mode='Markdown'
+                parse_mode='Markdown', disable_notification=True
             )
             return
 
@@ -801,7 +864,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not current_jobs:
             initial_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
             context.job_queue.run_once(spawn_pokemon, initial_delay, chat_id=chat.id, name=f"spawn_{chat.id}")
-            msg = await update.message.reply_text("✅ Aparición de Pokémon salvajes activada.", disable_notification=True)
+            msg = await update.message.reply_text("✅ Aparición de Pokémon salvajes activada.",
+                                                  disable_notification=True)
             logger.info(f"Juego iniciado en {chat.id}. Spawn inicial en {initial_delay}s.")
         else:
             msg = await update.message.reply_text("El bot ya está en funcionamiento.", disable_notification=True)
@@ -811,8 +875,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     else:
         await update.message.reply_text("¡Hola! Añádeme a un grupo para empezar.", disable_notification=True)
-
-
+        
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not update.effective_user:
@@ -2586,6 +2649,9 @@ def main():
         CommandHandler("addbulk", admin_add_bulk_stickers),
         CommandHandler("forcestop", admin_force_stop_remote),
         CommandHandler("setup", setup_panel),
+        CommandHandler("bangroup", admin_ban_group),
+        CommandHandler("unbangroup", admin_unban_group),
+        CommandHandler("listbanned", admin_list_banned),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
