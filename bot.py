@@ -828,16 +828,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not chat or not user: return
 
+    # --- CAMBIO: Registramos al usuario SIEMPRE, sea grupo o privado ---
+    db.get_or_create_user(user.id, user.first_name)
+    # -----------------------------------------------------------------
+
     if chat.type in ['group', 'supergroup']:
         # --- CHEQUEO DE BANEO (SHADOW BAN) ---
         if db.is_group_banned(chat.id):
-            # Mensaje de error genérico para despistar
             msg = await update.message.reply_text(
-                "⚠️ Error: No se pudo encontrar el grupo.",
+                "⚠️ Error: No se pudo sincronizar con la base de datos regional. Inténtalo más tarde.",
                 disable_notification=True
             )
             return
-        # -------------------------------------
 
         member = await context.bot.get_chat_member(chat.id, user.id)
         if member.status not in ['administrator', 'creator'] and user.id != ADMIN_USER_ID:
@@ -879,7 +881,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 30)
 
     else:
-        await update.message.reply_text("¡Hola! Añádeme a un grupo para empezar.", disable_notification=True)
+        # Chat privado
+        await update.message.reply_text(
+            "👋 ¡Hola! Ya te he registrado en la base de datos.\n"
+            "A partir de ahora te avisaré por aquí si recibes premios especiales.\n\n"
+            "⚠️ Recuerda: Para jugar, debes añadirme a un grupo.",
+            disable_notification=True
+        )
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -2083,11 +2091,63 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     try:
         args = context.args
-        if not args: return await update.message.reply_text("Uso: /sendtoall <tipo/id> [args] [mensaje]")
+        if not args: return await update.message.reply_text("Uso: /sendtoall <tipo/id|combo> [args] [mensaje]",
+                                                            disable_notification=True)
 
         all_users = db.get_all_user_ids()
         first_arg = args[0].lower()
 
+        # --- LÓGICA ESPECIAL PARA COMBO (DINERO + ITEM) ---
+        if first_arg == 'combo':
+            try:
+                # Sintaxis: /sendtoall combo 1000 pack_id Mensaje
+                money_amount = int(args[1])
+                item_id_input = args[2]
+                message = ' '.join(args[3:]) or "¡Un regalo especial!"
+
+                # Resolver ID del objeto
+                final_item_id = USER_FRIENDLY_ITEM_IDS.get(item_id_input, item_id_input)
+
+                # Obtener nombre bonito para el mensaje
+                item_name = ITEM_NAMES.get(final_item_id, final_item_id)
+                if final_item_id == 'pack_shiny_kanto': item_name = "Sobre Brillante Kanto"
+
+                notified_count = 0
+                await update.message.reply_text(
+                    f"⏳ Enviando COMBO (Dinero + {item_name}) a {len(all_users)} usuarios...",
+                    disable_notification=True)
+
+                for uid in all_users:
+                    # 1. Meter dinero en buzón
+                    db.add_mail(uid, 'money', str(money_amount), message)
+                    # 2. Meter objeto en buzón
+                    db.add_mail(uid, 'inventory_item', final_item_id, message)
+
+                    # 3. Notificación ÚNICA
+                    try:
+                        await context.bot.send_message(
+                            chat_id=uid,
+                            text=f"📬 **¡TIENES CORREO!**\n\nEl administrador te ha enviado un regalo doble:\n"
+                                 f"💰 *{format_money(money_amount)}₽*\n"
+                                 f"🎁 *{item_name}*\n\n"
+                                 f"📝 Nota: _{message}_\n\n"
+                                 f"Ve al grupo y revisa tu 📬 *Buzón* para reclamarlos.",
+                            parse_mode='Markdown'
+                        )
+                        notified_count += 1
+                        await asyncio.sleep(0.05)
+                    except Exception:
+                        pass
+
+                await update.message.reply_text(f"✅ Combo enviado. Notificados: {notified_count}/{len(all_users)}.",
+                                                disable_notification=True)
+                return  # Terminamos aquí si es combo
+
+            except (IndexError, ValueError):
+                return await update.message.reply_text("Uso Combo: `/sendtoall combo <dinero> <item_id> [mensaje]`",
+                                                       disable_notification=True)
+
+        # --- LÓGICA NORMAL (UN SOLO TIPO) ---
         item_type = ''
         item_details = ''
         message = ''
@@ -2109,13 +2169,36 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             item_details = first_arg
             message = ' '.join(args[1:]) or "¡Un regalo especial!"
         else:
-            return await update.message.reply_text(f"Tipo no reconocido: '{first_arg}'.")
+            if first_arg == 'pack_shiny_kanto':
+                item_type = 'inventory_item'
+                item_details = first_arg
+                message = ' '.join(args[1:]) or "¡Un regalo especial!"
+            else:
+                return await update.message.reply_text(f"Tipo no reconocido: '{first_arg}'.", disable_notification=True)
 
-        for uid in all_users: db.add_mail(uid, item_type, item_details, message)
-        await update.message.reply_text(f"✅ Regalo enviado a los {len(all_users)} jugadores.")
+        notified_count = 0
+        await update.message.reply_text(f"⏳ Enviando regalos a {len(all_users)} usuarios...", disable_notification=True)
+
+        for uid in all_users:
+            db.add_mail(uid, item_type, item_details, message)
+            try:
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=f"📬 **¡TIENES CORREO!**\n\nEl administrador te ha enviado un regalo:\n_{message}_\n\nVe al grupo y revisa tu 📬 *Buzón* para reclamarlo.",
+                    parse_mode='Markdown'
+                )
+                notified_count += 1
+                await asyncio.sleep(0.05)
+            except Exception:
+                pass
+
+        await update.message.reply_text(
+            f"✅ Regalo enviado a {len(all_users)} jugadores.\n📩 Notificados por privado: {notified_count}",
+            disable_notification=True
+        )
+
     except (IndexError, ValueError) as e:
-        await update.message.reply_text(f"Uso incorrecto: {e}")
-
+        await update.message.reply_text(f"Uso incorrecto: {e}", disable_notification=True)
 
 async def send_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
