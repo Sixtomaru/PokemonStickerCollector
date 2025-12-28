@@ -81,7 +81,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN kanto_completed INTEGER DEFAULT 0",
         "ALTER TABLE groups ADD COLUMN group_name TEXT",
-        "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0" # <--- ESTA ES LA IMPORTANTE
+        "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1"
     ]
 
     for cmd in migraciones:
@@ -419,6 +420,17 @@ def is_group_banned(chat_id):
 
 def get_banned_groups():
     return query_db("SELECT chat_id, group_name FROM groups WHERE is_banned = 1", dict_cursor=True)
+
+def set_user_notification(user_id, enabled):
+    """Activa (1) o desactiva (0) las notificaciones privadas."""
+    val = 1 if enabled else 0
+    query_db("UPDATE users SET notifications_enabled = ? WHERE user_id = ?", (val, user_id))
+
+def is_user_notification_enabled(user_id):
+    """Comprueba si el usuario quiere notificaciones (Por defecto True)."""
+    res = query_db("SELECT notifications_enabled FROM users WHERE user_id = ?", (user_id,), one=True)
+    # Si es 1 o None (por defecto), es True. Si es 0, es False.
+    return res[0] != 0 if res else True
 
 # Iniciar la DB
 init_db()
