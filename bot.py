@@ -191,36 +191,64 @@ def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message,
 
 # --- RANKING MENSUAL ---
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    """Tarea mensual: Ranking por grupo y reseteo."""
     now = datetime.now(TZ_SPAIN)
+    # Ejecutar solo el día 1 de cada mes
     if now.day == 1:
-        ranking = db.get_monthly_ranking()
-        if not ranking:
-            db.reset_monthly_stickers()
-            return
-        message_lines = ["🏆 Ranking de mayor número de stickers conseguidos este mes:\n"]
-        medals = ["🥇", "🥈", "🥉"]
-        for index, (uid, uname, count) in enumerate(ranking):
-            medal = medals[index] if index < 3 else "-"
-            prize = 300
-            if index == 0:
-                prize = 1000
-            elif index == 1:
-                prize = 800
-            elif index == 2:
-                prize = 500
-            line = f"{medal} {uname}: {count} stickers - (Premio: {format_money(prize)}₽)"
-            message_lines.append(line)
-            db.add_mail(uid, 'money', str(prize), "Premio mensual")
-        message_lines.append("\n_Los premios han sido enviados_")
-        final_text = "\n".join(message_lines)
         active_groups = db.get_active_groups()
+
         for chat_id in active_groups:
             try:
-                await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='Markdown')
-            except Exception as e:
-                logger.error(f"Error enviando ranking mensual al chat {chat_id}: {e}")
-        db.reset_monthly_stickers()
+                # 1. Chequeo de Participación Mínima
+                # Contamos miembros registrados en la BD para este grupo
+                group_users = db.get_users_in_group(chat_id)
+                if len(group_users) < 4:  # Mínimo 4 personas
+                    continue  # Saltamos este grupo, no hay premios
 
+                # 2. Obtener Ranking LOCAL
+                ranking = db.get_group_monthly_ranking(chat_id)
+                if not ranking: continue
+
+                message_lines = ["🏆 **Ranking Mensual del Grupo** 🏆\n"]
+                medals = ["🥇", "🥈", "🥉"]
+
+                # 3. Repartir Premios
+                for index, row in enumerate(ranking):
+                    # row es un diccionario o tupla según tu db.py, ajusta si es necesario
+                    # Asumiendo que get_group_monthly_ranking devuelve lista de tuplas: (uid, name, count)
+                    uid, uname, count = row[0], row[1], row[2]
+
+                    medal = medals[index] if index < 3 else f"{index + 1}."
+                    prize = 0
+
+                    if index == 0:
+                        prize = 1000
+                    elif index == 1:
+                        prize = 800
+                    elif index == 2:
+                        prize = 500
+                    else:
+                        prize = 300  # Premio de consolación para el top 10
+
+                    line = f"{medal} {uname}: {count} stickers"
+                    if prize > 0:
+                        line += f" (+{prize}₽)"
+                        db.add_mail(uid, 'money', str(prize), f"Premio Ranking Mensual en {chat_id}")
+
+                    message_lines.append(line)
+
+                message_lines.append("\n_¡Los premios han sido enviados al buzón!_")
+                final_text = "\n".join(message_lines)
+
+                await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='Markdown')
+
+            except Exception as e:
+                logger.error(f"Error ranking mensual en chat {chat_id}: {e}")
+
+        # 4. Resetear contadores de grupos
+        db.reset_group_monthly_stickers()
+        # Reseteamos también el global por limpieza, aunque no se use
+        db.reset_monthly_stickers()
 
 # --- MENSAJE DE BIENVENIDA ---
 async def welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -970,7 +998,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        db.increment_monthly_stickers(user.id)
+        # --- RANKING LOCAL ---
+        if message.chat.type in ['group', 'supergroup']:
+            db.increment_group_monthly_stickers(user.id, message.chat.id)
+        # ---------------------
 
         for key in ['sticker_id', 'text_id']:
             try:
@@ -1097,7 +1128,6 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-
     message = cast(Message, query.message)
     if not message:
         await query.answer()
@@ -1122,15 +1152,15 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     event_data = EVENTS.get(event_id)
-    if not event_data:
-        return
+    if not event_data: return
 
     step_data = event_data['steps'].get(step_id)
-    if not step_data:
-        return
+    if not step_data: return
 
     if 'action' in step_data:
-        result = step_data['action'](user, decision_parts, original_text=message.text)
+        # --- AQUÍ PASAMOS EL CHAT_ID ---
+        result = step_data['action'](user, decision_parts, original_text=message.text, chat_id=message.chat_id)
+        # -------------------------------
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
@@ -1847,7 +1877,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
             if message.chat.type in ['group', 'supergroup']:
-                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
+                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])  # Pokedex grupal
+                db.increment_group_monthly_stickers(user.id, message.chat.id)  # Ranking grupal
 
             if db.check_sticker_owned(user.id, p['id'], s):
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
