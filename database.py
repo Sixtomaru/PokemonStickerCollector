@@ -82,7 +82,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN kanto_completed INTEGER DEFAULT 0",
         "ALTER TABLE groups ADD COLUMN group_name TEXT",
         "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1"
+        "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1",
+        "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0"
     ]
 
     for cmd in migraciones:
@@ -212,6 +213,36 @@ def reset_group_pokedex(chat_id):
     query_db("DELETE FROM group_events WHERE chat_id = ? AND event_id = 'kanto_group_challenge'", (chat_id,))
 
 
+def increment_group_monthly_stickers(user_id, chat_id):
+    """Suma 1 punto al ranking de ESTE grupo."""
+    # Primero aseguramos que el usuario esté registrado en el grupo
+    if DATABASE_URL:
+        query_db("INSERT INTO group_members (chat_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                 (chat_id, user_id))
+    else:
+        query_db("INSERT OR IGNORE INTO group_members (chat_id, user_id) VALUES (?, ?)", (chat_id, user_id))
+
+    query_db("UPDATE group_members SET stickers_this_month = stickers_this_month + 1 WHERE chat_id = ? AND user_id = ?",
+             (chat_id, user_id))
+
+
+def get_group_monthly_ranking(chat_id):
+    """Obtiene el ranking solo de los miembros de ESTE grupo."""
+    # Hacemos JOIN con users para sacar el nombre
+    sql = """
+    SELECT gm.user_id, u.username, gm.stickers_this_month 
+    FROM group_members gm
+    JOIN users u ON gm.user_id = u.user_id
+    WHERE gm.chat_id = ? AND gm.stickers_this_month > 0
+    ORDER BY gm.stickers_this_month DESC
+    LIMIT 10
+    """
+    return query_db(sql, (chat_id,))
+
+
+def reset_group_monthly_stickers():
+    """Resetea el contador de TODOS los grupos (se ejecuta a fin de mes)."""
+    query_db("UPDATE group_members SET stickers_this_month = 0")
 # ------------------------------------------------------------
 
 
