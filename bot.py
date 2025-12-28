@@ -1232,6 +1232,31 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message:
             schedule_message_deletion(context, update.message)
 
+async def notib_on_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            user = update.effective_user
+            if not user: return
+
+            db.get_or_create_user(user.id, user.first_name)
+            db.set_user_notification(user.id, True)
+
+            msg = await update.message.reply_text(
+                "🔔 **Notificaciones activadas.**\nTe avisaré por privado cuando recibas regalos.\n_Para volver a desactivarlas, escribe:_ /notiboff.",
+                parse_mode='Markdown', disable_notification=True)
+            schedule_message_deletion(context, msg, 10)
+            schedule_message_deletion(context, update.message, 10)
+
+async def notib_off_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            user = update.effective_user
+            if not user: return
+
+            db.get_or_create_user(user.id, user.first_name)
+            db.set_user_notification(user.id, False)
+
+            msg = await update.message.reply_text(
+                "🔕 **Notificaciones desactivadas.**\n_Para activarlas de nuevo, escribe:_ /notibon.",
+                parse_mode='Markdown', disable_notification=True)
+            schedule_message_deletion(context, msg, 10)
+            schedule_message_deletion(context, update.message, 10)
 
 async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1760,7 +1785,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         opening_message = await context.bot.send_message(
             message.chat_id,
-            f"🍀 ¡{user.mention_markdown()} ha abierto un *{ITEM_NAMES.get(item_id)}*! 🍀",
+            f"🎴 ¡{user.mention_markdown()} ha abierto un *{ITEM_NAMES.get(item_id)}*! ",
             parse_mode='Markdown',
             disable_notification=True
         )
@@ -2097,57 +2122,50 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_users = db.get_all_user_ids()
         first_arg = args[0].lower()
 
-        # --- LÓGICA ESPECIAL PARA COMBO (DINERO + ITEM) ---
+        # --- LÓGICA ESPECIAL PARA COMBO ---
         if first_arg == 'combo':
             try:
-                # Sintaxis: /sendtoall combo 1000 pack_id Mensaje
                 money_amount = int(args[1])
                 item_id_input = args[2]
                 message = ' '.join(args[3:]) or "¡Un regalo especial!"
-
-                # Resolver ID del objeto
                 final_item_id = USER_FRIENDLY_ITEM_IDS.get(item_id_input, item_id_input)
-
-                # Obtener nombre bonito para el mensaje
                 item_name = ITEM_NAMES.get(final_item_id, final_item_id)
                 if final_item_id == 'pack_shiny_kanto': item_name = "Sobre Brillante Kanto"
 
                 notified_count = 0
-                await update.message.reply_text(
-                    f"⏳ Enviando COMBO (Dinero + {item_name}) a {len(all_users)} usuarios...",
-                    disable_notification=True)
+                skipped_count = 0
+                await update.message.reply_text(f"⏳ Enviando COMBO a {len(all_users)} usuarios...",
+                                                disable_notification=True)
 
                 for uid in all_users:
-                    # 1. Meter dinero en buzón
                     db.add_mail(uid, 'money', str(money_amount), message)
-                    # 2. Meter objeto en buzón
                     db.add_mail(uid, 'inventory_item', final_item_id, message)
 
-                    # 3. Notificación ÚNICA
-                    try:
-                        await context.bot.send_message(
-                            chat_id=uid,
-                            text=f"📬 **¡TIENES CORREO!**\n\nEl administrador te ha enviado un regalo doble:\n"
-                                 f"💰 *{format_money(money_amount)}₽*\n"
-                                 f"🎁 *{item_name}*\n\n"
-                                 f"📝 Nota: _{message}_\n\n"
-                                 f"Ve al grupo y revisa tu 📬 *Buzón* para reclamarlos.",
-                            parse_mode='Markdown'
-                        )
-                        notified_count += 1
-                        await asyncio.sleep(0.05)
-                    except Exception:
-                        pass
+                    # --- CHECK: ¿QUIERE NOTIFICACIONES? ---
+                    if db.is_user_notification_enabled(uid):
+                        try:
+                            await context.bot.send_message(
+                                chat_id=uid,
+                                text=f"📬 **¡Tienes correo! Ha llegado algo a tu /buzon**\n\n _Para dejar de recibir notificaciones del buzón, escribe:_ /notiboff",
+                                parse_mode='Markdown'
+                            )
+                            notified_count += 1
+                            await asyncio.sleep(0.05)
+                        except Exception:
+                            pass
+                    else:
+                        skipped_count += 1
 
-                await update.message.reply_text(f"✅ Combo enviado. Notificados: {notified_count}/{len(all_users)}.",
-                                                disable_notification=True)
-                return  # Terminamos aquí si es combo
+                await update.message.reply_text(
+                    f"✅ Combo enviado.\n📩 Avisados: {notified_count}\n🔕 Silenciados: {skipped_count}",
+                    disable_notification=True)
+                return
 
             except (IndexError, ValueError):
                 return await update.message.reply_text("Uso Combo: `/sendtoall combo <dinero> <item_id> [mensaje]`",
                                                        disable_notification=True)
 
-        # --- LÓGICA NORMAL (UN SOLO TIPO) ---
+        # --- LÓGICA NORMAL ---
         item_type = ''
         item_details = ''
         message = ''
@@ -2177,23 +2195,29 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return await update.message.reply_text(f"Tipo no reconocido: '{first_arg}'.", disable_notification=True)
 
         notified_count = 0
+        skipped_count = 0
         await update.message.reply_text(f"⏳ Enviando regalos a {len(all_users)} usuarios...", disable_notification=True)
 
         for uid in all_users:
             db.add_mail(uid, item_type, item_details, message)
-            try:
-                await context.bot.send_message(
-                    chat_id=uid,
-                    text=f"📬 **¡TIENES CORREO!**\n\nEl administrador te ha enviado un regalo:\n_{message}_\n\nVe al grupo y revisa tu 📬 *Buzón* para reclamarlo.",
-                    parse_mode='Markdown'
-                )
-                notified_count += 1
-                await asyncio.sleep(0.05)
-            except Exception:
-                pass
+
+            # --- CHECK: ¿QUIERE NOTIFICACIONES? ---
+            if db.is_user_notification_enabled(uid):
+                try:
+                    await context.bot.send_message(
+                        chat_id=uid,
+                        text=f"📬 **¡Tienes correo! Ha llegado algo a tu /buzon**\n\n _Para dejar de recibir notificaciones del buzón, escribe:_ /notiboff",
+                        parse_mode='Markdown'
+                    )
+                    notified_count += 1
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    pass
+            else:
+                skipped_count += 1
 
         await update.message.reply_text(
-            f"✅ Regalo enviado a {len(all_users)} jugadores.\n📩 Notificados por privado: {notified_count}",
+            f"✅ Regalo enviado a {len(all_users)} jugadores.\n📩 Avisados: {notified_count}\n🔕 Silenciados: {skipped_count}",
             disable_notification=True
         )
 
@@ -2208,7 +2232,7 @@ async def send_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Uso: Responde a un usuario, menciónalo o usa su ID.\n`/sendsticker [@usuario|ID] <poke_id> <shiny 0/1> [mensaje]`")
     try:
         poke_id, is_shiny = int(args[0]), int(args[1])
-        message = ' '.join(args[2:]) or "¡Un regalo especial del admin!"
+        message = ' '.join(args[2:]) or "¡Un regalo especial!"
         if not POKEMON_BY_ID.get(poke_id):
             return await update.message.reply_text(f"❌ Error: El Pokémon con ID {poke_id} no existe.")
         item_details = f"{poke_id}_{is_shiny}"
@@ -2740,6 +2764,8 @@ def main():
         CommandHandler("bangroup", admin_ban_group),
         CommandHandler("unbangroup", admin_unban_group),
         CommandHandler("listbanned", admin_list_banned),
+        CommandHandler("notibon", notib_on_cmd),
+        CommandHandler("notiboff", notib_off_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
