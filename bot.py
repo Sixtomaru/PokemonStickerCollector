@@ -2752,7 +2752,10 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
-    application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
+    # Ejecuta el chequeo todos los días a las 12:00
+    # (La función check_monthly_job ya se encarga internamente de actuar SOLO si es el día 1)
+    application.job_queue.run_daily(check_monthly_job, time=dt_time(12, 0, tzinfo=TZ_SPAIN),
+                                    name="monthly_ranking_check")
 
     all_handlers: list[BaseHandler] = [
         ChatMemberHandler(welcome_message, ChatMemberHandler.MY_CHAT_MEMBER),
