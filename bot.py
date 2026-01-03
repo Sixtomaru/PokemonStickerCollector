@@ -191,63 +191,97 @@ def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message,
 
 # --- RANKING MENSUAL ---
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
-    """Tarea mensual: Ranking por grupo y reseteo."""
+    """Tarea mensual: Ranking por grupo y reseteo con lógica 'Mejor Premio Garantizado'."""
     now = datetime.now(TZ_SPAIN)
-    # Ejecutar solo el día 1 de cada mes
+
     if now.day == 1:
         active_groups = db.get_active_groups()
 
+        # 1. PREPARACIÓN DE DATOS
+        groups_data = {}
+        global_pack_winners = set()
+
+        # Recopilamos datos
         for chat_id in active_groups:
-            try:
-                # 1. Chequeo de Participación Mínima
-                # Contamos miembros registrados en la BD para este grupo
-                group_users = db.get_users_in_group(chat_id)
-                if len(group_users) < 4:  # Mínimo 4 personas
-                    continue  # Saltamos este grupo, no hay premios
+            group_users = db.get_users_in_group(chat_id)
+            if len(group_users) < 4: continue
 
-                # 2. Obtener Ranking LOCAL
-                ranking = db.get_group_monthly_ranking(chat_id)
-                if not ranking: continue
+            ranking = db.get_group_monthly_ranking(chat_id)
+            if not ranking: continue
 
-                message_lines = ["🏆 **Ranking Mensual del Grupo** 🏆\n"]
-                medals = ["🥇", "🥈", "🥉"]
+            groups_data[chat_id] = {
+                'ranking': ranking,
+                # Lista de premios a repartir en este grupo
+                'prizes_pool': ['pack_large_national', 'pack_medium_national', 'pack_small_national'],
+                'final_lines': []
+            }
 
-                # 3. Repartir Premios
-                for index, row in enumerate(ranking):
-                    # row es un diccionario o tupla según tu db.py, ajusta si es necesario
-                    # Asumiendo que get_group_monthly_ranking devuelve lista de tuplas: (uid, name, count)
-                    uid, uname, count = row[0], row[1], row[2]
+        # 2. PROCESAMIENTO POR NIVELES (Horizontal)
+        # Del 1º al 10º puesto
+        max_rank_depth = 10
 
-                    medal = medals[index] if index < 3 else f"{index + 1}."
-                    prize = 0
+        for i in range(max_rank_depth):
+            for chat_id, data in groups_data.items():
+                ranking = data['ranking']
 
-                    if index == 0:
-                        prize = 1000
-                    elif index == 1:
-                        prize = 800
-                    elif index == 2:
-                        prize = 500
+                if i < len(ranking):
+                    user_row = ranking[i]
+                    uid, uname, count = user_row[0], user_row[1], user_row[2]
+
+                    prize_text = ""
+
+                    # --- LÓGICA DE ASIGNACIÓN ---
+
+                    # Si el usuario YA ganó un sobre en otro grupo
+                    if uid in global_pack_winners:
+                        # NO recibe nada. NO gasta el premio de la pool.
+                        prize_text = "_(👑 Ya premiado)_"
+                        # Eliminamos la línea de dar dinero aquí.
+
                     else:
-                        prize = 300  # Premio de consolación para el top 10
+                        # Si es apto para premio en este grupo
+                        pool = data['prizes_pool']
 
-                    line = f"{medal} {uname}: {count} stickers"
-                    if prize > 0:
-                        line += f" (+{prize}₽)"
-                        db.add_mail(uid, 'money', str(prize), f"Premio Ranking Mensual en {chat_id}")
+                        if len(pool) > 0:
+                            # ¡Hay sobre disponible! Se lo lleva.
+                            prize_item = pool.pop(0)
 
-                    message_lines.append(line)
+                            prize_name = ""
+                            if prize_item == 'pack_large_national':
+                                prize_name = "Sobre Grande 🎴"
+                            elif prize_item == 'pack_medium_national':
+                                prize_name = "Sobre Mediano 🎴"
+                            elif prize_item == 'pack_small_national':
+                                prize_name = "Sobre Pequeño 🎴"
 
-                message_lines.append("\n_¡Los premios han sido enviados al buzón!_")
-                final_text = "\n".join(message_lines)
+                            db.add_mail(uid, 'inventory_item', prize_item, f"🥇 Premio Ranking Grupo {chat_id}")
+                            global_pack_winners.add(uid)  # Marcado como ganador global
+                            prize_text = f"(+{prize_name})"
+                        else:
+                            # Se acabaron los sobres en este grupo, el resto recibe monedas
+                            db.add_mail(uid, 'money', '500', f"Premio Ranking Grupo {chat_id}")
+                            prize_text = "(+500₽)"
 
-                await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='Markdown')
+                    medals = ["🥇", "🥈", "🥉"]
+                    visual_rank = medals[i] if i < 3 else f"{i + 1}."
+                    line = f"{visual_rank} {uname}: {count} stickers {prize_text}"
+                    data['final_lines'].append(line)
 
+        # 3. ENVÍO DE MENSAJES
+        for chat_id, data in groups_data.items():
+            try:
+                if not data['final_lines']: continue
+
+                message_text = "🏆 **Ranking Mensual del Grupo** 🏆\n\n"
+                message_text += "\n".join(data['final_lines'])
+                message_text += "\n\n_¡Los premios han sido enviados al buzón!_"
+
+                await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
             except Exception as e:
-                logger.error(f"Error ranking mensual en chat {chat_id}: {e}")
+                logger.error(f"Error enviando ranking al chat {chat_id}: {e}")
 
-        # 4. Resetear contadores de grupos
+        # 4. RESETEO FINAL
         db.reset_group_monthly_stickers()
-        # Reseteamos también el global por limpieza, aunque no se use
         db.reset_monthly_stickers()
 
 # --- MENSAJE DE BIENVENIDA ---
@@ -651,9 +685,21 @@ def choose_random_pokemon():
 async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
     context.chat_data.setdefault('active_events', {})
-    if context.chat_data['active_events']:
-        logger.info(f"Limpiando evento activo anterior en el chat {chat_id}")
-        context.chat_data['active_events'] = {}
+
+    # --- CAMBIO: LIMPIEZA CADA 3 DÍAS ---
+    current_time = time.time()
+    # 3 días = 259200 segundos
+    TIMEOUT_SECONDS = 259200
+
+    for msg_id, data in list(context.chat_data['active_events'].items()):
+        if current_time - data.get('timestamp', 0) > TIMEOUT_SECONDS:
+            del context.chat_data['active_events'][msg_id]
+            # Opcional: Intentar borrar el mensaje viejo de Telegram para limpiar el chat
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except BadRequest:
+                pass
+    # ------------------------------------
 
     is_qualified = await is_group_qualified(chat_id, context)
 
@@ -678,8 +724,13 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
     msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='Markdown')
-    context.chat_data['active_events'][msg.message_id] = {'event_id': event_id, 'claimed_by': None}
 
+    # Guardamos el evento con la hora actual
+    context.chat_data['active_events'][msg.message_id] = {
+        'event_id': event_id,
+        'claimed_by': None,
+        'timestamp': time.time()
+    }
 
 # --- VERSIÓN CORREGIDA Y ROBUSTA DE SPAWN_POKEMON ---
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
