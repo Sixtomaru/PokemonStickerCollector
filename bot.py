@@ -248,15 +248,15 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
 
                             prize_name = ""
                             if prize_item == 'pack_large_national':
-                                prize_name = "Sobre Grande 🎴"
+                                prize_name = "Sobre Grande Nacional 🎴"
                             elif prize_item == 'pack_medium_national':
-                                prize_name = "Sobre Mediano 🎴"
+                                prize_name = "Sobre Mediano Nacional 🎴"
                             elif prize_item == 'pack_small_national':
-                                prize_name = "Sobre Pequeño 🎴"
+                                prize_name = "Sobre Pequeño Nacional 🎴"
 
                             db.add_mail(uid, 'inventory_item', prize_item, f"🥇 Premio Ranking Grupo {chat_id}")
                             global_pack_winners.add(uid)  # Marcado como ganador global
-                            prize_text = f"(+{prize_name})"
+                            prize_text = f"({prize_name})"
                         else:
                             # Se acabaron los sobres en este grupo, el resto recibe monedas
                             db.add_mail(uid, 'money', '500', f"Premio Ranking Grupo {chat_id}")
