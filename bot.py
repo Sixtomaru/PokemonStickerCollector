@@ -450,6 +450,72 @@ async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
 
+
+async def admin_send_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    # Uso: /sendtogroup -100123456 combo 1000 pack_shiny_kanto Mensaje
+    try:
+        args = context.args
+        if len(args) < 3:
+            return await update.message.reply_text("Uso: `/sendtogroup <chat_id> <tipo/combo> <args...>`",
+                                                   disable_notification=True)
+
+        target_chat_id = int(args[0])
+        # Reconstruimos los argumentos como si fuera send_to_all pero desplazados
+        # args[0] es chat_id, así que pasamos args[1:] a la lógica de envío
+
+        # Obtenemos usuarios de ESE grupo
+        group_users = db.get_users_in_group(target_chat_id)
+        if not group_users:
+            return await update.message.reply_text("❌ No hay usuarios registrados en ese grupo o el grupo no existe.",
+                                                   disable_notification=True)
+
+        # --- REUTILIZAMOS LÓGICA DE ENVÍO ---
+        # (Copia simplificada de la lógica de send_to_all adaptada a una lista concreta)
+
+        first_arg = args[1].lower()
+        msg_context = args[2:]
+
+        if first_arg == 'combo':
+            money = int(msg_context[0])
+            item = msg_context[1]
+            msg_text = ' '.join(msg_context[2:]) or "¡Regalo de grupo!"
+
+            final_item = USER_FRIENDLY_ITEM_IDS.get(item, item)
+
+            for uid in group_users:
+                db.add_mail(uid, 'money', str(money), msg_text)
+                db.add_mail(uid, 'inventory_item', final_item, msg_text)
+                # Notificación (Opcional, copia el bloque try/except de send_to_all si quieres avisarles)
+
+        # ... (Puedes añadir lógica para 'money' o 'sticker' sueltos si quieres, siguiendo el patrón) ...
+        # Para simplificar, este ejemplo asume que usarás mayormente 'combo' o 'inventory_item'
+
+        else:
+            # Lógica genérica simple
+            item_val = msg_context[0]
+            msg_text = ' '.join(msg_context[1:])
+
+            type_map = {
+                'money': 'money',
+                'sticker': 'single_sticker'
+            }
+            db_type = type_map.get(first_arg, 'inventory_item')
+            if first_arg not in type_map and first_arg not in ITEM_NAMES and first_arg not in USER_FRIENDLY_ITEM_IDS and first_arg != 'pack_shiny_kanto':
+                return await update.message.reply_text("Tipo inválido.")
+
+            for uid in group_users:
+                db.add_mail(uid, db_type, item_val, msg_text)
+
+        await update.message.reply_text(
+            f"✅ Regalo enviado a los {len(group_users)} miembros del grupo `{target_chat_id}`.",
+            disable_notification=True)
+
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}", disable_notification=True)
+
+
 async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
@@ -1099,10 +1165,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     if is_qualified:
                         group_users = db.get_users_in_group(chat_id)
                         for uid in group_users:
-                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
+                            db.add_mail(uid, 'money', '3000', "Premio Reto Grupal: Kanto Completado")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto! Cada jugador ha recibido 3000₽ en su /buzon."
                     else:
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto!"
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
 
@@ -2500,41 +2566,133 @@ async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type not in ['group', 'supergroup']:
-        await update.effective_message.reply_text("Este comando solo funciona en grupos.", disable_notification=True)
+    query = update.callback_query
+
+    # Manejar si viene de comando o de botón "Volver"
+    if query:
+        message = query.message
+        chat_id = message.chat_id
+        # Si pulsó volver, necesitamos saber quién pulsó para validar permisos si quisieras,
+        # pero para ver retos es público.
+    else:
+        # Viene de comando de texto
+        if update.effective_chat.type not in ['group', 'supergroup']:
+            await update.effective_message.reply_text("Este comando solo funciona en grupos.",
+                                                      disable_notification=True)
+            return
+        message = update.effective_message
+        chat_id = update.effective_chat.id
+
+    # Aseguramos registro usuario
+    user = update.effective_user
+    db.get_or_create_user(user.id, user.first_name)
+    db.register_user_in_group(user.id, chat_id)
+
+    # --- LÓGICA KANTO ---
+    group_ids_kanto = db.get_group_unique_kanto_ids(chat_id)
+    total_kanto = len(group_ids_kanto)
+    target_kanto = 151
+
+    # Construcción del Mensaje Principal
+    text = "🤝 **Retos Grupales** 🤝\n\n"
+
+    # Bloque Kanto
+    if total_kanto >= target_kanto:
+        text += "🎯 Objetivo: Conseguir los 151 Pokémon de Kanto ✅ **¡Hecho!**\n"
+    else:
+        text += "🎯 Objetivo: Conseguir los 151 Pokémon de Kanto:\n"
+        text += f"📊 Total: {total_kanto}/{target_kanto}\n"
+
+    text += "\n" + "—" * 15 + "\n"  # Separador visual para futuros retos (Johto)
+
+    # Botón para ver detalles
+    keyboard = [[InlineKeyboardButton("📋 Stickers que faltan", callback_data=f"retos_missing_menu_{chat_id}")]]
+
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                       disable_notification=True)
+        schedule_message_deletion(context, msg, 60)
+        if update.message: schedule_message_deletion(context, update.message, 60)
+
+
+async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        chat_id = int(query.data.split('_')[-1])
+    except:
         return
 
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    db.get_or_create_user(user_id, update.effective_user.first_name)
-    db.register_user_in_group(user_id, chat_id)
+    text = "📂 **Selecciona una región para ver los faltantes:**"
 
-    group_ids = db.get_group_unique_kanto_ids(chat_id)
-    total_group = len(group_ids)
+    # Por ahora solo Kanto, pero preparado para más
+    keyboard = [
+        [InlineKeyboardButton("🔸 Kanto", callback_data=f"retos_view_kanto_{chat_id}")],
+        # [InlineKeyboardButton("🔹 Johto", callback_data=f"retos_view_johto_{chat_id}")], # Futuro
+        [InlineKeyboardButton("⬅️ Volver", callback_data=f"retos_back_{chat_id}")]
+    ]
 
-    kanto_rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
-    for p in ALL_POKEMON:
-        if p['id'] <= 151: kanto_rarity_totals[p['category']] += 1
-    group_rarity_counts = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
-    for pid in group_ids:
-        p_data = POKEMON_BY_ID.get(pid)
-        if p_data: group_rarity_counts[p_data['category']] += 1
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
-    text = "🤝 **Retos Grupales** 🤝\n\n"
-    text += "🎯 **Objetivo: Conseguir los 151 Pokémon de Kanto**\n"
-    text += "_El progreso solo cuenta los Pokémon capturados dentro de este grupo._\n\n"
-    rarity_texts = []
-    for cat in ['C', 'B', 'A', 'S']:
-        emoji = RARITY_VISUALS[cat]
-        rarity_texts.append(f"{emoji} {group_rarity_counts[cat]}/{kanto_rarity_totals[cat]}")
-    text += ", ".join(rarity_texts) + "\n\n"
-    text += f"📊 **Total: {total_group}/151**"
-    if total_group >= 151: text += "\n\n✅ **¡COMPLETADO!**"
 
-    # --- CORRECCIÓN: Usamos effective_message ---
-    msg = await update.effective_message.reply_text(text, parse_mode='Markdown', disable_notification=True)
-    schedule_message_deletion(context, msg, 30)
-    if update.message: schedule_message_deletion(context, update.message, 30)
+async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data.split('_')
+    region = data[2]  # 'kanto'
+    chat_id = int(data[3])
+
+    if region == 'kanto':
+        # Calcular estadísticas
+        group_ids = db.get_group_unique_kanto_ids(chat_id)
+
+        # Contadores de rareza
+        rarity_counts = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
+        rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
+        missing_names = []
+
+        # Recorremos SOLO Kanto (1-151)
+        for p in ALL_POKEMON:
+            if p['id'] > 151: continue
+
+            rarity_totals[p['category']] += 1
+
+            if p['id'] in group_ids:
+                rarity_counts[p['category']] += 1
+            else:
+                missing_names.append(p['name'])
+
+        # Construir texto
+        text = "🔸 **Kanto:**\n\n"
+
+        text += "_Rarezas:_\n"
+        r_text = []
+        for cat in ['C', 'B', 'A', 'S']:
+            emoji = RARITY_VISUALS[cat]
+            r_text.append(f"{emoji} {rarity_counts[cat]}/{rarity_totals[cat]}")
+        text += ", ".join(r_text) + "\n\n"
+
+        if not missing_names:
+            text += "✅ _¡Álbumdex completo de Kanto!_\n\n"
+        else:
+            text += "Faltan:\n"
+            # Limitamos a mostrar 50 para no romper el límite de Telegram si faltan todos
+            # Si quieres todos, quita el [:50]
+            for name in missing_names[:50]:
+                text += f"- {name}\n"
+            if len(missing_names) > 50:
+                text += f"... y {len(missing_names) - 50} más.\n"
+            text += "\n"
+
+        text += f"📊 **Total: {len(group_ids)}/151**"
+
+        keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data=f"retos_missing_menu_{chat_id}")]]
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def clemailbox_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2851,6 +3009,7 @@ def main():
         CommandHandler("listbanned", admin_list_banned),
         CommandHandler("notibon", notib_on_cmd),
         CommandHandler("notiboff", notib_off_cmd),
+        CommandHandler("sendtogroup", admin_send_to_group),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -2874,6 +3033,9 @@ def main():
         CallbackQueryHandler(view_special_item_handler, pattern="^viewspecial_"),
         CallbackQueryHandler(show_special_item_handler, pattern="^showspecial_"),
         CallbackQueryHandler(panel_handler, pattern="^panel_"),
+        CallbackQueryHandler(retos_missing_menu, pattern="^retos_missing_menu_"),
+        CallbackQueryHandler(retos_view_region, pattern="^retos_view_"),
+        CallbackQueryHandler(retos_cmd, pattern="^retos_back_"),
     ]
     application.add_handlers(all_handlers)
     for chat_id in db.get_active_groups():
