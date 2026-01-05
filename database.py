@@ -72,6 +72,18 @@ def init_db():
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS system_flags (flag_name TEXT PRIMARY KEY, value INTEGER DEFAULT 0)''')
 
+    # Tabla CÓDIGOS DE AMIGO
+    # Guardamos el timestamp de caducidad (expiry)
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS friend_codes (
+            user_id {id_type},
+            game_nick TEXT,
+            region TEXT,
+            code TEXT,
+            expiry_timestamp REAL,
+            PRIMARY KEY (user_id, code) 
+        )''')
+
     # --- MIGRACIONES MANUALES (A prueba de fallos) ---
     # Intentamos añadir las columnas una a una. Si ya existen, el error se ignora.
     migraciones = [
@@ -462,6 +474,61 @@ def is_user_notification_enabled(user_id):
     res = query_db("SELECT notifications_enabled FROM users WHERE user_id = ?", (user_id,), one=True)
     # Si es 1 o None (por defecto), es True. Si es 0, es False.
     return res[0] != 0 if res else True
+
+
+# --- SISTEMA DE CÓDIGOS DE AMIGO ---
+
+def add_friend_code(user_id, nick, region, code, days_valid=30):
+    """Añade o actualiza un código de amigo."""
+    import time
+    expiry = time.time() + (days_valid * 86400)
+
+    if DATABASE_URL:
+        # Postgres upsert
+        sql = """
+        INSERT INTO friend_codes (user_id, game_nick, region, code, expiry_timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, code) DO UPDATE SET expiry_timestamp = EXCLUDED.expiry_timestamp;
+        """
+    else:
+        # SQLite replace
+        sql = "INSERT OR REPLACE INTO friend_codes (user_id, game_nick, region, code, expiry_timestamp) VALUES (?, ?, ?, ?, ?)"
+
+    query_db(sql, (user_id, nick, region, code, expiry))
+
+
+def get_all_friend_codes():
+    """Obtiene todos los códigos ordenados por caducidad (los que más tiempo les queda, primero)."""
+    return query_db("SELECT * FROM friend_codes ORDER BY expiry_timestamp DESC", dict_cursor=True)
+
+
+def check_user_has_code(user_id):
+    """Devuelve True si el usuario ya tiene un código registrado."""
+    res = query_db("SELECT 1 FROM friend_codes WHERE user_id = ?", (user_id,), one=True)
+    return res is not None
+
+
+def check_code_exists(code):
+    """Devuelve True si el código ya existe en la BD."""
+    res = query_db("SELECT 1 FROM friend_codes WHERE code = ?", (code,), one=True)
+    return res is not None
+
+
+def renew_friend_code(user_id):
+    """Renueva los códigos del usuario por 30 días desde HOY."""
+    import time
+    new_expiry = time.time() + (30 * 86400)
+    # Verificamos si existe primero
+    if not check_user_has_code(user_id):
+        return False
+    query_db("UPDATE friend_codes SET expiry_timestamp = ? WHERE user_id = ?", (new_expiry, user_id))
+    return True
+
+def delete_expired_codes():
+    """Borra códigos caducados."""
+    import time
+    now = time.time()
+    query_db("DELETE FROM friend_codes WHERE expiry_timestamp < ?", (now,))
 
 # Iniciar la DB
 init_db()
