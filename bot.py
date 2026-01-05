@@ -3,6 +3,7 @@ import logging
 import random
 import time  # <--- Este es el módulo time original (necesario para time.time)
 import asyncio
+import re
 # --- CORRECCIÓN IMPORTS: Renombramos time a dt_time para evitar conflicto ---
 from datetime import datetime, time as dt_time
 import pytz
@@ -23,6 +24,8 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes, BaseHandler, ChatMemberHandler
 )
 from telegram.error import BadRequest, RetryAfter
+
+from telegram.ext import filters, MessageHandler
 
 import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
@@ -929,6 +932,7 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🎟️ Tómbola", callback_data="panel_tombola")],
         [InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon"),
          InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero")],
+        [InlineKeyboardButton("👥 Códigos", callback_data="panel_codigos")],
         [InlineKeyboardButton("🤝 Retos Grupales", callback_data="panel_retos")]
     ]
 
@@ -967,6 +971,9 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "panel_tombola":
         await tombola_claim(update, context)
 
+    elif query.data == "panel_codigos":
+        await codigos_cmd(update, context)
+        await query.answer()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -2664,6 +2671,156 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message: schedule_message_deletion(context, update.message, 60)
 
 
+# --- SISTEMA DE CÓDIGOS DE AMIGO ---
+
+async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detectar si viene de botón (query) o comando (message)
+    query = update.callback_query
+    if query:
+        message = query.message
+        # Si venía de "Añadir código", volvemos al menú principal
+        user_id = query.from_user.id
+    else:
+        message = update.effective_message
+        user_id = update.effective_user.id
+        # Borrar comando original
+        if update.message: schedule_message_deletion(context, update.message, 60)
+
+    # Limpieza automática de caducados antes de mostrar
+    db.delete_expired_codes()
+
+    all_codes = db.get_all_friend_codes()
+
+    # Organizar por regiones
+    regions = {'Europa': [], 'América': [], 'Asia': []}
+    current_time = time.time()
+
+    for row in all_codes:
+        # Normalizar nombre de región por si acaso
+        r = row['region']
+        if r not in regions: r = 'Europa'  # Fallback
+
+        days_left = int((row['expiry_timestamp'] - current_time) / 86400)
+        line = f"▪️ `{row['code']}` - {row['game_nick']} ({days_left} días)"
+        regions[r].append(line)
+
+    text = (
+        "👥 *Códigos de amigo:*\n"
+        "_Lista actualizada de códigos de amigo de Pokémon Shuffle (cada código se eliminará en 1 mes, si no se renueva antes):_\n\n"
+    )
+
+    text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
+    text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
+    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_")
+
+    keyboard = [
+        [InlineKeyboardButton("➕ Añadir código", callback_data="codes_menu_add")],
+        [InlineKeyboardButton("🔄 Renovar", callback_data="codes_menu_renew")]
+    ]
+
+    # Si viene del panel, podemos querer volver al panel, pero por simplicidad usamos el flujo del mensaje
+    if query:
+        # Reiniciamos contador de borrado si pulsan botones
+        refresh_deletion_timer(context, message, 60)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                       disable_notification=True)
+        schedule_message_deletion(context, msg, 60)
+
+
+async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    action = query.data
+
+    if action == "codes_menu_add":
+        text = (
+            "📝 **Añadir Código**\n\n"
+            "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
+            "`Nick Región Código`\n\n"
+            "• **Regiones válidas:** Europa, América, Asia\n"
+            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n"
+            "• **Ejemplo:** `Ash América 1234-5678`"
+        )
+        keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
+
+        refresh_deletion_timer(context, query.message, 60)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.answer()
+
+    elif action == "codes_menu_renew":
+        if db.renew_friend_code(user_id):
+            await query.answer("✅ ¡Código renovado por 30 días!", show_alert=True)
+            # Recargamos la lista para que se vea el cambio de días
+            await codigos_cmd(update, context)
+        else:
+            await query.answer("❌ No se ha encontrado tu código de amigo, por favor, añádelo de nuevo a la lista.",
+                               show_alert=True)
+
+    elif action == "codes_menu_back":
+        await codigos_cmd(update, context)
+
+
+async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Analiza mensajes de texto para ver si son códigos de amigo."""
+    text = update.message.text
+    user = update.effective_user
+
+    # Patrón Regex: (Nick) (Region) (Codigo)
+    # Busca: Palabras al inicio, luego una región válida, luego un código de 8-9 chars (letras, nums, guion)
+    pattern = r"^(.+)\s+(Europa|América|America|Asia)\s+([A-Z0-9\-]{8,9})$"
+
+    match = re.match(pattern, text, re.IGNORECASE)
+
+    if match:
+        nick = match.group(1).strip()
+        region_raw = match.group(2).lower()
+        code = match.group(3).upper()
+
+        # Normalizar región
+        region = "Europa"
+        if "am" in region_raw:
+            region = "América"
+        elif "as" in region_raw:
+            region = "Asia"
+
+        # Validar longitud real del código (sin guiones debe ser 16 chars... espera, Pokemon Shuffle son 16 digitos?
+        # No, suelen ser 16 en Switch, pero en móvil son letras y números cortos (8 caracteres habitualmente).
+        # El usuario pidió: "exactamente 8 letras o números y una longitud de 9 o menos".
+
+        clean_code = code.replace("-", "")
+        if len(clean_code) != 8:
+            # Si no son 8 caracteres limpios, ignoramos (o mandamos error si quieres ser estricto)
+            # Pero mejor ignorar para no molestar en chat normal si alguien escribe parecido.
+            return
+
+            # --- VALIDACIONES ---
+        # 1. ¿Ya tiene código? (Excepto Admin)
+        if user.id != ADMIN_USER_ID and db.check_user_has_code(user.id):
+            msg = await update.message.reply_text(
+                "❌ Ya añadiste un código. Si quieres añadir otro, contacta con un administrador del grupo.",
+                disable_notification=True
+            )
+            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, msg, 60)
+            return
+
+        # 2. ¿El código existe ya?
+        if db.check_code_exists(code):
+            msg = await update.message.reply_text("❌ Este código ya está registrado en la lista.",
+                                                  disable_notification=True)
+            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, msg, 60)
+            return
+
+        # --- AÑADIR ---
+        db.add_friend_code(user.id, nick, region, code)
+
+        msg = await update.message.reply_text("✅ Código agregado a la lista.", disable_notification=True)
+        schedule_message_deletion(context, update.message, 60)
+        schedule_message_deletion(context, msg, 60)
+
 async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -3092,6 +3249,7 @@ def main():
         CommandHandler("listbanned", admin_list_banned),
         CommandHandler("notibon", notib_on_cmd),
         CommandHandler("notiboff", notib_off_cmd),
+        CommandHandler("codigos", codigos_cmd),
         CommandHandler("sendtogroup", admin_send_to_group),
         CommandHandler("buscaruser", admin_search_user),
 
@@ -3117,9 +3275,11 @@ def main():
         CallbackQueryHandler(view_special_item_handler, pattern="^viewspecial_"),
         CallbackQueryHandler(show_special_item_handler, pattern="^showspecial_"),
         CallbackQueryHandler(panel_handler, pattern="^panel_"),
+        CallbackQueryHandler(codigos_btn_handler, pattern="^codes_menu_"),
         CallbackQueryHandler(retos_missing_menu, pattern="^retos_missing_menu_"),
         CallbackQueryHandler(retos_view_region, pattern="^retos_view_"),
         CallbackQueryHandler(retos_cmd, pattern="^retos_back_"),
+        MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
     application.add_handlers(all_handlers)
     for chat_id in db.get_active_groups():
