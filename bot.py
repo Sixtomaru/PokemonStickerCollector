@@ -2889,6 +2889,40 @@ async def admin_add_bulk_stickers(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ No se pudo añadir ningún Pokémon.", disable_notification=True)
 
 
+async def admin_search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Busca usuarios en la BD por nombre parcial."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        if not context.args:
+            await update.message.reply_text("Uso: `/buscaruser <nombre>`", disable_notification=True)
+            return
+
+        search_term = context.args[0]
+
+        # Buscamos en la base de datos (el % sirve para buscar coincidencias parciales)
+        # Nota: Usamos LOWER para ignorar mayúsculas/minúsculas
+        sql = "SELECT user_id, username FROM users WHERE LOWER(username) LIKE ?"
+        # En Postgres LIKE es sensitive, pero al bajar a lower comparamos igual.
+        # El helper query_db convierte ? a %s si es Postgres.
+
+        results = db.query_db(sql, (f'%{search_term.lower()}%',))
+
+        if not results:
+            await update.message.reply_text("❌ No encontré a nadie con ese nombre.", disable_notification=True)
+            return
+
+        text = f"🔍 **Resultados para '{search_term}':**\n\n"
+        for row in results:
+            # row[0] es ID, row[1] es Username
+            text += f"👤 {row[1]} \n🆔 ID: `{row[0]}`\n\n"
+
+        await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}", disable_notification=True)
+
+
 async def admin_force_stop_remote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
 
