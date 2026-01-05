@@ -2200,25 +2200,64 @@ async def _get_target_user_from_command(update: Update, context: ContextTypes.DE
 
 async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+
+    # 1. Intentamos obtener usuario por los métodos estándar (respuesta, mención, etc.)
     target_user, args = await _get_target_user_from_command(update, context)
-    if not target_user:
-        return await update.message.reply_text("Uso: `/darobjeto [@usuario|ID] <item_id>`")
 
+    target_id = None
+    item_id = None
+    message_parts = []
+
+    # ESCENARIO A: Telegram reconoció al usuario (Reply, Mención o ID cacheada)
+    if target_user:
+        target_id = target_user.id
+        # args ya viene recortado por la función auxiliar
+        if len(args) > 0:
+            item_id = args[0]
+            message_parts = args[1:]
+
+    # ESCENARIO B: Telegram NO lo reconoció, pero tú pusiste una ID numérica manualmente
+    # (Aquí usamos context.args directamente porque _get_target_user falló)
+    elif context.args and context.args[0].isdigit():
+        target_id = int(context.args[0])
+        if len(context.args) > 1:
+            item_id = context.args[1]
+            message_parts = context.args[2:]
+
+    # Validación final
+    if not target_id or not item_id:
+        return await update.message.reply_text(
+            "❌ Error de sintaxis.\nUso: `/darobjeto <ID_o_@usuario> <item_id> [mensaje opcional]`",
+            disable_notification=True
+        )
+
+    # Ejecución del regalo
+    msg = " ".join(message_parts)
+    if not msg: msg = "¡Un regalo de la administración!"
+
+    # Aseguramos que el usuario exista en la BD (aunque sea sin nombre real)
+    db.get_or_create_user(target_id, f"User_{target_id}")
+
+    # Enviamos al buzón
+    db.add_mail(target_id, 'inventory_item', item_id, msg)
+
+    item_name = ITEM_NAMES.get(item_id, item_id)
+
+    # Intentamos notificar por privado (si falla, no importa, el regalo ya está en el buzón)
     try:
-        item_id = args[0]
-        msg = " ".join(args[1:])
-        if not msg: msg = "¡Un regalo de la administración!"
+        if db.is_user_notification_enabled(target_id):
+            await context.bot.send_message(
+                chat_id=target_id,
+                text=f"📬 **¡TIENES CORREO!**\n\nEl admin te ha enviado: *{item_name}*\nNota: _{msg}_",
+                parse_mode='Markdown'
+            )
+    except:
+        pass
 
-        db.add_mail(target_user.id, 'inventory_item', item_id, msg)
-
-        item_name = ITEM_NAMES.get(item_id, item_id)
-        await update.message.reply_text(f"✅ Enviado *{item_name}* al buzón de {target_user.mention_markdown()}.",
-                                        parse_mode='Markdown')
-
-    except (IndexError, ValueError):
-        await update.message.reply_text(
-            "Uso: `/darobjeto [@usuario|ID] <item_id> [mensaje opcional]`\nEj: `/darobjeto @pepe pack_small_national`")
-
+    await update.message.reply_text(
+        f"✅ Enviado *{item_name}* al buzón del ID `{target_id}`.",
+        parse_mode='Markdown', disable_notification=True
+    )
 
 async def moddinero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID:
