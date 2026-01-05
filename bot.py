@@ -3054,6 +3054,7 @@ def main():
         CommandHandler("notibon", notib_on_cmd),
         CommandHandler("notiboff", notib_off_cmd),
         CommandHandler("sendtogroup", admin_send_to_group),
+        CommandHandler("buscaruser", admin_search_user),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
