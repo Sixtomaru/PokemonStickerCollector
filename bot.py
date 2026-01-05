@@ -1115,10 +1115,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        # --- RANKING LOCAL ---
+        # --- RANKING LOCAL (Sumar puntos al grupo) ---
         if message.chat.type in ['group', 'supergroup']:
             db.increment_group_monthly_stickers(user.id, message.chat.id)
-        # ---------------------
+        # ---------------------------------------------
 
         for key in ['sticker_id', 'text_id']:
             try:
@@ -1139,21 +1139,22 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             db.add_sticker_to_collection(user.id, pokemon_id, is_shiny)
             message_text = f"🎉 ¡Felicidades, {user.mention_markdown()}! Has conseguido un sticker de *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}*. Lo has registrado en tu Álbumdex."
 
+        # --- RETO GRUPAL (Añadir a la Pokédex del grupo) ---
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
 
-        is_qualified = await is_group_qualified(message.chat.id, context)
-
+        # --- PREMIO INDIVIDUAL (Kanto Completado) ---
+        # Se verifica siempre, aunque sea en chat privado
         if not db.is_kanto_completed_by_user(user.id):
             unique_count = db.get_user_unique_kanto_count(user.id)
             if unique_count >= 151:
                 db.set_kanto_completed_by_user(user.id)
-                if is_qualified:
-                    db.update_money(user.id, 3000)
-                    message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
-                else:
-                    message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊"
+                db.update_money(user.id, 3000)
+                message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+        # ---------------------------------------------
 
+        # --- PREMIO RETO GRUPAL ---
+        is_qualified = await is_group_qualified(message.chat.id, context)
         chat_id = message.chat.id
         if message.chat.type in ['group', 'supergroup']:
             if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
@@ -1165,10 +1166,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     if is_qualified:
                         group_users = db.get_users_in_group(chat_id)
                         for uid in group_users:
-                            db.add_mail(uid, 'money', '3000', "Premio Reto Grupal: Kanto Completado")
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto! Cada jugador ha recibido 3000₽ en su /buzon."
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
                     else:
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto!"
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
 
@@ -1945,12 +1946,10 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- LÓGICA SOBRE BRILLANTE KANTO ---
         if item_id == 'pack_shiny_kanto':
-            # Respetamos pesos de categorías (C, B, A, S) pero forzamos shiny
             pokemon_data, _, _ = choose_random_pokemon()
             pack_results.append({'data': pokemon_data, 'is_shiny': True})
 
         elif is_magic:
-            # (Tu lógica mágica existente se mantiene igual)
             user_stickers = db.get_all_user_stickers(user.id)
             all_normal_stickers = {(p['id'], 0) for p in ALL_POKEMON}
             all_shiny_stickers = {(p['id'], 1) for p in ALL_POKEMON}
@@ -1986,8 +1985,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(1.2)
             except RetryAfter as e:
                 await asyncio.sleep(e.retry_after)
-                # Reintento simple (puedes copiar el bloque open anterior si quieres ser exhaustivo)
-
             except Exception as e:
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
 
@@ -2008,6 +2005,16 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         vertical_summary = "\n".join(summary_parts)
         final_text = f"📜 Resultado del {pack_name} de {user.mention_markdown()}:\n\n{vertical_summary}"
+
+        # --- SECCIÓN DEL PREMIO POR COMPLETAR KANTO ---
+        # Se ejecuta después de haber añadido los stickers a la base de datos
+        if not db.is_kanto_completed_by_user(user.id):
+            unique_count = db.get_user_unique_kanto_count(user.id)
+            if unique_count >= 151:
+                db.set_kanto_completed_by_user(user.id)
+                db.update_money(user.id, 3000)
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+        # ----------------------------------------------
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='Markdown',
                                        disable_notification=True)
@@ -2572,6 +2579,7 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         message = query.message
         chat_id = message.chat_id
+        refresh_deletion_timer(context, message, 30)
         # Si pulsó volver, necesitamos saber quién pulsó para validar permisos si quisieras,
         # pero para ver retos es público.
     else:
@@ -2620,6 +2628,7 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    refresh_deletion_timer(context, query.message, 30)
 
     try:
         chat_id = int(query.data.split('_')[-1])
@@ -2641,6 +2650,7 @@ async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    refresh_deletion_timer(context, query.message, 30)
 
     data = query.data.split('_')
     region = data[2]  # 'kanto'
