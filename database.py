@@ -530,5 +530,14 @@ def delete_expired_codes():
     now = time.time()
     query_db("DELETE FROM friend_codes WHERE expiry_timestamp < ?", (now,))
 
+def get_code_owner(code):
+    """Devuelve el ID del usuario dueño de un código."""
+    res = query_db("SELECT user_id FROM friend_codes WHERE code = ?", (code,), one=True)
+    return res[0] if res else None
+
+def delete_friend_code(code):
+    """Elimina un código específico de la base de datos."""
+    query_db("DELETE FROM friend_codes WHERE code = ?", (code,))
+
 # Iniciar la DB
 init_db()
