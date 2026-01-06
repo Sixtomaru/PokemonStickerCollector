@@ -946,6 +946,9 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     # Redirigimos los botones a las funciones existentes
+    # IMPORTANTE: En Códigos y Retos forzamos mensaje nuevo pasando update 'limpio' de query
+    # o gestionándolo dentro de la función.
+
     if query.data == "panel_mochila":
         await inventory_cmd(update, context)
         await query.answer()
@@ -955,6 +958,11 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
     elif query.data == "panel_retos":
+        # Truco: simulamos que no hay query para que reto_cmd envíe mensaje nuevo
+        # Pero ojo, retos_cmd necesita saber el chat_id.
+        # Mejor opción: Llamar a retos_cmd y que él sepa que viene del panel.
+        # Vamos a modificar retos_cmd ligeramente abajo.
+        update.callback_query.data = "panel_retos"  # Marca para la función
         await retos_cmd(update, context)
         await query.answer()
 
@@ -972,6 +980,8 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await tombola_claim(update, context)
 
     elif query.data == "panel_codigos":
+        # Marca para la función codigos_cmd
+        update.callback_query.data = "panel_codigos"
         await codigos_cmd(update, context)
         await query.answer()
 
@@ -2676,15 +2686,20 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Detectar si viene de botón (query) o comando (message)
     query = update.callback_query
-    if query:
+    # Detectamos si viene del botón del Panel
+    is_panel = (query and query.data == "panel_codigos")
+
+    if query and not is_panel:
+        # Navegación interna (ej: botón "Atrás" dentro del menú de códigos)
         message = query.message
-        # Si venía de "Añadir código", volvemos al menú principal
         user_id = query.from_user.id
     else:
+        # Viene de comando de texto /codigos O del botón del Panel
         message = update.effective_message
         user_id = update.effective_user.id
-        # Borrar comando original
-        if update.message: schedule_message_deletion(context, update.message, 60)
+        # Si es comando de texto, programamos su borrado
+        if update.message:
+            schedule_message_deletion(context, update.message, 60)
 
     # Limpieza automática de caducados antes de mostrar
     db.delete_expired_codes()
@@ -2701,7 +2716,10 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if r not in regions: r = 'Europa'  # Fallback
 
         days_left = int((row['expiry_timestamp'] - current_time) / 86400)
-        line = f"▪️ `{row['code']}` - {row['game_nick']} ({days_left} días)"
+
+        # --- FORMATO CORREGIDO: Nick - Código (Monoespaciado) ---
+        line = f"▪️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
+        # --------------------------------------------------------
         regions[r].append(line)
 
     text = (
@@ -2718,16 +2736,59 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 Renovar", callback_data="codes_menu_renew")]
     ]
 
-    # Si viene del panel, podemos querer volver al panel, pero por simplicidad usamos el flujo del mensaje
-    if query:
-        # Reiniciamos contador de borrado si pulsan botones
+    # --- BLOQUE DE ENVÍO ---
+    if query and not is_panel:
+        # Si estamos navegando dentro del menú (botón atrás), EDITAMOS
         refresh_deletion_timer(context, message, 60)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
+        # Si venimos del Panel o del comando, ENVIAMOS MENSAJE NUEVO
         msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
 
+
+async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user: return
+
+    # Verificamos si escribió el argumento
+    if not context.args:
+        msg = await update.message.reply_text(
+            "❌ Debes especificar el código que quieres borrar.\nEjemplo: `/borrarcodigo AABB1122`",
+            parse_mode='Markdown', disable_notification=True
+        )
+        schedule_message_deletion(context, msg, 30)
+        schedule_message_deletion(context, update.message, 30)
+        return
+
+    code_to_delete = context.args[0].upper().strip()
+
+    # Buscamos de quién es el código
+    owner_id = db.get_code_owner(code_to_delete)
+
+    if not owner_id:
+        msg = await update.message.reply_text(
+            f"❌ El código `{code_to_delete}` no existe en la lista.",
+            parse_mode='Markdown', disable_notification=True
+        )
+    else:
+        # VERIFICACIÓN DE PERMISOS
+        # ¿Es el admin O es el dueño del código?
+        if user.id == ADMIN_USER_ID or user.id == owner_id:
+            db.delete_friend_code(code_to_delete)
+            msg = await update.message.reply_text(
+                f"🗑️ El código `{code_to_delete}` ha sido eliminado correctamente.",
+                parse_mode='Markdown', disable_notification=True
+            )
+        else:
+            msg = await update.message.reply_text(
+                "⛔ No puedes borrar un código que no es tuyo.",
+                disable_notification=True
+            )
+
+    schedule_message_deletion(context, msg, 30)
+    schedule_message_deletion(context, update.message, 30)
 
 async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2739,9 +2800,8 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             "📝 **Añadir Código**\n\n"
             "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
             "`Nick Región Código`\n\n"
-            "• **Regiones válidas:** Europa, América, Asia\n"
-            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n"
-            "• **Ejemplo:** `Ash América 1234-5678`"
+            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n\n"
+            "_Para eliminar un código de la lista, usa el comando '/borrarcodigo', seguido del código que quieres borrar. Por ejemplo: /borrarcodigo 6T4A2944_"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
 
@@ -3156,6 +3216,7 @@ async def post_init(application: Application):
         BotCommand("mochila", "🎒 Revisa tus objetos."),
         BotCommand("tombola", "🎟️ Tómbola diaria"),
         BotCommand("buzon", "💌 Revisa tu buzón."),
+        BotCommand("codigos", "👥 Lista de Códigos de Amigo."),
         BotCommand("retos", "🤝 Retos Grupales."),
         BotCommand("dinero", "💰 Consulta tu dinero."),
         BotCommand("regalar", "💸 Envía dinero a otro jugador."),
@@ -3252,6 +3313,7 @@ def main():
         CommandHandler("codigos", codigos_cmd),
         CommandHandler("sendtogroup", admin_send_to_group),
         CommandHandler("buscaruser", admin_search_user),
+        CommandHandler("borrarcodigo", delete_code_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
