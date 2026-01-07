@@ -95,7 +95,8 @@ def init_db():
         "ALTER TABLE groups ADD COLUMN group_name TEXT",
         "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1",
-        "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0"
+        "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1"
     ]
 
     for cmd in migraciones:
@@ -538,6 +539,20 @@ def get_code_owner(code):
 def delete_friend_code(code):
     """Elimina un código específico de la base de datos."""
     query_db("DELETE FROM friend_codes WHERE code = ?", (code,))
+
+# --- AJUSTES NOTIFICACIONES CÓDIGOS ---
+
+def set_code_notification(user_id, enabled):
+    """Activa (1) o desactiva (0) el recordatorio de códigos."""
+    val = 1 if enabled else 0
+    # Aseguramos que el usuario existe
+    get_or_create_user(user_id, None)
+    query_db("UPDATE users SET code_notifications_enabled = ? WHERE user_id = ?", (val, user_id))
+
+def is_code_notification_enabled(user_id):
+    """Comprueba si el usuario quiere recordatorios de códigos (Por defecto True)."""
+    res = query_db("SELECT code_notifications_enabled FROM users WHERE user_id = ?", (user_id,), one=True)
+    return res[0] != 0 if res else True
 
 # Iniciar la DB
 init_db()
