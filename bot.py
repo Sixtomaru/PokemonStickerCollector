@@ -2790,9 +2790,7 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             "📝 **Añadir Código**\n\n"
             "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
             "`Nick Región Código`\n\n"
-            "• **Regiones válidas:** Europa, América, Asia\n"
             "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n"
-            "• **Ejemplo:** `Ash América 1234-5678`"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
