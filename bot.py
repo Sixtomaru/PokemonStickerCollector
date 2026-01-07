@@ -946,8 +946,7 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     # Redirigimos los botones a las funciones existentes
-    # IMPORTANTE: En Códigos y Retos forzamos mensaje nuevo pasando update 'limpio' de query
-    # o gestionándolo dentro de la función.
+    # IMPORTANTE: No intentamos modificar query.data, las funciones ya saben leerlo.
 
     if query.data == "panel_mochila":
         await inventory_cmd(update, context)
@@ -958,11 +957,6 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
     elif query.data == "panel_retos":
-        # Truco: simulamos que no hay query para que reto_cmd envíe mensaje nuevo
-        # Pero ojo, retos_cmd necesita saber el chat_id.
-        # Mejor opción: Llamar a retos_cmd y que él sepa que viene del panel.
-        # Vamos a modificar retos_cmd ligeramente abajo.
-        update.callback_query.data = "panel_retos"  # Marca para la función
         await retos_cmd(update, context)
         await query.answer()
 
@@ -972,16 +966,17 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "panel_tienda":
         await tienda_cmd(update, context)
+        # Tienda gestiona su propio answer
 
     elif query.data == "panel_album":
         await albumdex_cmd(update, context)
+        # Album gestiona su propio answer
 
     elif query.data == "panel_tombola":
         await tombola_claim(update, context)
+        # Tombola gestiona su propio answer
 
     elif query.data == "panel_codigos":
-        # Marca para la función codigos_cmd
-        update.callback_query.data = "panel_codigos"
         await codigos_cmd(update, context)
         await query.answer()
 
@@ -2630,16 +2625,15 @@ async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # Detectamos si viene del botón del Panel
+    is_panel = (query and query.data == "panel_retos")
 
-    # Manejar si viene de comando o de botón "Volver"
-    if query:
+    if query and not is_panel:
+        # Navegación interna (ej: botón "Volver" desde la lista de faltantes)
         message = query.message
         chat_id = message.chat_id
-        refresh_deletion_timer(context, message, 30)
-        # Si pulsó volver, necesitamos saber quién pulsó para validar permisos si quisieras,
-        # pero para ver retos es público.
     else:
-        # Viene de comando de texto
+        # Viene de comando de texto /retos O del botón del Panel
         if update.effective_chat.type not in ['group', 'supergroup']:
             await update.effective_message.reply_text("Este comando solo funciona en grupos.",
                                                       disable_notification=True)
@@ -2667,66 +2661,59 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "🎯 Objetivo: Conseguir los 151 Pokémon de Kanto:\n"
         text += f"📊 Total: {total_kanto}/{target_kanto}\n"
 
-    text += "\n" + "—" * 15 + "\n"  # Separador visual para futuros retos (Johto)
+    text += "\n" + "—" * 15 + "\n"  # Separador visual
 
     # Botón para ver detalles
     keyboard = [[InlineKeyboardButton("📋 Stickers que faltan", callback_data=f"retos_missing_menu_{chat_id}")]]
 
-    if query:
+    # --- BLOQUE DE ENVÍO ---
+    if query and not is_panel:
+        # Si estamos navegando dentro del menú (botón volver), EDITAMOS
+        refresh_deletion_timer(context, message, 30)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
+        # Si venimos del Panel o del comando, ENVIAMOS MENSAJE NUEVO
         msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
-        if update.message: schedule_message_deletion(context, update.message, 60)
+        if update.message:
+            schedule_message_deletion(context, update.message, 60)
 
 
 # --- SISTEMA DE CÓDIGOS DE AMIGO ---
 
 async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detectar si viene de botón (query) o comando (message)
     query = update.callback_query
-    # Detectamos si viene del botón del Panel
     is_panel = (query and query.data == "panel_codigos")
 
     if query and not is_panel:
-        # Navegación interna (ej: botón "Atrás" dentro del menú de códigos)
         message = query.message
         user_id = query.from_user.id
     else:
-        # Viene de comando de texto /codigos O del botón del Panel
         message = update.effective_message
         user_id = update.effective_user.id
-        # Si es comando de texto, programamos su borrado
+        # --- CAMBIO: 900 segundos (15 min) ---
         if update.message:
-            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, update.message, 900)
 
-    # Limpieza automática de caducados antes de mostrar
     db.delete_expired_codes()
-
     all_codes = db.get_all_friend_codes()
 
-    # Organizar por regiones
     regions = {'Europa': [], 'América': [], 'Asia': []}
     current_time = time.time()
 
     for row in all_codes:
-        # Normalizar nombre de región por si acaso
         r = row['region']
-        if r not in regions: r = 'Europa'  # Fallback
-
+        if r not in regions: r = 'Europa'
         days_left = int((row['expiry_timestamp'] - current_time) / 86400)
 
-        # --- FORMATO CORREGIDO: Nick - Código (Monoespaciado) ---
         line = f"▪️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
-        # --------------------------------------------------------
         regions[r].append(line)
 
     text = (
         "👥 *Códigos de amigo:*\n"
         "_Lista actualizada de códigos de amigo de Pokémon Shuffle (cada código se eliminará en 1 mes, si no se renueva antes):_\n\n"
     )
-
     text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
     text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_")
@@ -2736,16 +2723,15 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 Renovar", callback_data="codes_menu_renew")]
     ]
 
-    # --- BLOQUE DE ENVÍO ---
     if query and not is_panel:
-        # Si estamos navegando dentro del menú (botón atrás), EDITAMOS
-        refresh_deletion_timer(context, message, 60)
+        # --- CAMBIO: 600 segundos ---
+        refresh_deletion_timer(context, message, 600)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        # Si venimos del Panel o del comando, ENVIAMOS MENSAJE NUEVO
         msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                        disable_notification=True)
-        schedule_message_deletion(context, msg, 60)
+        # --- CAMBIO: 600 segundos ---
+        schedule_message_deletion(context, msg, 600)
 
 
 async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2790,29 +2776,31 @@ async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_message_deletion(context, msg, 30)
     schedule_message_deletion(context, update.message, 30)
 
+
 async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     action = query.data
+
+    # --- CAMBIO: Reiniciar a 600 segundos en cualquier interacción ---
+    refresh_deletion_timer(context, query.message, 600)
 
     if action == "codes_menu_add":
         text = (
             "📝 **Añadir Código**\n\n"
             "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
             "`Nick Región Código`\n\n"
-            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n\n"
-            "_Para eliminar un código de la lista, usa el comando '/borrarcodigo', seguido del código que quieres borrar. Por ejemplo: /borrarcodigo 6T4A2944_"
+            "• **Regiones válidas:** Europa, América, Asia\n"
+            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n"
+            "• **Ejemplo:** `Ash América 1234-5678`"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
-
-        refresh_deletion_timer(context, query.message, 60)
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         await query.answer()
 
     elif action == "codes_menu_renew":
         if db.renew_friend_code(user_id):
             await query.answer("✅ ¡Código renovado por 30 días!", show_alert=True)
-            # Recargamos la lista para que se vea el cambio de días
             await codigos_cmd(update, context)
         else:
             await query.answer("❌ No se ha encontrado tu código de amigo, por favor, añádelo de nuevo a la lista.",
@@ -2880,6 +2868,72 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
         msg = await update.message.reply_text("✅ Código agregado a la lista.", disable_notification=True)
         schedule_message_deletion(context, update.message, 60)
         schedule_message_deletion(context, msg, 60)
+
+
+# --- NUEVOS COMANDOS DE NOTIFICACIÓN DE CÓDIGOS ---
+
+async def notic_on_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user: return
+
+    db.set_code_notification(user.id, True)
+    msg = await update.message.reply_text(
+        "✅🗓 Recordatorio activado.\n\n_Para desactivarlo, escribe: /noticoff_.",
+        parse_mode='Markdown', disable_notification=True
+    )
+    schedule_message_deletion(context, msg, 10)
+    schedule_message_deletion(context, update.message, 10)
+
+
+async def notic_off_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user: return
+
+    db.set_code_notification(user.id, False)
+    msg = await update.message.reply_text(
+        "❌🗓 Recordatorio desactivado.\n\n_Si quieres volver a activarlo, escribe: /noticon_.",
+        parse_mode='Markdown', disable_notification=True
+    )
+    schedule_message_deletion(context, msg, 10)
+    schedule_message_deletion(context, update.message, 10)
+
+
+# --- TAREA DIARIA DE REVISIÓN DE CADUCIDAD ---
+
+async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
+    """Revisa si hay códigos que caducan en 3 días y avisa."""
+    all_codes = db.get_all_friend_codes()
+    current_time = time.time()
+
+    for row in all_codes:
+        expiry = row['expiry_timestamp']
+        user_id = row['user_id']
+
+        # Calcular días restantes
+        days_left = (expiry - current_time) / 86400
+
+        # Si le quedan entre 2.5 y 3.5 días, consideramos que son "3 días"
+        # (Esto evita que se envíe varias veces o que se salte por horas)
+        if 2.0 < days_left <= 3.0:
+
+            # Verificar si el usuario quiere recibir la alerta
+            if db.is_code_notification_enabled(user_id):
+                try:
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=(
+                            "🗓 **Recordatorio:** Tu código de amigo de Shuffle se borrará de la lista de códigos del bot en **3 días**.\n"
+                            "Si quieres que se mantenga, accede a /codigos y toca el botón **\"Renovar\"**.\n\n"
+                            "_Recuerda que puedes borrar el código de la lista manualmente, escribiendo /borrarcodigo, seguido del código que quieres borrar._\n\n"
+                            "_Si quieres dejar de recibir este recordatorio, escribe: /noticoff_"
+                        ),
+                        parse_mode='Markdown'
+                    )
+                    # Pequeña pausa anti-spam
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    # Si el usuario bloqueó al bot, fallará.
+                    pass
 
 async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3262,10 +3316,14 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
-    # Ejecuta el chequeo todos los días a las 12:00
-    # (La función check_monthly_job ya se encarga internamente de actuar SOLO si es el día 1)
-    application.job_queue.run_daily(check_monthly_job, time=dt_time(12, 0, tzinfo=TZ_SPAIN),
-                                    name="monthly_ranking_check")
+    application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
+
+    # Tarea diaria: Recordatorio de códigos (10:00 AM)
+    application.job_queue.run_daily(
+        check_code_expiration_job,
+        time=dt_time(12, 0, tzinfo=TZ_SPAIN),
+        name="code_expiration_check"
+    )
 
     all_handlers: list[BaseHandler] = [
         ChatMemberHandler(welcome_message, ChatMemberHandler.MY_CHAT_MEMBER),
@@ -3310,6 +3368,8 @@ def main():
         CommandHandler("listbanned", admin_list_banned),
         CommandHandler("notibon", notib_on_cmd),
         CommandHandler("notiboff", notib_off_cmd),
+        CommandHandler("noticon", notic_on_cmd),
+        CommandHandler("noticoff", notic_off_cmd),
         CommandHandler("codigos", codigos_cmd),
         CommandHandler("sendtogroup", admin_send_to_group),
         CommandHandler("buscaruser", admin_search_user),
