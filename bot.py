@@ -2707,7 +2707,7 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if r not in regions: r = 'Europa'
         days_left = int((row['expiry_timestamp'] - current_time) / 86400)
 
-        line = f"▪️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
+        line = f"🔹️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
         regions[r].append(line)
 
     text = (
@@ -2790,7 +2790,8 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             "📝 **Añadir Código**\n\n"
             "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
             "`Nick Región Código`\n\n"
-            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n"
+            "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n\n"
+            "_Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
