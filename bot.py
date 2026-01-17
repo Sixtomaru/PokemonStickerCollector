@@ -3269,15 +3269,17 @@ async def post_init(application: Application):
         BotCommand("mochila", "🎒 Revisa tus objetos."),
         BotCommand("tombola", "🎟️ Tómbola diaria"),
         BotCommand("buzon", "💌 Revisa tu buzón."),
-        BotCommand("codigos", "👥 Lista de Códigos de Amigo."),
         BotCommand("retos", "🤝 Retos Grupales."),
         BotCommand("dinero", "💰 Consulta tu dinero."),
         BotCommand("regalar", "💸 Envía dinero a otro jugador."),
         BotCommand("start", "▶️ Inicia el juego (solo admins)."),
-        BotCommand("stopgame", "⏸️ Detiene el juego (solo admins).")
+        BotCommand("stopgame", "⏸️ Detiene el juego (solo admins)."),
+        BotCommand("codigos", "👥 Lista de Códigos de Amigo.")
     ]
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     await bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
+
+    logger.info("Comandos del bot configurados exitosamente.")
 
     # --- CAMBIO IMPORTANTE: Usamos 'dt_time' para evitar el conflicto ---
     application.job_queue.run_daily(daily_tombola_job, time=dt_time(0, 0, tzinfo=TZ_SPAIN),
@@ -3287,6 +3289,10 @@ async def post_init(application: Application):
 
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
+    # --- LOG DE CONTROL ---
+    logger.info("🕒 EJECUTANDO TÓMBOLA DIARIA...")
+    # ----------------------
+
     text = (
         "🎟️ *Tómbola Diaria* 🎟️\n\n"
         "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
@@ -3299,6 +3305,10 @@ async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in active_groups:
         try:
             # Limpiamos la memoria del chat para el nuevo día
+            # Usamos setdefault por si el chat no existía en memoria
+            if chat_id not in context.application.chat_data:
+                context.application.chat_data[chat_id] = {}
+
             context.application.chat_data[chat_id]['tombola_winners'] = []
 
             msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
@@ -3314,6 +3324,31 @@ def main():
     keep_alive()
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+
+    # --- ZONA DE TAREAS PROGRAMADAS ---
+
+    # 1. Ranking Mensual (Día 1 de cada mes a las 12:00)
+    application.job_queue.run_daily(
+        check_monthly_job,
+        time=dt_time(12, 0, tzinfo=TZ_SPAIN),
+        name="monthly_ranking_check"
+    )
+
+    # 2. Tómbola Diaria (00:00)
+    # TRUCO: Ponemos 00:01 para evitar conflictos de "cambio de día exacto" en algunos servidores
+    application.job_queue.run_daily(
+        daily_tombola_job,
+        time=dt_time(0, 1, tzinfo=TZ_SPAIN),
+        name="daily_tombola_broadcast"
+    )
+
+    # 3. Recordatorio de Códigos (12:00)
+    application.job_queue.run_daily(
+        check_code_expiration_job,
+        time=dt_time(12, 0, tzinfo=TZ_SPAIN),
+        name="code_expiration_check"
+    )
+    # ----------------------------------
 
     application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
 
@@ -3412,4 +3447,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
