@@ -3325,17 +3325,24 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
-    # --- ZONA DE TAREAS PROGRAMADAS ---
+    # --- ZONA DE TAREAS PROGRAMADAS (CON LIMPIEZA ANTI-DUPLICADOS) ---
 
-    # 1. Ranking Mensual (Día 1 de cada mes a las 12:00)
+    # 1. Ranking Mensual (Día 1 a las 12:00)
+    # Limpieza previa
+    old_ranking = application.job_queue.get_jobs_by_name("monthly_ranking_check")
+    for job in old_ranking: job.schedule_removal()
+
     application.job_queue.run_daily(
         check_monthly_job,
         time=dt_time(12, 0, tzinfo=TZ_SPAIN),
         name="monthly_ranking_check"
     )
 
-    # 2. Tómbola Diaria (00:00)
-    # TRUCO: Ponemos 00:01 para evitar conflictos de "cambio de día exacto" en algunos servidores
+    # 2. Tómbola Diaria (00:01)
+    # Limpieza previa
+    old_tombola = application.job_queue.get_jobs_by_name("daily_tombola_broadcast")
+    for job in old_tombola: job.schedule_removal()
+
     application.job_queue.run_daily(
         daily_tombola_job,
         time=dt_time(0, 1, tzinfo=TZ_SPAIN),
@@ -3343,21 +3350,16 @@ def main():
     )
 
     # 3. Recordatorio de Códigos (12:00)
+    # Limpieza previa
+    old_codes = application.job_queue.get_jobs_by_name("code_expiration_check")
+    for job in old_codes: job.schedule_removal()
+
     application.job_queue.run_daily(
         check_code_expiration_job,
         time=dt_time(12, 0, tzinfo=TZ_SPAIN),
         name="code_expiration_check"
     )
-    # ----------------------------------
-
-    application.job_queue.run_repeating(check_monthly_job, interval=86400, first=10, name="monthly_ranking_check")
-
-    # Tarea diaria: Recordatorio de códigos (10:00 AM)
-    application.job_queue.run_daily(
-        check_code_expiration_job,
-        time=dt_time(12, 0, tzinfo=TZ_SPAIN),
-        name="code_expiration_check"
-    )
+    # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
         ChatMemberHandler(welcome_message, ChatMemberHandler.MY_CHAT_MEMBER),
