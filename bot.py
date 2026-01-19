@@ -3281,12 +3281,6 @@ async def post_init(application: Application):
 
     logger.info("Comandos del bot configurados exitosamente.")
 
-    # --- CAMBIO IMPORTANTE: Usamos 'dt_time' para evitar el conflicto ---
-    application.job_queue.run_daily(daily_tombola_job, time=dt_time(0, 0, tzinfo=TZ_SPAIN),
-                                    name="daily_tombola_broadcast")
-
-    logger.info("Comandos del bot configurados exitosamente.")
-
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     # --- LOG DE CONTROL ---
@@ -3328,7 +3322,6 @@ def main():
     # --- ZONA DE TAREAS PROGRAMADAS (CON LIMPIEZA ANTI-DUPLICADOS) ---
 
     # 1. Ranking Mensual (Día 1 a las 12:00)
-    # Limpieza previa
     old_ranking = application.job_queue.get_jobs_by_name("monthly_ranking_check")
     for job in old_ranking: job.schedule_removal()
 
@@ -3339,7 +3332,6 @@ def main():
     )
 
     # 2. Tómbola Diaria (00:01)
-    # Limpieza previa
     old_tombola = application.job_queue.get_jobs_by_name("daily_tombola_broadcast")
     for job in old_tombola: job.schedule_removal()
 
@@ -3350,7 +3342,6 @@ def main():
     )
 
     # 3. Recordatorio de Códigos (12:00)
-    # Limpieza previa
     old_codes = application.job_queue.get_jobs_by_name("code_expiration_check")
     for job in old_codes: job.schedule_removal()
 
