@@ -96,7 +96,12 @@ def init_db():
         "ALTER TABLE groups ADD COLUMN is_banned INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1",
         "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1"
+        "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1",
+
+        # --- NUEVO PARA INTERCAMBIOS ---
+        "ALTER TABLE collection ADD COLUMN quantity INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN daily_trades INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN last_trade_date TEXT DEFAULT NULL"
     ]
 
     for cmd in migraciones:
@@ -104,7 +109,6 @@ def init_db():
             cursor.execute(cmd)
             if not is_sqlite: conn.commit()
         except Exception:
-            # Si falla es porque la columna ya existe, ignoramos el error
             if not is_sqlite: conn.rollback()
             pass
 
@@ -476,6 +480,86 @@ def is_user_notification_enabled(user_id):
     # Si es 1 o None (por defecto), es True. Si es 0, es False.
     return res[0] != 0 if res else True
 
+def add_sticker_smart(user_id, pokemon_id, is_shiny):
+    """
+    Lógica inteligente de captura:
+    - Si no lo tiene: Lo añade (qty=1). Retorna 'NEW'.
+    - Si tiene 1: Lo sube a 2. Retorna 'DUPLICATE'.
+    - Si tiene 2: No hace nada (se debe vender fuera). Retorna 'MAX'.
+    """
+    # Verificamos estado actual
+    res = query_db("SELECT quantity FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+                   (user_id, pokemon_id, 1 if is_shiny else 0), one=True)
+
+    if not res:
+        # No lo tiene, insertar
+        add_sticker_to_collection(user_id, pokemon_id, is_shiny)
+        return 'NEW'
+
+    qty = res[0]
+    if qty == 1:
+        # Tiene 1, subimos a 2
+        query_db("UPDATE collection SET quantity = 2 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+                 (user_id, pokemon_id, 1 if is_shiny else 0))
+        return 'DUPLICATE'
+
+    # Tiene 2 o más
+    return 'MAX'
+
+
+def get_user_duplicates(user_id, region_ids=None):
+    """Obtiene los pokémon donde quantity >= 2."""
+    sql = "SELECT pokemon_id, is_shiny FROM collection WHERE user_id = ? AND quantity >= 2"
+    args = [user_id]
+
+    rows = query_db(sql, tuple(args))
+
+    # Filtrar por región si se especifica (lo haremos en python para no complicar el SQL con rangos dinámicos)
+    # Devolvemos lista de tuplas (id, is_shiny)
+    return rows
+
+
+def check_trade_daily_limit(user_id):
+    """Devuelve True si puede intercambiar hoy."""
+    import datetime
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+
+    res = query_db("SELECT daily_trades, last_trade_date FROM users WHERE user_id = ?", (user_id,), one=True)
+    if not res: return True
+
+    count, last_date = res[0], res[1]
+
+    if last_date != today:
+        # Nuevo día, reseteamos
+        query_db("UPDATE users SET daily_trades = 0, last_trade_date = ? WHERE user_id = ?", (today, user_id))
+        return True
+
+    return count < 2
+
+
+def execute_trade(user_a, pokemon_a, is_shiny_a, user_b, pokemon_b, is_shiny_b):
+    """
+    Ejecuta el intercambio atómico.
+    User A da Pokemon A -> Recibe Pokemon B.
+    User B da Pokemon B -> Recibe Pokemon A.
+    """
+    # 1. Restar 1 a la cantidad de los pokémon ofrecidos (pasan de 2 a 1)
+    # (Asumimos que ya validamos que tienen duplicados antes de llamar a esto)
+    query_db("UPDATE collection SET quantity = quantity - 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+             (user_a, pokemon_a, 1 if is_shiny_a else 0))
+
+    query_db("UPDATE collection SET quantity = quantity - 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+             (user_b, pokemon_b, 1 if is_shiny_b else 0))
+
+    # 2. Sumar el pokémon recibido (usamos add_sticker_smart para manejar si ya lo tenían o no)
+    # Nota: Si add_sticker_smart devuelve 'MAX', significa que ya tenían 2, así que en el bot daremos dinero.
+    status_a = add_sticker_smart(user_a, pokemon_b, is_shiny_b)
+    status_b = add_sticker_smart(user_b, pokemon_a, is_shiny_a)
+
+    # 3. Actualizar contadores diarios
+    query_db("UPDATE users SET daily_trades = daily_trades + 1 WHERE user_id IN (?, ?)", (user_a, user_b))
+
+    return status_a, status_b
 
 # --- SISTEMA DE CÓDIGOS DE AMIGO ---
 
@@ -553,6 +637,7 @@ def is_code_notification_enabled(user_id):
     """Comprueba si el usuario quiere recordatorios de códigos (Por defecto True)."""
     res = query_db("SELECT code_notifications_enabled FROM users WHERE user_id = ?", (user_id,), one=True)
     return res[0] != 0 if res else True
+
 
 # Iniciar la DB
 init_db()
