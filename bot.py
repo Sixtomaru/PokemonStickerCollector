@@ -319,18 +319,12 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             try:
                 parts = query.data.split('_')
-                # CORRECCIÓN: Manejar específicamente el botón 'main' que es más corto
                 if parts[1] == "main":
-                    # Formato: album_main_OWNERID (_MSGID opcional)
                     owner_id = int(parts[2])
-                    if len(parts) > 3 and parts[3].isdigit():
-                        cmd_msg_id = int(parts[3])
+                    if len(parts) > 3 and parts[3].isdigit(): cmd_msg_id = int(parts[3])
                 else:
-                    # Formato normal: album_REGION_PAGE_OWNERID (_MSGID opcional)
-                    owner_id = int(
-                        parts[-2] if len(parts) > 4 and parts[-1].isdigit() else parts[-1])  # Fallback seguro
-                    # Intento más preciso:
-                    if parts[-1].isdigit() and parts[-2].isdigit():  # Tiene msg_id
+                    owner_id = int(parts[-2] if len(parts) > 4 and parts[-1].isdigit() else parts[-1])
+                    if parts[-1].isdigit() and parts[-2].isdigit():
                         owner_id = int(parts[-2])
                         cmd_msg_id = int(parts[-1])
                     elif parts[-1].isdigit():
@@ -355,20 +349,30 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_pokemon_count = len(ALL_POKEMON)
     owned_normal = len({s[0] for s in user_collection if s[1] == 0})
     owned_shiny = len({s[0] for s in user_collection if s[1] == 1})
+
     rarity_counts = {rarity: 0 for rarity in RARITY_VISUALS.keys()}
     for pokemon_id, is_shiny in user_collection:
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
         if pokemon_data:
             final_rarity = get_rarity(pokemon_data['category'], is_shiny)
             if final_rarity in rarity_counts: rarity_counts[final_rarity] += 1
+
     rarity_lines = [f"{rarity_counts[code]} {emoji}" for code, emoji in RARITY_VISUALS.items()]
+
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
             f"Stickers: *{owned_normal}/{total_pokemon_count}*\n"
             f"Brillantes: *{owned_shiny}/{total_pokemon_count}*\n\n"
             f"Rarezas: {', '.join(rarity_lines)}\n\n"
-            "Selecciona una región para ver detalles:")
+            "Selecciona una opción:")
 
     keyboard = []
+
+    # --- NUEVO BOTÓN: VER REPETIDOS ---
+    cb_dupes = f"album_dupe_menu_{owner_user.id}"
+    if cmd_msg_id: cb_dupes += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("♻ Ver repetidos", callback_data=cb_dupes)])
+    # ----------------------------------
+
     for name in POKEMON_REGIONS.keys():
         cb_data = f"album_{name}_0_{owner_user.id}"
         if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
@@ -380,11 +384,9 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query and not is_panel:
         await query.answer()
-        # Si venimos de "main" (botón volver) editamos.
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except BadRequest:
-            # Si falla la edición, enviamos uno nuevo (fallback)
             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                                  disable_notification=True)
@@ -396,6 +398,80 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 60)
         if update.message:
             schedule_message_deletion(context, update.message, 60)
+
+
+async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        parts = query.data.split('_')
+        owner_id = int(parts[3])
+        cmd_msg_id = parts[4] if len(parts) > 4 else ""
+
+        if query.from_user.id != owner_id:
+            await query.answer("Este menú no es tuyo.", show_alert=True)
+            return
+    except:
+        return
+
+    text = "🔄 **Stickers Repetidos**\nElige la región:"
+
+    keyboard = []
+    # Botón Kanto
+    cb_kanto = f"album_dupe_show_kanto_{owner_id}"
+    if cmd_msg_id: cb_kanto += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("🔸 Kanto", callback_data=cb_kanto)])
+
+    # Botón Volver
+    cb_back = f"album_main_{owner_id}"
+    if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=cb_back)])
+
+    refresh_deletion_timer(context, query.message, 60)
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        parts = query.data.split('_')
+        region = parts[3]  # kanto
+        owner_id = int(parts[4])
+        cmd_msg_id = parts[5] if len(parts) > 5 else ""
+
+        if query.from_user.id != owner_id:
+            await query.answer("Este menú no es tuyo.", show_alert=True)
+            return
+    except:
+        return
+
+    # Obtener repetidos
+    duplicates = db.get_user_duplicates(owner_id)
+
+    # Filtrar por región y ordenar alfabéticamente
+    names_list = []
+
+    for pid, is_shiny in duplicates:
+        # Filtro Kanto (1-151)
+        if region == 'kanto' and 1 <= pid <= 151:
+            p_data = POKEMON_BY_ID[pid]
+            name_display = f"{p_data['name']}{'✨' if is_shiny else ''}"
+            names_list.append(name_display)
+
+    # Ordenar alfabéticamente
+    names_list.sort()
+
+    text = f"🔄 **Repetidos de {region.capitalize()}:**\n\n"
+    if not names_list:
+        text += "_No tienes repetidos en esta región._"
+    else:
+        text += ", ".join(names_list)
+
+    cb_back = f"album_dupe_menu_{owner_id}"
+    if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
+    keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data=cb_back)]]
+
+    refresh_deletion_timer(context, query.message, 60)
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -929,10 +1005,11 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎒 Mochila", callback_data="panel_mochila"),
          InlineKeyboardButton("📖 Álbumdex", callback_data="panel_album")],
         [InlineKeyboardButton("🏪 Tienda", callback_data="panel_tienda"),
-         InlineKeyboardButton("🎟️ Tómbola", callback_data="panel_tombola")],
-        [InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon"),
-         InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero")],
-        [InlineKeyboardButton("👥 Códigos", callback_data="panel_codigos")],
+         InlineKeyboardButton("♻ Intercambios", callback_data="panel_intercambios")],  # <--- AQUÍ
+        [InlineKeyboardButton("🎟️ Tómbola", callback_data="panel_tombola"),
+         InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon")],
+        [InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero"),
+         InlineKeyboardButton("👥 Códigos", callback_data="panel_codigos")],
         [InlineKeyboardButton("🤝 Retos Grupales", callback_data="panel_retos")]
     ]
 
@@ -946,7 +1023,6 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     # Redirigimos los botones a las funciones existentes
-    # IMPORTANTE: No intentamos modificar query.data, las funciones ya saben leerlo.
 
     if query.data == "panel_mochila":
         await inventory_cmd(update, context)
@@ -958,7 +1034,7 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "panel_retos":
         await retos_cmd(update, context)
-        await query.answer()
+        # retos_cmd gestiona su propio flujo, no hacemos answer aquí para evitar conflictos si edita mensaje
 
     elif query.data == "panel_buzon":
         await buzon(update, context)
@@ -966,19 +1042,23 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "panel_tienda":
         await tienda_cmd(update, context)
-        # Tienda gestiona su propio answer
+        # tienda_cmd gestiona su propio flujo
 
     elif query.data == "panel_album":
         await albumdex_cmd(update, context)
-        # Album gestiona su propio answer
+        # albumdex_cmd gestiona su propio flujo
 
     elif query.data == "panel_tombola":
         await tombola_claim(update, context)
-        # Tombola gestiona su propio answer
+        # tombola_claim gestiona su propio flujo (alertas/edición)
 
     elif query.data == "panel_codigos":
         await codigos_cmd(update, context)
-        await query.answer()
+        # codigos_cmd gestiona su propio flujo
+
+    elif query.data == "panel_intercambios":
+        await intercambio_cmd(update, context)
+        # intercambio_cmd gestiona sus propias alertas (answer) o mensajes nuevos
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1144,7 +1224,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             message_text = f"🎉 ¡Felicidades, {user.mention_markdown()}! Has conseguido un sticker de *{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex."
         elif status == 'DUPLICATE':
             # 2ª Vez
-            message_text = f"🔄 ¡Genial, {user.mention_markdown()}! Conseguiste un sticker de *{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo."
+            message_text = f"♻ ¡Genial, {user.mention_markdown()}! Conseguiste un sticker de *{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo."
         else:
             # 3ª Vez o más (MAX) -> Dinero
             money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
@@ -2009,7 +2089,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if status == 'NEW':
                 summary_parts.append(f"🔸🆕 {p_name} {r_emoji}")
             elif status == 'DUPLICATE':
-                summary_parts.append(f"🔸🔄 {p_name} {r_emoji} (Guardado para cambio)")
+                summary_parts.append(f"🔸♻️ {p_name} {r_emoji} (Repetido)")
             else:  # MAX
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
                 db.update_money(user.id, money)
@@ -2939,38 +3019,73 @@ async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
 # --- SISTEMA DE INTERCAMBIOS ---
 
 async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sender = update.effective_user
-    message = update.effective_message
+    # Detectar si viene del Panel
+    query = update.callback_query
+    is_panel = (query and query.data == "panel_intercambios")
 
-    # 1. Validar si puede iniciar intercambio hoy
+    if is_panel:
+        sender = query.from_user
+        message = query.message  # El panel (no lo usamos para reply)
+    else:
+        sender = update.effective_user
+        message = update.effective_message
+        if update.message: schedule_message_deletion(context, update.message, 60)
+
+    # 1. Validar límite diario
     if not db.check_trade_daily_limit(sender.id):
-        msg = await message.reply_text("⛔ Has alcanzado tu límite de 2 intercambios diarios.",
-                                       disable_notification=True)
-        schedule_message_deletion(context, msg, 60)
+        # Si es panel, usamos answer, si es texto, reply
+        text = "⛔ Has alcanzado tu límite de 2 intercambios diarios."
+        if is_panel:
+            await query.answer(text, show_alert=True)
+        else:
+            msg = await message.reply_text(text, disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
         return
 
-    # 2. Obtener objetivo (Reply o Mención)
-    target_user, _ = await _get_target_user_from_command(update, context)
+    # 2. Obtener objetivo (Solo si es comando de texto con mención)
+    target_user = None
+    if not is_panel:
+        target_user, _ = await _get_target_user_from_command(update, context)
 
+    # --- NUEVO: Validar si ya tiene intercambio activo ---
+    active_trades = context.chat_data.get('active_trades', {})
+    if sender.id in active_trades:
+        text = "⛔ Ya tienes una petición de intercambio pendiente. Espéra a que la acepten o rechacen."
+        if is_panel:
+            await query.answer(text, show_alert=True)
+        else:
+            msg = await message.reply_text(text, disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
+        return
+    # ----------------------------------------------------
+
+    # Si no hay objetivo o es el mismo usuario -> Mostrar Ayuda
     if not target_user or target_user.id == sender.id or target_user.is_bot:
-        msg = await message.reply_text(
+        help_text = (
             "🔄 **Intercambios**\n\n"
-            "Responde con /intercambio a un mensaje de la persona con la que quieres intercambiar, o menciónala de esta manera: `/intercambio @usuario`.\n"
-            "Solo puedes intercambiar stickers repetidos de la misma rareza.",
-            parse_mode='Markdown', disable_notification=True
+            "**¿Cómo funcionan?**\n"
+            "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
+            "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
+            "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
         )
-        schedule_message_deletion(context, msg, 60)
+        if is_panel:
+            # Enviamos mensaje nuevo temporal
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
+                                                 parse_mode='Markdown', disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
+        else:
+            msg = await message.reply_text(help_text, parse_mode='Markdown', disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
         return
 
-    # 3. Validar si el objetivo puede intercambiar
+    # 3. Validar límite diario del objetivo
     if not db.check_trade_daily_limit(target_user.id):
         msg = await message.reply_text(f"⛔ {target_user.first_name} ha alcanzado su límite de intercambios hoy.",
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
         return
 
-    # 4. Iniciar flujo: Mostrar repetidos del OTRO (Target)
-    # Guardamos estado en callback_data: trade_step1_TARGET_SENDER
+    # 4. Iniciar flujo
     await show_trade_menu_target_duplicates(update, context, target_user.id, sender.id, page=0)
 
 
@@ -3045,23 +3160,21 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
 
 async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # data: trade_step2_TARGET_SENDER_PID_SHINY
     parts = query.data.split('_')
     target_id, sender_id = int(parts[2]), int(parts[3])
     wanted_pid, wanted_shiny = int(parts[4]), bool(int(parts[5]))
 
+    # --- CORRECCIÓN: SOLO EL SENDER PUEDE ELEGIR ---
     if query.from_user.id != sender_id:
-        await query.answer("No eres el que inició el intercambio.", show_alert=True)
+        await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
         return
+    # -----------------------------------------------
 
-    # Obtener rareza del deseado para filtrar
     wanted_data = POKEMON_BY_ID[wanted_pid]
     wanted_rarity = get_rarity(wanted_data['category'], wanted_shiny)
 
-    # Obtener MIS repetidos (SENDER)
     my_duplicates = db.get_user_duplicates(sender_id)
 
-    # FILTRAR POR RAREZA IGUAL
     valid_duplicates = []
     for pid, shiny in my_duplicates:
         p_data = POKEMON_BY_ID[pid]
@@ -3073,21 +3186,18 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer(f"❌ No tienes repetidos de rareza {wanted_rarity} para ofrecer.", show_alert=True)
         return
 
-    # Obtener colección TARGET para marcar útiles (🤝)
     target_collection = db.get_all_user_stickers(target_id)
 
     keyboard = []
     row = []
-    for pid, shiny in valid_duplicates:  # Mostrar todos (o paginar si son muchos)
+    for pid, shiny in valid_duplicates:
         p_data = POKEMON_BY_ID[pid]
 
-        # Marca 🤝 si al otro le falta
         is_useful = (pid, shiny) not in target_collection
         useful_mark = "🤝" if is_useful else ""
         shiny_mark = "✨" if shiny else ""
 
         btn_text = f"{p_data['name']}{shiny_mark} {useful_mark}"
-        # trade_confirm_TGT_SND_WANT_WSHINY_OFFER_OSHINY
         cb_data = f"trade_conf_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{pid}_{int(shiny)}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
@@ -3100,33 +3210,33 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = (f"🔄 **Tu Oferta ({wanted_rarity}):**\n"
             f"Elegiste: {wanted_data['name']}\n"
-            f"Selecciona qué ofreces a cambio:")
+            f"Selecciona qué repetido ofreces a cambio:")
 
     refresh_deletion_timer(context, query.message, 120)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... (inicio igual, validaciones de sender) ...
     query = update.callback_query
     parts = query.data.split('_')
-    # trade_conf_TGT_SND_WP_WS_OP_OS
     target_id, sender_id = int(parts[2]), int(parts[3])
+
+    if query.from_user.id != sender_id:
+        await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
+        return
+
+    # ... (obtener datos pokémon igual) ...
     want_p, want_s = int(parts[4]), bool(int(parts[5]))
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
-
     sender = await context.bot.get_chat(sender_id)
     target = await context.bot.get_chat(target_id)
-
     w_data = POKEMON_BY_ID[want_p]
     o_data = POKEMON_BY_ID[offer_p]
-
     w_name = f"{w_data['name']}{'✨' if want_s else ''}"
     o_name = f"{o_data['name']}{'✨' if offer_s else ''}"
-
-    # Comprobar si es NEW para cada uno
     s_coll = db.get_all_user_stickers(sender_id)
     t_coll = db.get_all_user_stickers(target_id)
-
     s_new = "🆕" if (want_p, want_s) not in s_coll else ""
     t_new = "🆕" if (offer_p, offer_s) not in t_coll else ""
 
@@ -3137,72 +3247,75 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
         f"Esperando confirmación de {target.first_name}..."
     )
 
-    # trade_exec_TGT_SND_WP_WS_OP_OS
     data_payload = f"{target_id}_{sender_id}_{want_p}_{int(want_s)}_{offer_p}_{int(offer_s)}"
-
     keyboard = [
         [InlineKeyboardButton("✅ Aceptar", callback_data=f"trade_exec_{data_payload}")],
         [InlineKeyboardButton("❌ Rechazar", callback_data=f"trade_reject_{data_payload}")]
     ]
 
-    refresh_deletion_timer(context, query.message, 120)
+    # --- CAMBIO: REGISTRAR ACTIVO Y TIMEOUT 24H ---
+    cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
+
+    context.chat_data.setdefault('active_trades', {})
+    context.chat_data['active_trades'][sender_id] = query.message.message_id
+
+    # Programar borrado en 24 horas (86400 seg)
+    schedule_message_deletion(context, query.message, 86400)
+    # ----------------------------------------------
+
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
-    action = parts[1]  # exec o reject
-
+    action = parts[1]
     target_id, sender_id = int(parts[2]), int(parts[3])
     user_id = query.from_user.id
 
-    # Permisos
-    if action == "exec":
-        if user_id != target_id:
-            await query.answer("Solo el destinatario puede aceptar.", show_alert=True)
-            return
-    else:
-        if user_id != target_id and user_id != sender_id:
-            await query.answer("No puedes cancelar este intercambio.", show_alert=True)
-            return
+    # ... (validaciones permisos igual) ...
+    if action == "exec" and user_id != target_id:
+        await query.answer("Solo el destinatario puede aceptar.", show_alert=True)
+        return
+    if action == "reject" and user_id != target_id and user_id != sender_id:
+        await query.answer("No puedes cancelar este intercambio.", show_alert=True)
+        return
+
+    # --- LIBERAR USUARIO ---
+    if sender_id in context.chat_data.get('active_trades', {}):
+        del context.chat_data['active_trades'][sender_id]
+    # -----------------------
 
     if action == "reject":
         await query.edit_message_text("❌ Intercambio cancelado.")
         return
 
+    # ... (Resto de lógica de ejecución y BD igual) ...
+    # Copia el bloque de 'if not db.check...' hasta el final de tu función actual
+
     # EJECUTAR INTERCAMBIO
-    # Validar límites de nuevo por seguridad
     if not db.check_trade_daily_limit(sender_id) or not db.check_trade_daily_limit(target_id):
-        await query.answer("⛔ Error: Uno de los jugadores alcanzó el límite diario de intercambios.", show_alert=True)
+        await query.answer("⛔ Error: Alguno de los dos jugadores alcanzó el límite diario de intercambios.", show_alert=True)
         await query.delete_message()
         return
 
     want_p, want_s = int(parts[4]), bool(int(parts[5]))
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
-
-    # Ejecución en BD
     status_sender, status_target = db.execute_trade(sender_id, offer_p, offer_s, target_id, want_p, want_s)
 
-    # Textos finales
     s_name = (await context.bot.get_chat(sender_id)).first_name
     t_name = (await context.bot.get_chat(target_id)).first_name
-
     w_data = POKEMON_BY_ID[want_p]
     o_data = POKEMON_BY_ID[offer_p]
-
     w_txt = f"{w_data['name']}{'✨' if want_s else ''}"
     o_txt = f"{o_data['name']}{'✨' if offer_s else ''}"
 
-    # Añadir info de dinero si ya tenían 2
     if status_sender == 'MAX': w_txt += " (💰 Vendido)"
     if status_target == 'MAX': o_txt += " (💰 Vendido)"
 
-    final_text = (
-        f"🔄✅ **¡Intercambio aceptado!**\n\n"
-        f"👤 {s_name} recibió: {w_txt}\n"
-        f"👤 {t_name} recibió: {o_txt}"
-    )
+    final_text = (f"🔄✅ **¡Intercambio aceptado!**\n\n"
+                  f"👤 {s_name} recibió: {w_txt}\n"
+                  f"👤 {t_name} recibió: {o_txt}")
 
     await query.edit_message_text(final_text, parse_mode='Markdown')
 
@@ -3551,7 +3664,8 @@ async def post_init(application: Application):
         BotCommand("albumdex", "📖 Revisa tu progreso."),
         BotCommand("tienda", "🏪 Compra sobres de stickers."),
         BotCommand("mochila", "🎒 Revisa tus objetos."),
-        BotCommand("tombola", "🎟️ Tómbola diaria"),
+        BotCommand("intercambio", "♻ Intercambia stickers."),
+        BotCommand("tombola", "🎟️ Tómbola diaria."),
         BotCommand("buzon", "💌 Revisa tu buzón."),
         BotCommand("retos", "🤝 Retos Grupales."),
         BotCommand("dinero", "💰 Consulta tu dinero."),
@@ -3718,6 +3832,8 @@ def main():
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
         CallbackQueryHandler(lambda u, c: u.callback_query.delete_message(), pattern="^trade_cancel_"),
+        CallbackQueryHandler(album_dupe_menu, pattern="^album_dupe_menu_"),
+        CallbackQueryHandler(album_dupe_show, pattern="^album_dupe_show_"),
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
     application.add_handlers(all_handlers)
