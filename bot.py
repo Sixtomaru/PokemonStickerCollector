@@ -376,7 +376,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for name in POKEMON_REGIONS.keys():
         cb_data = f"album_{name}_0_{owner_user.id}"
         if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
-        keyboard.append([InlineKeyboardButton(f"Ver Álbum de {name}", callback_data=cb_data)])
+        keyboard.append([InlineKeyboardButton(f"🔍 Ver Álbum de {name}", callback_data=cb_data)])
 
     close_cb_data = f"album_close_{owner_user.id}"
     if cmd_msg_id: close_cb_data += f"_{cmd_msg_id}"
@@ -3806,6 +3806,8 @@ def main():
 
         CallbackQueryHandler(albumdex_cmd, pattern="^album_main_"),
         CallbackQueryHandler(album_close_handler, pattern="^album_close_"),
+        CallbackQueryHandler(album_dupe_menu, pattern="^album_dupe_menu_"),
+        CallbackQueryHandler(album_dupe_show, pattern="^album_dupe_show_"),
         CallbackQueryHandler(album_region_handler, pattern="^album_"),
         CallbackQueryHandler(choose_sticker_version_handler, pattern="^showsticker_"),
         CallbackQueryHandler(send_sticker_handler, pattern="^sendsticker_"),
@@ -3832,8 +3834,6 @@ def main():
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
         CallbackQueryHandler(lambda u, c: u.callback_query.delete_message(), pattern="^trade_cancel_"),
-        CallbackQueryHandler(album_dupe_menu, pattern="^album_dupe_menu_"),
-        CallbackQueryHandler(album_dupe_show, pattern="^album_dupe_show_"),
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
     application.add_handlers(all_handlers)
