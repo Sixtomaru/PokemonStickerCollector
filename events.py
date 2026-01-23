@@ -42,21 +42,31 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
     pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
-    # --- NUEVO: SUMAR AL RANKING DEL GRUPO SI EXISTE ---
+    # --- 1. ACTUALIZAR PROGRESO GRUPAL (Si es en grupo) ---
     if chat_id:
-        db.increment_group_monthly_stickers(user_id, chat_id)
-    # ---------------------------------------------------
+        db.increment_group_monthly_stickers(user_id, chat_id)  # Ranking
+        db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)  # Reto 151
+    # ------------------------------------------------------
 
-    if db.check_sticker_owned(user_id, pokemon_id, is_shiny):
+    # --- 2. LÓGICA SMART (1º, 2º, 3º+) ---
+    status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
+
+    if status == 'NEW':
+        # Primera vez que lo consigue
+        return (f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de "
+                f"*{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex.")
+
+    elif status == 'DUPLICATE':
+        # Segunda vez (se guarda copia para intercambio)
+        return (f"🔄 ¡Genial, {user_mention}! Conseguiste un sticker de "
+                f"*{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo.")
+
+    else:  # status == 'MAX'
+        # Tercera vez o más (se vende)
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
-        return (
-            f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de *{pokemon_name} {rarity_emoji}*. Como ya lo tenías, se convierte en *{format_money(money_earned)}₽* 💰.")
-    else:
-        db.add_sticker_to_collection(user_id, pokemon_id, is_shiny)
-        return (
-            f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de *{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex.")
-
+        return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
+                f"*{pokemon_name} {rarity_emoji}*. Como ya lo tenías, se convierte en *{format_money(money_earned)}₽* 💰.")
 
 # --- LÓGICA DE EVENTOS (DEFINICIONES DE FUNCIONES) ---
 
@@ -695,7 +705,7 @@ def _get_mision_meowth_variant(user: User):
         f"🔸{user.first_name} recoge al Pidgeotto y llega al lugar. El árbol es grande, y el Meowth maúlla asustado mientras se aferra a una rama.\n\n"
         f"{user.first_name} piensa detenidamente cómo intervenir:\n"
         "-¿Intento subir yo?, el Pidgeotto podría ayudarme de alguna manera...\n"
-        "-Mejor envío al Pidgeotto y que lo baje él... ¿o no?\n"
+        "-Mejor envío al Pidgeotto y que lo baje él... ¿no?\n"
         "-¿Y si monto en Pidgeotto y lo bajamos entre los dos? tiene Vuelo..."
     )
     keyboard = [[
