@@ -58,7 +58,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
 
     elif status == 'DUPLICATE':
         # Segunda vez (se guarda copia para intercambio)
-        return (f"🔄 ¡Genial, {user_mention}! Conseguiste un sticker de "
+        return (f"♻ ¡Genial, {user_mention}! Conseguiste un sticker de "
                 f"*{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo.")
 
     else:  # status == 'MAX'
@@ -66,7 +66,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
         return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"*{pokemon_name} {rarity_emoji}*. Como ya lo tenías, se convierte en *{format_money(money_earned)}₽* 💰.")
+                f"*{pokemon_name} {rarity_emoji}*. Como ya lo tienes repetido, se convierte en *{format_money(money_earned)}₽* 💰.")
 
 # --- LÓGICA DE EVENTOS (DEFINICIONES DE FUNCIONES) ---
 
@@ -1177,3 +1177,4 @@ EVENTS = {
         }
     }
 }
+
