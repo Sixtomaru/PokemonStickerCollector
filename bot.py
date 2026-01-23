@@ -413,7 +413,7 @@ async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return
 
-    text = "🔄 **Stickers Repetidos**\nElige la región:"
+    text = "🔄 **Stickers Repetidos**\n\nElige la región:"
 
     keyboard = []
     # Botón Kanto
@@ -892,15 +892,20 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
         if not spawned_something:
             context.chat_data.setdefault('active_spawns', {})
             current_time = time.time()
+
+            #3 DÍAS (259200 segundos) ---
+            TIMEOUT_SECONDS = 259200
+
             for msg_id in list(context.chat_data.get('active_spawns', {}).keys()):
-                if current_time - context.chat_data['active_spawns'][msg_id].get('timestamp', 0) > 7200:
+                if current_time - context.chat_data['active_spawns'][msg_id].get('timestamp', 0) > TIMEOUT_SECONDS:
                     spawn_data = context.chat_data['active_spawns'].pop(msg_id, None)
                     if spawn_data:
                         for key in ['sticker_id', 'text_id']:
                             try:
-                                await context.bot.delete_message(chat_id, spawn_data[key])
+                                await context.bot.delete_message(chat_id=chat_id, message_id=spawn_data[key])
                             except BadRequest:
                                 pass
+            # ---------------------------------------------------------
 
             pokemon_data, is_shiny, rarity = choose_random_pokemon()
 
@@ -1660,7 +1665,7 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
     )
 
-    full_text = base_header + "\n\nResultados:\n" + "\n".join(context.chat_data['tombola_winners'])
+    full_text = base_header + "\n\n**Resultados:**\n" + "\n".join(context.chat_data['tombola_winners'])
     daily_msg_id = context.chat_data.get('tombola_msg_id')
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
@@ -1919,7 +1924,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if item_id.startswith('lottery_ticket_'):
                 item_name = "Ticket de lotería ganador"
                 row = [
-                    InlineKeyboardButton("👀 Ver", callback_data=f"viewticket_{item_id}_{user.id}"),
+                    InlineKeyboardButton("🔍 Ver", callback_data=f"viewticket_{item_id}_{user.id}"),
                     InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
                 ]
                 keyboard_buttons.append(row)
@@ -1928,7 +1933,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 data = SPECIAL_ITEMS_DATA[item_id]
                 item_name = f"{data['name']} {data['emoji']}"
                 row = [
-                    InlineKeyboardButton("👀 Ver", callback_data=f"viewspecial_{item_id}_{user.id}"),
+                    InlineKeyboardButton("🔍 Ver", callback_data=f"viewspecial_{item_id}_{user.id}"),
                     InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
                 ]
                 keyboard_buttons.append(row)
@@ -3269,53 +3274,74 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
 async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
-    action = parts[1]
+    action = parts[1]  # exec o reject
+
     target_id, sender_id = int(parts[2]), int(parts[3])
     user_id = query.from_user.id
 
-    # ... (validaciones permisos igual) ...
-    if action == "exec" and user_id != target_id:
-        await query.answer("Solo el destinatario puede aceptar.", show_alert=True)
-        return
-    if action == "reject" and user_id != target_id and user_id != sender_id:
-        await query.answer("No puedes cancelar este intercambio.", show_alert=True)
-        return
+    # Validaciones de permisos
+    if action == "exec":
+        if user_id != target_id:
+            await query.answer("Solo el destinatario puede aceptar.", show_alert=True)
+            return
+    else:
+        if user_id != target_id and user_id != sender_id:
+            await query.answer("No puedes cancelar este intercambio.", show_alert=True)
+            return
 
-    # --- LIBERAR USUARIO ---
+    # Liberar usuario del estado "ocupado"
     if sender_id in context.chat_data.get('active_trades', {}):
         del context.chat_data['active_trades'][sender_id]
-    # -----------------------
 
     if action == "reject":
         await query.edit_message_text("❌ Intercambio cancelado.")
         return
 
-    # ... (Resto de lógica de ejecución y BD igual) ...
-    # Copia el bloque de 'if not db.check...' hasta el final de tu función actual
-
-    # EJECUTAR INTERCAMBIO
+    # Validar límites diarios antes de ejecutar
     if not db.check_trade_daily_limit(sender_id) or not db.check_trade_daily_limit(target_id):
-        await query.answer("⛔ Error: Alguno de los dos jugadores alcanzó el límite diario de intercambios.", show_alert=True)
+        await query.answer("⛔ Error: Alguno de los dos alcanzó el límite diario.", show_alert=True)
         await query.delete_message()
         return
 
     want_p, want_s = int(parts[4]), bool(int(parts[5]))
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
+
+    # Ejecución en Base de Datos
+    # status_sender: Qué pasó al recibir el usuario A (NEW, DUPLICATE o MAX)
+    # status_target: Qué pasó al recibir el usuario B
     status_sender, status_target = db.execute_trade(sender_id, offer_p, offer_s, target_id, want_p, want_s)
 
+    # Obtener nombres y datos para el mensaje
     s_name = (await context.bot.get_chat(sender_id)).first_name
     t_name = (await context.bot.get_chat(target_id)).first_name
-    w_data = POKEMON_BY_ID[want_p]
-    o_data = POKEMON_BY_ID[offer_p]
+
+    w_data = POKEMON_BY_ID[want_p]  # Lo que recibe Sender
+    o_data = POKEMON_BY_ID[offer_p]  # Lo que recibe Target
+
     w_txt = f"{w_data['name']}{'✨' if want_s else ''}"
     o_txt = f"{o_data['name']}{'✨' if offer_s else ''}"
 
-    if status_sender == 'MAX': w_txt += " (💰 Vendido)"
-    if status_target == 'MAX': o_txt += " (💰 Vendido)"
+    # --- GESTIÓN DE DINERO SI YA TENÍAN 2 ---
 
-    final_text = (f"🔄✅ **¡Intercambio aceptado!**\n\n"
-                  f"👤 {s_name} recibió: {w_txt}\n"
-                  f"👤 {t_name} recibió: {o_txt}")
+    # Si Sender llegó al máximo (ya tenía 2), se vende automáticamente
+    if status_sender == 'MAX':
+        rarity = get_rarity(w_data['category'], want_s)
+        price = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+        db.update_money(sender_id, price)
+        w_txt += f" (+{format_money(price)}₽)"
+
+    # Si Target llegó al máximo (ya tenía 2), se vende automáticamente
+    if status_target == 'MAX':
+        rarity = get_rarity(o_data['category'], offer_s)
+        price = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+        db.update_money(target_id, price)
+        o_txt += f" (+{format_money(price)}₽)"
+
+    final_text = (
+        f"🔄✅ **¡Intercambio aceptado!**\n\n"
+        f"👤 **{s_name}** recibió: {w_txt}\n"
+        f"👤 **{t_name}** recibió: {o_txt}"
+    )
 
     await query.edit_message_text(final_text, parse_mode='Markdown')
 
