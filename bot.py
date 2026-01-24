@@ -64,6 +64,10 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 # --- Probabilidad del 15% ---
 EVENT_CHANCE = 0.15
 
+# --- ALMACÉN DE LA TÓMBOLA (GLOBAL) ---
+# Estructura: { chat_id: {'msg_id': 123, 'winners': []} }
+TOMBOLA_STATE = {}
+
 # --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
 MIN_SPAWN_TIME = 7200  # 2 horas
 MAX_SPAWN_TIME = 14400  # 4 horas
@@ -1599,20 +1603,18 @@ async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
-    # Si viene del panel, effective_message es el panel.
     message = update.effective_message
     chat_id = message.chat_id
 
     db.get_or_create_user(interactor_user.id, interactor_user.first_name)
 
     is_public = (query.data == "tombola_claim_public")
-    # --- NUEVO: Detectar si viene del panel ---
     is_panel = (query.data == "panel_tombola")
 
     owner_id = interactor_user.id
     user_cmd_msg_id = None
 
-    if not is_public and not is_panel:  # Solo parseamos si no es público ni panel
+    if not is_public and not is_panel:
         try:
             parts = query.data.split('_')
             owner_id = int(parts[2])
@@ -1629,7 +1631,6 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
     if db.get_last_daily_claim(owner_id) == today_str:
         await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
-        # Limpieza: Si NO es público y NO es panel (es decir, comando /tombola), borramos
         if not is_public and not is_panel:
             try:
                 await message.delete()
@@ -1642,6 +1643,9 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.update_last_daily_claim(owner_id, today_str)
     prize = random.choices(DAILY_PRIZES, weights=DAILY_WEIGHTS, k=1)[0]
 
+    list_line = ""
+    alert_text = ""
+
     if prize['type'] == 'money':
         db.update_money(owner_id, prize['value'])
         safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
@@ -1653,11 +1657,14 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
         alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
 
-    # --- ACTUALIZAR LISTA EN MENSAJE OFICIAL ---
-    if 'tombola_winners' not in context.chat_data:
-        context.chat_data['tombola_winners'] = []
+    # --- ACTUALIZAR LISTA USANDO VARIABLE GLOBAL ---
 
-    context.chat_data['tombola_winners'].append(list_line)
+    # Aseguramos que existe el registro para este chat
+    if chat_id not in TOMBOLA_STATE:
+        TOMBOLA_STATE[chat_id] = {'msg_id': None, 'winners': []}
+
+    # Añadimos ganador
+    TOMBOLA_STATE[chat_id]['winners'].append(list_line)
 
     base_header = (
         "🎟️ *Tómbola Diaria* 🎟️\n\n"
@@ -1665,28 +1672,36 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
     )
 
-    full_text = base_header + "\n\n**Resultados:**\n" + "\n".join(context.chat_data['tombola_winners'])
-    daily_msg_id = context.chat_data.get('tombola_msg_id')
+    full_text = base_header + "\n\nResultados:\n" + "\n".join(TOMBOLA_STATE[chat_id]['winners'])
+
+    # Recuperamos la ID del mensaje oficial
+    daily_msg_id = TOMBOLA_STATE[chat_id]['msg_id']
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
+    # Intentar editar el mensaje oficial
     if daily_msg_id:
         try:
             await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=daily_msg_id, text=full_text,
-                reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
+                chat_id=chat_id,
+                message_id=daily_msg_id,
+                text=full_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
             )
         except BadRequest:
+            # Si falla (ej: mensaje borrado), enviamos uno nuevo y actualizamos la ID
             msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                                  disable_notification=True)
-            context.chat_data['tombola_msg_id'] = msg.message_id
+            TOMBOLA_STATE[chat_id]['msg_id'] = msg.message_id
     else:
+        # Si no había ID registrada (ej: reinicio), enviamos uno nuevo
         msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
                                              reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                              disable_notification=True)
-        context.chat_data['tombola_msg_id'] = msg.message_id
+        TOMBOLA_STATE[chat_id]['msg_id'] = msg.message_id
 
-    # --- LIMPIEZA INMEDIATA (Si es comando /tombola) ---
+    # Limpieza comando personal
     if not is_public and not is_panel:
         try:
             await message.delete()
@@ -3708,7 +3723,7 @@ async def post_init(application: Application):
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     # --- LOG DE CONTROL ---
-    logger.info("🕒 EJECUTANDO TÓMBOLA DIARIA...")
+    logger.info("🕒 EJECUTANDO TÓMBOLA DIARIA (SISTEMA GLOBAL)...")
     # ----------------------
 
     text = (
@@ -3722,17 +3737,14 @@ async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     active_groups = db.get_active_groups()
     for chat_id in active_groups:
         try:
-            # Limpiamos la memoria del chat para el nuevo día
-            # Usamos setdefault por si el chat no existía en memoria
-            if chat_id not in context.application.chat_data:
-                context.application.chat_data[chat_id] = {}
-
-            context.application.chat_data[chat_id]['tombola_winners'] = []
-
+            # Enviamos el mensaje
             msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
 
-            # Guardamos la ID del mensaje oficial de hoy
-            context.application.chat_data[chat_id]['tombola_msg_id'] = msg.message_id
+            # GUARDAMOS EN LA VARIABLE GLOBAL (INFALIBLE)
+            TOMBOLA_STATE[chat_id] = {
+                'msg_id': msg.message_id,
+                'winners': []
+            }
 
         except Exception as e:
             logger.error(f"No se pudo enviar la tómbola al chat {chat_id}: {e}")
