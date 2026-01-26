@@ -1,7 +1,0 @@
-{
-  "name": "StudySnap",
-  "description": "Scan tests, save questions, and study anywhere using AI.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}
