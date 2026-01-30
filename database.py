@@ -638,6 +638,14 @@ def is_code_notification_enabled(user_id):
     res = query_db("SELECT code_notifications_enabled FROM users WHERE user_id = ?", (user_id,), one=True)
     return res[0] != 0 if res else True
 
+def has_duplicate(user_id, pokemon_id, is_shiny):
+    """Verifica si el usuario tiene al menos 1 repetido (cantidad >= 2) de un Pokémon específico."""
+    res = query_db(
+        "SELECT quantity FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+        (user_id, pokemon_id, 1 if is_shiny else 0),
+        one=True
+    )
+    return res and res[0] >= 2
 
 # Iniciar la DB
 init_db()
