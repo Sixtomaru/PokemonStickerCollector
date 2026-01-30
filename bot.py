@@ -3294,7 +3294,7 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     target_id, sender_id = int(parts[2]), int(parts[3])
     user_id = query.from_user.id
 
-    # Validaciones de permisos
+    # 1. Validaciones de permisos (Quién pulsa el botón)
     if action == "exec":
         if user_id != target_id:
             await query.answer("Solo el destinatario puede aceptar.", show_alert=True)
@@ -3312,40 +3312,50 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("❌ Intercambio cancelado.")
         return
 
-    # Validar límites diarios antes de ejecutar
+    # 2. Validar límites diarios
     if not db.check_trade_daily_limit(sender_id) or not db.check_trade_daily_limit(target_id):
         await query.answer("⛔ Error: Alguno de los dos alcanzó el límite diario.", show_alert=True)
         await query.delete_message()
         return
 
-    want_p, want_s = int(parts[4]), bool(int(parts[5]))
-    offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
+    # Datos de los Pokémon
+    want_p, want_s = int(parts[4]), bool(int(parts[5]))  # Lo que da el TARGET (Destinatario)
+    offer_p, offer_s = int(parts[6]), bool(int(parts[7]))  # Lo que da el SENDER (Solicitante)
 
-    # Ejecución en Base de Datos
-    # status_sender: Qué pasó al recibir el usuario A (NEW, DUPLICATE o MAX)
-    # status_target: Qué pasó al recibir el usuario B
+    # 3. VALIDACIÓN CRÍTICA DE STOCK (¡NUEVO!)
+    # Comprobamos si el Solicitante aún tiene el repetido que ofreció
+    if not db.has_duplicate(sender_id, offer_p, offer_s):
+        await query.answer("❌ Error: El usuario que envió la oferta ya no tiene ese Pokémon repetido.", show_alert=True)
+        await query.delete_message()
+        return
+
+    # Comprobamos si el Destinatario aún tiene el repetido que se le pidió
+    if not db.has_duplicate(target_id, want_p, want_s):
+        await query.answer("❌ Error: Ya no tienes ese Pokémon repetido para intercambiar.", show_alert=True)
+        await query.delete_message()
+        return
+    # ----------------------------------------
+
+    # 4. Ejecución en Base de Datos
     status_sender, status_target = db.execute_trade(sender_id, offer_p, offer_s, target_id, want_p, want_s)
 
-    # Obtener nombres y datos para el mensaje
+    # Obtener nombres
     s_name = (await context.bot.get_chat(sender_id)).first_name
     t_name = (await context.bot.get_chat(target_id)).first_name
 
-    w_data = POKEMON_BY_ID[want_p]  # Lo que recibe Sender
-    o_data = POKEMON_BY_ID[offer_p]  # Lo que recibe Target
+    w_data = POKEMON_BY_ID[want_p]
+    o_data = POKEMON_BY_ID[offer_p]
 
     w_txt = f"{w_data['name']}{'✨' if want_s else ''}"
     o_txt = f"{o_data['name']}{'✨' if offer_s else ''}"
 
-    # --- GESTIÓN DE DINERO SI YA TENÍAN 2 ---
-
-    # Si Sender llegó al máximo (ya tenía 2), se vende automáticamente
+    # Gestión de dinero si ya tenían 2
     if status_sender == 'MAX':
         rarity = get_rarity(w_data['category'], want_s)
         price = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(sender_id, price)
         w_txt += f" (+{format_money(price)}₽)"
 
-    # Si Target llegó al máximo (ya tenía 2), se vende automáticamente
     if status_target == 'MAX':
         rarity = get_rarity(o_data['category'], offer_s)
         price = DUPLICATE_MONEY_VALUES.get(rarity, 100)
@@ -3354,8 +3364,8 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     final_text = (
         f"🔄✅ **¡Intercambio aceptado!**\n\n"
-        f"👤 **{s_name}** recibió: {w_txt}\n"
-        f"👤 **{t_name}** recibió: {o_txt}"
+        f"👤 {s_name} recibió: {w_txt}\n"
+        f"👤 {t_name} recibió: {o_txt}"
     )
 
     await query.edit_message_text(final_text, parse_mode='Markdown')
