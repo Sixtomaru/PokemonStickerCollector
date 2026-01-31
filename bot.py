@@ -1502,6 +1502,7 @@ async def notib_off_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, msg, 10)
             schedule_message_deletion(context, update.message, 10)
 
+
 async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
@@ -1531,18 +1532,22 @@ async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     item_type, item_details = mail_item['item_type'], mail_item['item_details']
     user_mention = user.mention_markdown()
     message_text = ""
+
     if item_type == 'money':
         money_amount = int(item_details)
         db.update_money(user.id, money_amount)
         message_text = f"📬 {user_mention} ha reclamado *{format_money(money_amount)}₽* de su buzón."
+
     elif item_type == 'inventory_item':
         db.add_item_to_inventory(user.id, item_details, 1)
         item_name = ITEM_NAMES.get(item_details, "un objeto especial")
         message_text = f"📬 {user_mention} ha reclamado *{item_name}* y lo ha guardado en su /mochila."
+
     elif item_type == 'single_sticker':
         poke_id, is_shiny_int = map(int, item_details.split('_'))
         is_shiny = bool(is_shiny_int)
         pokemon_data = POKEMON_BY_ID.get(poke_id)
+
         if not pokemon_data:
             logger.error(f"Error al reclamar mail: Pokémon ID {poke_id} no encontrado.")
             message_text = f"{user_mention}, intentaste reclamar un Pokémon que ya no existe."
@@ -1550,13 +1555,26 @@ async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
             rarity = get_rarity(pokemon_data['category'], is_shiny)
             rarity_emoji = RARITY_VISUALS.get(rarity, '')
-            if db.check_sticker_owned(user.id, poke_id, is_shiny):
+
+            # --- NUEVA LÓGICA SMART (1º, 2º, 3º+) ---
+            status = db.add_sticker_smart(user.id, poke_id, is_shiny)
+
+            if status == 'NEW':
+                # 1ª Vez
+                message_text = f"📬 ¡Felicidades, {user_mention}! Has reclamado un sticker de *{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex."
+            elif status == 'DUPLICATE':
+                # 2ª Vez
+                message_text = f"📬 ¡Genial, {user_mention}! Has reclamado un sticker de *{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo."
+            else:
+                # 3ª Vez (MAX) -> Dinero
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
                 db.update_money(user.id, money)
-                message_text = f"📬 {user_mention} reclamó *{pokemon_name} {rarity_emoji}*. Ya lo tenía, ¡así que recibe *{format_money(money)}₽*!"
-            else:
-                db.add_sticker_to_collection(user.id, poke_id, is_shiny)
-                message_text = f"📬 ¡Felicidades, {user_mention}! Has reclamado un *{pokemon_name} {rarity_emoji}*."
+                message_text = f"📬 {user_mention} reclamó *{pokemon_name} {rarity_emoji}*. Ya lo tenía repe, ¡así que recibe *{format_money(money)}₽*!"
+            # ----------------------------------------
+
+            # Nota: Al venir del buzón (regalo global), NO se suma al reto grupal ni ranking
+            # para no desbalancear competiciones locales con regalos externos.
+
     if message_text:
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
     await buzon(update, context)
