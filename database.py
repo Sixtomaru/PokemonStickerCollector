@@ -244,17 +244,16 @@ def increment_group_monthly_stickers(user_id, chat_id):
 
 
 def get_group_monthly_ranking(chat_id):
-    """Obtiene el ranking solo de los miembros de ESTE grupo."""
-    # Hacemos JOIN con users para sacar el nombre
+    """Obtiene el ranking completo de los miembros de ESTE grupo."""
     sql = """
     SELECT gm.user_id, u.username, gm.stickers_this_month 
     FROM group_members gm
     JOIN users u ON gm.user_id = u.user_id
     WHERE gm.chat_id = ? AND gm.stickers_this_month > 0
     ORDER BY gm.stickers_this_month DESC
-    LIMIT 10
     """
-    return query_db(sql, (chat_id,))
+    # ¡OJO! Hemos quitado el LIMIT 10
+    return query_db(sql, (chat_id,), dict_cursor=False)
 
 
 def reset_group_monthly_stickers():
@@ -587,10 +586,10 @@ def get_all_friend_codes():
     return query_db("SELECT * FROM friend_codes ORDER BY expiry_timestamp DESC", dict_cursor=True)
 
 
-def check_user_has_code(user_id):
-    """Devuelve True si el usuario ya tiene un código registrado."""
-    res = query_db("SELECT 1 FROM friend_codes WHERE user_id = ?", (user_id,), one=True)
-    return res is not None
+def check_user_has_code_count(user_id):
+    """Devuelve el número de códigos que tiene un usuario."""
+    res = query_db("SELECT COUNT(*) FROM friend_codes WHERE user_id = ?", (user_id,), one=True)
+    return res[0] if res else 0
 
 
 def check_code_exists(code):
@@ -603,9 +602,11 @@ def renew_friend_code(user_id):
     """Renueva los códigos del usuario por 30 días desde HOY."""
     import time
     new_expiry = time.time() + (30 * 86400)
-    # Verificamos si existe primero
-    if not check_user_has_code(user_id):
+
+    # Verificamos si tiene AL MENOS UN código (count > 0)
+    if check_user_has_code_count(user_id) == 0:
         return False
+
     query_db("UPDATE friend_codes SET expiry_timestamp = ? WHERE user_id = ?", (new_expiry, user_id))
     return True
 
