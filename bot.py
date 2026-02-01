@@ -198,17 +198,26 @@ def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message,
 
 # --- RANKING MENSUAL ---
 async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
-    """Tarea mensual: Ranking por grupo y reseteo con lógica 'Mejor Premio Garantizado'."""
+    """Tarea mensual: Ranking por grupo y reseteo."""
     now = datetime.now(TZ_SPAIN)
 
     if now.day == 1:
         active_groups = db.get_active_groups()
 
-        # 1. PREPARACIÓN DE DATOS
-        groups_data = {}
+        # Filtro Global de ganadores (para no repetir premio gordo)
         global_pack_winners = set()
 
-        # Recopilamos datos
+        # Diccionario para guardar el ranking calculado antes de borrar la BD
+        final_rankings_cache = {}
+
+        # FASE 1: CALCULAR GANADORES Y PREMIOS (Igual que antes)
+        # ------------------------------------------------------
+
+        # Pre-calculamos todo para poder dar los premios y vaciar la BD
+        # pero guardamos la lista visual para enviarla paginada después.
+
+        groups_data = {}
+
         for chat_id in active_groups:
             group_users = db.get_users_in_group(chat_id)
             if len(group_users) < 4: continue
@@ -218,78 +227,142 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
 
             groups_data[chat_id] = {
                 'ranking': ranking,
-                # Lista de premios a repartir en este grupo
                 'prizes_pool': ['pack_large_national', 'pack_medium_national', 'pack_small_national'],
-                'final_lines': []
+                'lines': []
             }
 
-        # 2. PROCESAMIENTO POR NIVELES (Horizontal)
-        # Del 1º al 10º puesto
-        max_rank_depth = 10
+        # Procesamiento Horizontal (Niveles 1 al 10 reciben premio/mención especial)
+        # El resto (11+) solo sale en la lista sin premio.
 
-        for i in range(max_rank_depth):
+        # Calculamos premios para todos (aunque sean 100)
+        max_rank = 0
+        for data in groups_data.values():
+            if len(data['ranking']) > max_rank: max_rank = len(data['ranking'])
+
+        for i in range(max_rank):
             for chat_id, data in groups_data.items():
                 ranking = data['ranking']
-
                 if i < len(ranking):
                     user_row = ranking[i]
                     uid, uname, count = user_row[0], user_row[1], user_row[2]
 
                     prize_text = ""
 
-                    # --- LÓGICA DE ASIGNACIÓN ---
-
-                    # Si el usuario YA ganó un sobre en otro grupo
-                    if uid in global_pack_winners:
-                        # NO recibe nada. NO gasta el premio de la pool.
-                        prize_text = "_(👑 Ya premiado)_"
-                        # Eliminamos la línea de dar dinero aquí.
-
-                    else:
-                        # Si es apto para premio en este grupo
-                        pool = data['prizes_pool']
-
-                        if len(pool) > 0:
-                            # ¡Hay sobre disponible! Se lo lleva.
-                            prize_item = pool.pop(0)
-
-                            prize_name = ""
-                            if prize_item == 'pack_large_national':
-                                prize_name = "Sobre Grande Nacional 🎴"
-                            elif prize_item == 'pack_medium_national':
-                                prize_name = "Sobre Mediano Nacional 🎴"
-                            elif prize_item == 'pack_small_national':
-                                prize_name = "Sobre Pequeño Nacional 🎴"
-
-                            db.add_mail(uid, 'inventory_item', prize_item, f"🥇 Premio Ranking Grupo {chat_id}")
-                            global_pack_winners.add(uid)  # Marcado como ganador global
-                            prize_text = f"({prize_name})"
+                    # Solo damos premios hasta el Top 10 (configurable)
+                    if i < 10:
+                        if uid in global_pack_winners:
+                            prize_text = "_(👑 Ya premiado)_"
+                            # No damos dinero si ya ganó
                         else:
-                            # Se acabaron los sobres en este grupo, el resto recibe monedas
-                            db.add_mail(uid, 'money', '500', f"Premio Ranking Grupo {chat_id}")
-                            prize_text = "(+500₽)"
+                            pool = data['prizes_pool']
+                            if len(pool) > 0:
+                                prize_item = pool.pop(0)
+                                p_name = "Sobre Grande" if 'large' in prize_item else "Sobre Mediano" if 'medium' in prize_item else "Sobre Pequeño"
+                                db.add_mail(uid, 'inventory_item', prize_item, f"🥇 Premio Ranking Grupo {chat_id}")
+                                global_pack_winners.add(uid)
+                                prize_text = f"(+ {p_name} 🎴)"
+                            else:
+                                db.add_mail(uid, 'money', '500', f"Premio Ranking Grupo {chat_id}")
+                                prize_text = "(+500₽)"
 
                     medals = ["🥇", "🥈", "🥉"]
                     visual_rank = medals[i] if i < 3 else f"{i + 1}."
                     line = f"{visual_rank} {uname}: {count} stickers {prize_text}"
-                    data['final_lines'].append(line)
+                    data['lines'].append(line)
 
-        # 3. ENVÍO DE MENSAJES
+        # FASE 2: ENVIAR MENSAJES Y GUARDAR PARA PAGINACIÓN
+        # -------------------------------------------------
+
         for chat_id, data in groups_data.items():
-            try:
-                if not data['final_lines']: continue
+            lines = data['lines']
+            if not lines: continue
 
-                message_text = "🏆 **Ranking Mensual del Grupo** 🏆\n\n"
-                message_text += "\n".join(data['final_lines'])
-                message_text += "\n\n_¡Los premios han sido enviados al buzón!_"
+            # Guardamos la lista completa en la memoria del chat para poder paginarla
+            # Usamos una clave especial 'monthly_ranking_archive'
+            context.application.chat_data.setdefault(chat_id, {})
+            context.application.chat_data[chat_id]['monthly_ranking_archive'] = lines
 
-                await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
-            except Exception as e:
-                logger.error(f"Error enviando ranking al chat {chat_id}: {e}")
+            # Enviamos la página 0
+            await send_ranking_page(context.bot, chat_id, lines, 0)
 
-        # 4. RESETEO FINAL
+        # FASE 3: RESETEO FINAL
         db.reset_group_monthly_stickers()
         db.reset_monthly_stickers()
+
+
+async def send_ranking_page(bot, chat_id, lines, page):
+    ITEMS_PER_PAGE = 20
+    total_pages = math.ceil(len(lines) / ITEMS_PER_PAGE)
+
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_lines = lines[start:end]
+
+    text = f"🏆 **Ranking Mensual del Grupo** 🏆\n(Página {page + 1}/{total_pages})\n\n"
+    text += "\n".join(current_lines)
+    text += "\n\n_¡Los premios han sido enviados al buzón!_ 📬"
+
+    # Botones de navegación
+    keyboard = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"rank_nav_{page - 1}"))
+    if end < len(lines):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"rank_nav_{page + 1}"))
+
+    if nav_row: keyboard.append(nav_row)
+    markup = InlineKeyboardMarkup(keyboard) if nav_row else None
+
+    # Enviamos o Editamos (según contexto, pero aquí siempre es enviar nuevo al inicio)
+    # Como esta función la llamamos desde el Job (sin update), usamos bot.send_message
+    # Pero para la navegación usaremos edit_message_text.
+
+    # Truco: Si viene del Job, enviamos. Si viene del botón, editamos.
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
+    except Exception:
+        pass
+
+
+async def ranking_navigation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    chat_id = query.message.chat_id
+
+    try:
+        page = int(query.data.split('_')[2])
+    except:
+        return
+
+    # Recuperamos la lista de la memoria
+    lines = context.chat_data.get('monthly_ranking_archive')
+
+    if not lines:
+        await query.answer("Este ranking ha caducado.", show_alert=True)
+        return
+
+    ITEMS_PER_PAGE = 20
+    total_pages = math.ceil(len(lines) / ITEMS_PER_PAGE)
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_lines = lines[start:end]
+
+    text = f"🏆 **Ranking Mensual del Grupo** 🏆\n(Página {page + 1}/{total_pages})\n\n"
+    text += "\n".join(current_lines)
+    text += "\n\n_¡Los premios han sido enviados al buzón!_ 📬"
+
+    keyboard = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"rank_nav_{page - 1}"))
+    if end < len(lines):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"rank_nav_{page + 1}"))
+
+    if nav_row: keyboard.append(nav_row)
+    markup = InlineKeyboardMarkup(keyboard) if nav_row else None
+
+    await query.answer()
+    await query.edit_message_text(text=text, reply_markup=markup, parse_mode='Markdown')
+
 
 # --- MENSAJE DE BIENVENIDA ---
 async def welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -417,7 +490,7 @@ async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return
 
-    text = "🔄 **Stickers Repetidos**\n\nElige la región:"
+    text = "♻ **Stickers Repetidos**\n\nElige la región:"
 
     keyboard = []
     # Botón Kanto
@@ -464,7 +537,7 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ordenar alfabéticamente
     names_list.sort()
 
-    text = f"🔄 **Repetidos de {region.capitalize()}:**\n\n"
+    text = f"♻ **Repetidos de {region.capitalize()}:**\n\n"
     if not names_list:
         text += "_No tienes repetidos en esta región._"
     else:
@@ -2117,9 +2190,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
+            # Añadir al reto grupal (151) pero NO al ranking mensual
             if message.chat.type in ['group', 'supergroup']:
-                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])  # Pokedex grupal
-                db.increment_group_monthly_stickers(user.id, message.chat.id)  # Ranking grupal
+                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
 
             # --- NUEVA LÓGICA SMART (1º, 2º, 3º+) ---
             status = db.add_sticker_smart(user.id, p['id'], s)
@@ -2835,7 +2908,8 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
-    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_")
+    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+
 
     keyboard = [
         [InlineKeyboardButton("➕ Añadir código", callback_data="codes_menu_add")],
@@ -2934,7 +3008,6 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
     user = update.effective_user
 
     # Patrón Regex: (Nick) (Region) (Codigo)
-    # Busca: Palabras al inicio, luego una región válida, luego un código de 8-9 chars (letras, nums, guion)
     pattern = r"^(.+)\s+(Europa|América|America|Asia)\s+([A-Z0-9\-]{8,9})$"
 
     match = re.match(pattern, text, re.IGNORECASE)
@@ -2944,33 +3017,27 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
         region_raw = match.group(2).lower()
         code = match.group(3).upper()
 
-        # Normalizar región
         region = "Europa"
         if "am" in region_raw:
             region = "América"
         elif "as" in region_raw:
             region = "Asia"
 
-        # Validar longitud real del código (sin guiones debe ser 16 chars... espera, Pokemon Shuffle son 16 digitos?
-        # No, suelen ser 16 en Switch, pero en móvil son letras y números cortos (8 caracteres habitualmente).
-        # El usuario pidió: "exactamente 8 letras o números y una longitud de 9 o menos".
-
         clean_code = code.replace("-", "")
-        if len(clean_code) != 8:
-            # Si no son 8 caracteres limpios, ignoramos (o mandamos error si quieres ser estricto)
-            # Pero mejor ignorar para no molestar en chat normal si alguien escribe parecido.
-            return
+        if len(clean_code) != 8: return
 
-            # --- VALIDACIONES ---
-        # 1. ¿Ya tiene código? (Excepto Admin)
-        if user.id != ADMIN_USER_ID and db.check_user_has_code(user.id):
-            msg = await update.message.reply_text(
-                "❌ Ya añadiste un código. Si quieres añadir otro, contacta con un administrador del grupo.",
-                disable_notification=True
-            )
-            schedule_message_deletion(context, update.message, 60)
-            schedule_message_deletion(context, msg, 60)
-            return
+        # --- VALIDACIONES ---
+        # 1. Límite de 3 códigos (Excepto Admin)
+        if user.id != ADMIN_USER_ID:
+            count = db.check_user_has_code_count(user.id)
+            if count >= 3:
+                msg = await update.message.reply_text(
+                    "❌ Ya tienes 3 códigos registrados (el máximo). Si quieres añadir otro, borra uno antiguo con /borrarcodigo.",
+                    disable_notification=True
+                )
+                schedule_message_deletion(context, update.message, 60)
+                schedule_message_deletion(context, msg, 60)
+                return
 
         # 2. ¿El código existe ya?
         if db.check_code_exists(code):
@@ -3100,7 +3167,7 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Si no hay objetivo o es el mismo usuario -> Mostrar Ayuda
     if not target_user or target_user.id == sender.id or target_user.is_bot:
         help_text = (
-            "🔄 **Intercambios**\n\n"
+            "♻ **Intercambios**\n\n"
             "**¿Cómo funcionan?**\n"
             "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
             "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
@@ -3183,7 +3250,7 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
     keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}")])
 
     target_name = (await context.bot.get_chat(target_id)).first_name
-    text = f"🔄 **Repetidos de {target_name}:**\nSelecciona qué quieres recibir."
+    text = f"♻ **Repetidos de {target_name}:**\nSelecciona qué quieres recibir."
 
     if update.callback_query:
         refresh_deletion_timer(context, update.callback_query.message, 120)  # 2 min
@@ -3246,7 +3313,7 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_nav_target_{target_id}_{sender_id}_0")])
 
-    text = (f"🔄 **Tu Oferta ({wanted_rarity}):**\n"
+    text = (f"♻ **Tu Oferta ({wanted_rarity}):**\n"
             f"Elegiste: {wanted_data['name']}\n"
             f"Selecciona qué repetido ofreces a cambio:")
 
@@ -3255,7 +3322,6 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (inicio igual, validaciones de sender) ...
     query = update.callback_query
     parts = query.data.split('_')
     target_id, sender_id = int(parts[2]), int(parts[3])
@@ -3264,42 +3330,45 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
         return
 
-    # ... (obtener datos pokémon igual) ...
     want_p, want_s = int(parts[4]), bool(int(parts[5]))
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
+
+    # Obtenemos los objetos de chat completos para poder mencionar
     sender = await context.bot.get_chat(sender_id)
     target = await context.bot.get_chat(target_id)
+
     w_data = POKEMON_BY_ID[want_p]
     o_data = POKEMON_BY_ID[offer_p]
+
     w_name = f"{w_data['name']}{'✨' if want_s else ''}"
     o_name = f"{o_data['name']}{'✨' if offer_s else ''}"
+
     s_coll = db.get_all_user_stickers(sender_id)
     t_coll = db.get_all_user_stickers(target_id)
+
     s_new = "🆕" if (want_p, want_s) not in s_coll else ""
     t_new = "🆕" if (offer_p, offer_s) not in t_coll else ""
 
+    # --- CAMBIO: MENCIONES REALES ---
     text = (
-        f"🔄 **Petición de Intercambio**\n\n"
-        f"👤 {sender.first_name} ofrece: {o_name} {t_new}\n"
-        f"👤 Para {target.first_name} por: {w_name} {s_new}\n\n"
-        f"Esperando confirmación de {target.first_name}..."
+        f"♻ **Petición de Intercambio**\n\n"
+        f"👤 {sender.mention_markdown()} ofrece: {o_name} {t_new}\n"
+        f"👤 Para {target.mention_markdown()} por: {w_name} {s_new}\n\n"
+        f"Esperando confirmación de {target.mention_markdown()}..."
     )
+    # --------------------------------
 
     data_payload = f"{target_id}_{sender_id}_{want_p}_{int(want_s)}_{offer_p}_{int(offer_s)}"
+
     keyboard = [
         [InlineKeyboardButton("✅ Aceptar", callback_data=f"trade_exec_{data_payload}")],
         [InlineKeyboardButton("❌ Rechazar", callback_data=f"trade_reject_{data_payload}")]
     ]
 
-    # --- CAMBIO: REGISTRAR ACTIVO Y TIMEOUT 24H ---
     cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
-
     context.chat_data.setdefault('active_trades', {})
     context.chat_data['active_trades'][sender_id] = query.message.message_id
-
-    # Programar borrado en 24 horas (86400 seg)
     schedule_message_deletion(context, query.message, 86400)
-    # ----------------------------------------------
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -3381,7 +3450,7 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         o_txt += f" (+{format_money(price)}₽)"
 
     final_text = (
-        f"🔄✅ **¡Intercambio aceptado!**\n\n"
+        f"♻✅ **¡Intercambio aceptado!**\n\n"
         f"👤 {s_name} recibió: {w_txt}\n"
         f"👤 {t_name} recibió: {o_txt}"
     )
@@ -3739,9 +3808,10 @@ async def post_init(application: Application):
         BotCommand("retos", "🤝 Retos Grupales."),
         BotCommand("dinero", "💰 Consulta tu dinero."),
         BotCommand("regalar", "💸 Envía dinero a otro jugador."),
+        BotCommand("codigos", "👥 Lista de Códigos de Amigo."),
         BotCommand("start", "▶️ Inicia el juego (solo admins)."),
-        BotCommand("stopgame", "⏸️ Detiene el juego (solo admins)."),
-        BotCommand("codigos", "👥 Lista de Códigos de Amigo.")
+        BotCommand("stopgame", "⏸️ Detiene el juego (solo admins).")
+
     ]
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     await bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
@@ -3900,6 +3970,8 @@ def main():
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
         CallbackQueryHandler(lambda u, c: u.callback_query.delete_message(), pattern="^trade_cancel_"),
+        CallbackQueryHandler(ranking_navigation_handler, pattern="^rank_nav_"),
+
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
     application.add_handlers(all_handlers)
