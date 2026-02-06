@@ -137,8 +137,15 @@ SHOP_CONFIG = {
 
 # (Esto déjalo igual, se actualiza solo)
 ITEM_NAMES = {item_id: details['name'] for item_id, details in SHOP_CONFIG.items()}
-PACK_CONFIG = {item_id: {'size': details['size'], 'is_magic': details['is_magic']} for item_id, details in
-               SHOP_CONFIG.items()}
+
+# --- CORRECCIÓN: Usamos .get() para que no de error si falta el dato 'is_magic' ---
+PACK_CONFIG = {
+    item_id: {
+        'size': details.get('size', 1),
+        'is_magic': details.get('is_magic', False)
+    }
+    for item_id, details in SHOP_CONFIG.items()
+}
 
 SPECIAL_ITEMS_DATA = {
     'pluma_naranja': {
