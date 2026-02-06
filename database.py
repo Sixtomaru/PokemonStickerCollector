@@ -519,20 +519,27 @@ def get_user_duplicates(user_id, region_ids=None):
 
 
 def check_trade_daily_limit(user_id):
-    """Devuelve True si puede intercambiar hoy."""
-    import datetime
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    """Devuelve True si puede intercambiar hoy (Hora España)."""
+    from datetime import datetime
+    import pytz
+
+    # Usamos la zona horaria correcta
+    TZ_SPAIN = pytz.timezone('Europe/Madrid')
+    today = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
 
     res = query_db("SELECT daily_trades, last_trade_date FROM users WHERE user_id = ?", (user_id,), one=True)
+
+    # Si no existe registro o es la primera vez
     if not res: return True
 
     count, last_date = res[0], res[1]
 
+    # Si la fecha guardada es distinta a la de hoy (España), reseteamos
     if last_date != today:
-        # Nuevo día, reseteamos
         query_db("UPDATE users SET daily_trades = 0, last_trade_date = ? WHERE user_id = ?", (today, user_id))
         return True
 
+    # Si es el mismo día, comprobamos el límite
     return count < 2
 
 
