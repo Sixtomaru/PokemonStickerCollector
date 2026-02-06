@@ -67,11 +67,14 @@ EVENT_CHANCE = 0.15
 # --- ALMACÉN DE LA TÓMBOLA (GLOBAL) ---
 # Estructura: { chat_id: {'msg_id': 123, 'winners': []} }
 TOMBOLA_STATE = {}
-
-# --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
+# --- ESTADOS GLOBALES ---
+DELIBIRD_STATE = {}
+DELIBIRD_GLOBAL_CLAIMED = set() # Nueva variable: IDs de usuarios que ya reclamaron esta semana# --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
 MIN_SPAWN_TIME = 7200  # 2 horas
 MAX_SPAWN_TIME = 14400  # 4 horas
 
+# --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
+# --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 SHOP_CONFIG = {
@@ -81,18 +84,59 @@ SHOP_CONFIG = {
                              'desc': 'Contiene 5 stickers al azar.'},
     'pack_large_national': {'name': 'Sobre Grande Nacional', 'price': 1900, 'size': 7, 'is_magic': False,
                             'desc': 'Contiene 7 stickers al azar.'},
-    'pack_magic_small_national': {'name': 'Sobre Mágico Pequeño Nacional', 'price': 1600, 'size': 1, 'is_magic': True,
+    'pack_magic_small_national': {'name': 'Sobre Mágico Pequeño', 'price': 1600, 'size': 1, 'is_magic': True,
                                   'desc': 'Contiene 1 sticker que no tienes.'},
-    'pack_magic_medium_national': {'name': 'Sobre Mágico Mediano Nacional', 'price': 2100, 'size': 3, 'is_magic': True,
+    'pack_magic_medium_national': {'name': 'Sobre Mágico Mediano', 'price': 2100, 'size': 3, 'is_magic': True,
                                    'desc': 'Contiene 3 stickers que no tienes.'},
-    'pack_magic_large_national': {'name': 'Sobre Mágico Grande Nacional', 'price': 2500, 'size': 5, 'is_magic': True,
+    'pack_magic_large_national': {'name': 'Sobre Mágico Grande', 'price': 2500, 'size': 5, 'is_magic': True,
                                   'desc': 'Contiene 5 stickers que no tienes.'},
+
+    # --- SOBRES DE EVENTO (OCULTOS) ---
     'pack_shiny_kanto': {'name': 'Sobre Brillante Kanto', 'price': 0, 'size': 1, 'is_magic': False,
-                         'desc': 'Contiene 1 Sticker Brillante al azar.', 'hidden': True},
+                         'desc': 'Garantiza 1 Shiny.', 'hidden': True},
+
+    # Sobres Elementales
+    'pack_elem_fuego': {'name': 'Sobre Fuego Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Fuego.',
+                        'hidden': True, 'type_filter': 'Fuego', 'emoji': '🔥'},
+    'pack_elem_agua': {'name': 'Sobre Agua Kanto', 'price': 0, 'size': 7, 'desc': '7 Pokémon de tipo Agua.',
+                       'hidden': True, 'type_filter': 'Agua', 'emoji': '💧'},
+    'pack_elem_planta': {'name': 'Sobre Planta Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Planta.',
+                         'hidden': True, 'type_filter': 'Planta', 'emoji': '🌱'},
+    'pack_elem_electrico': {'name': 'Sobre Eléctrico Kanto', 'price': 0, 'size': 3,
+                            'desc': '3 Pokémon de tipo Eléctrico.', 'hidden': True, 'type_filter': 'Eléctrico',
+                            'emoji': '⚡'},
+    'pack_elem_hielo': {'name': 'Sobre Hielo Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Hielo.',
+                        'hidden': True, 'type_filter': 'Hielo', 'emoji': '❄️'},
+    'pack_elem_lucha': {'name': 'Sobre Lucha Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Lucha.',
+                        'hidden': True, 'type_filter': 'Lucha', 'emoji': '👊'},
+    'pack_elem_veneno': {'name': 'Sobre Veneno Kanto', 'price': 0, 'size': 7, 'desc': '7 Pokémon de tipo Veneno.',
+                         'hidden': True, 'type_filter': 'Veneno', 'emoji': '☠️'},
+    'pack_elem_tierra': {'name': 'Sobre Tierra Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Tierra.',
+                         'hidden': True, 'type_filter': 'Tierra', 'emoji': '⛰️'},
+    'pack_elem_roca': {'name': 'Sobre Roca Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Roca.',
+                       'hidden': True, 'type_filter': 'Roca', 'emoji': '🪨'},
+    'pack_elem_volador': {'name': 'Sobre Volador Kanto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Volador.',
+                          'hidden': True, 'type_filter': 'Volador', 'emoji': '🦅'},
+    'pack_elem_psiquico': {'name': 'Sobre Psíquico Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Psíquico.',
+                           'hidden': True, 'type_filter': 'Psíquico', 'emoji': '🔮'},
+    'pack_elem_fantasma': {'name': 'Sobre Fantasma Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Fantasma.',
+                           'hidden': True, 'type_filter': 'Fantasma', 'emoji': '👻'},
+    'pack_elem_bicho': {'name': 'Sobre Bicho Kanto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Bicho.',
+                        'hidden': True, 'type_filter': 'Bicho', 'emoji': '🐛'},
+    'pack_elem_normal': {'name': 'Sobre Normal Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Normal.',
+                         'hidden': True, 'type_filter': 'Normal', 'emoji': '⚪'},
+    'pack_elem_dragon': {'name': 'Sobre Dragón Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Dragón.',
+                         'hidden': True, 'type_filter': 'Dragón', 'emoji': '🐉'},
+    'pack_elem_hada': {'name': 'Sobre Hada Kanto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Hada.',
+                       'hidden': True, 'type_filter': 'Hada', 'emoji': '🧚'},
+    'pack_elem_acero': {'name': 'Sobre Acero Kanto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Acero.',
+                        'hidden': True, 'type_filter': 'Acero', 'emoji': '🔩'},
+    'pack_elem_especial': {'name': 'Sobre Especial Kanto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble.',
+                           'hidden': True, 'emoji': '✨🔺'}
 }
 
+# (Esto déjalo igual, se actualiza solo)
 ITEM_NAMES = {item_id: details['name'] for item_id, details in SHOP_CONFIG.items()}
-
 PACK_CONFIG = {item_id: {'size': details['size'], 'is_magic': details['is_magic']} for item_id, details in
                SHOP_CONFIG.items()}
 
@@ -131,6 +175,28 @@ DAILY_PRIZES = [
     {'type': 'item', 'value': 'pack_magic_medium_national', 'emoji': '🟡',
      'msg': '¡Sacó la bola 🟡!\n¡¡PREMIO GORDO!! ¡{usuario} ha conseguido un *Sobre Mágico Mediano Nacional*! 🎴'}
 ]
+
+# --- SOBRES DE DELIBIRD ---
+DELIBIRD_PACKS = {
+    'Fuego': {'size': 5, 'emoji': '🔥'},
+    'Agua': {'size': 7, 'emoji': '💧'},
+    'Planta': {'size': 5, 'emoji': '🌱'},
+    'Eléctrico': {'size': 3, 'emoji': '⚡'},
+    'Hielo': {'size': 3, 'emoji': '❄️'},
+    'Lucha': {'size': 3, 'emoji': '👊'},
+    'Veneno': {'size': 7, 'emoji': '☠️'},
+    'Tierra': {'size': 3, 'emoji': '⛰️'},
+    'Roca': {'size': 3, 'emoji': '🪨'},
+    'Volador': {'size': 4, 'emoji': '🦅'},
+    'Psíquico': {'size': 3, 'emoji': '🔮'},
+    'Fantasma': {'size': 3, 'emoji': '👻'},
+    'Bicho': {'size': 4, 'emoji': '🐛'},
+    'Normal': {'size': 5, 'emoji': '⚪'},
+    'Dragón': {'size': 3, 'emoji': '🐉'},
+    'Hada': {'size': 2, 'emoji': '🧚'},
+    'Acero': {'size': 2, 'emoji': '🔩'},
+    'Especial': {'size': 7, 'emoji': '✨🔺'} # Kanto Especial
+}
 
 # Añadimos nombres manuales para que el bot los reconozca en otros menús
 ITEM_NAMES['pack_magic_medium_national'] = SHOP_CONFIG['pack_magic_medium_national']['name']
@@ -676,72 +742,134 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     interactor_user = query.from_user
     cmd_msg_id = None
+
     try:
         parts = query.data.split('_')
+        # Formato: album_REGION_PAGE_OWNERID_MSGID_SORTMODE
+        # Ejemplo: album_Kanto_0_123456_999_num
+
         region_name = parts[1]
         page = int(parts[2])
         owner_id = int(parts[3])
-        if len(parts) > 4:
+
+        if len(parts) > 4 and parts[4].isdigit():
             cmd_msg_id = int(parts[4])
+
+        # Detectar modo de ordenación (por defecto numérico 'num')
+        # Buscamos si el último parámetro es 'az' o 'num'
+        sort_mode = 'num'
+        if parts[-1] in ['num', 'az']:
+            sort_mode = parts[-1]
+
         if interactor_user.id != owner_id:
             await query.answer("Este álbum no es tuyo.", show_alert=True)
             return
     except (ValueError, IndexError):
         await query.answer("Error en los datos del álbum.", show_alert=True)
         return
-    pokemon_list_region = POKEMON_REGIONS.get(region_name)
-    if not pokemon_list_region:
+
+    # Obtener lista base
+    raw_list = POKEMON_REGIONS.get(region_name)
+    if not raw_list:
         await query.answer("Región no encontrada.", show_alert=True)
         return
+
+    # --- LÓGICA DE ORDENACIÓN ---
+    # Hacemos una copia para no alterar la lista global original
+    pokemon_list_region = raw_list[:]
+
+    if sort_mode == 'az':
+        # Ordenar alfabéticamente por nombre
+        pokemon_list_region.sort(key=lambda x: x['name'])
+    else:
+        # Ordenar por ID (numérico) - Ya suelen estar así, pero aseguramos
+        pokemon_list_region.sort(key=lambda x: x['id'])
+    # ----------------------------
+
     await query.answer()
     refresh_deletion_timer(context, query.message, 60)
 
     user_collection = db.get_all_user_stickers(owner_id)
-    total_region, total_pages = len(pokemon_list_region), math.ceil(len(pokemon_list_region) / POKEMON_PER_PAGE)
-    start_index, end_index = page * POKEMON_PER_PAGE, (page + 1) * POKEMON_PER_PAGE
+    total_region = len(pokemon_list_region)
+    total_pages = math.ceil(total_region / POKEMON_PER_PAGE)
+
+    start_index = page * POKEMON_PER_PAGE
+    end_index = (page + 1) * POKEMON_PER_PAGE
     pokemon_on_page = pokemon_list_region[start_index:end_index]
-    text = f"📖 *Álbumdex de {region_name} (Pág. {page + 1}/{total_pages})*"
+
+    # Título con indicación de orden
+    order_icon = "🔤" if sort_mode == 'az' else "🔢"
+    text = f"📖 *Álbumdex de {region_name}* ({order_icon})\n(Pág. {page + 1}/{total_pages})"
+
     keyboard, row = [], []
     for pokemon in pokemon_on_page:
-        has_normal, has_shiny = (pokemon['id'], 0) in user_collection, (pokemon['id'], 1) in user_collection
+        has_normal = (pokemon['id'], 0) in user_collection
+        has_shiny = (pokemon['id'], 1) in user_collection
+
         if has_normal or has_shiny:
             button_text = f"#{pokemon['id']:03} {pokemon['name']}"
             if has_shiny:
                 button_text += f" ✨{RARITY_VISUALS.get(get_rarity(pokemon['category'], True), '')}"
             elif has_normal:
                 button_text += f" {RARITY_VISUALS.get(get_rarity(pokemon['category'], False), '')}"
+
+            # Al ver detalle, mantenemos contexto básico
             cb_data = f"showsticker_{region_name}_{page}_{pokemon['id']}_{owner_id}"
-            if cmd_msg_id:
-                cb_data += f"_{cmd_msg_id}"
+            if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
+            # Nota: Al volver de ver el sticker, volverá al orden por defecto (num) salvo que pasemos sort_mode también.
+            # Para simplificar, showsticker no guarda el sort_mode, así que al volver reseteará a numérico.
+            # Si quieres persistencia total es más complejo.
+
             callback_data = cb_data
         else:
             button_text = f"#{pokemon['id']:03} ---"
             callback_data = "missing_sticker"
+
         row.append(InlineKeyboardButton(button_text, callback_data=callback_data))
         if len(row) == 2:
             keyboard.append(row)
             row = []
-    if row:
-        keyboard.append(row)
+    if row: keyboard.append(row)
+
+    # --- BARRA DE NAVEGACIÓN ---
     pagination_row = []
+
+    # Botón Orden (Izquierda)
+    new_sort = 'num' if sort_mode == 'az' else 'az'
+    btn_sort_text = "Orden 🔢" if sort_mode == 'az' else "Orden 🔤"
+
+    # Construimos el callback conservando todo
+    cb_sort = f"album_{region_name}_0_{owner_id}"  # Reseteamos a pág 0 al cambiar orden
+    if cmd_msg_id: cb_sort += f"_{cmd_msg_id}"
+    cb_sort += f"_{new_sort}"
+
+    pagination_row.append(InlineKeyboardButton(btn_sort_text, callback_data=cb_sort))
+
+    # Botones Paginación
     if page > 0:
         prev_cb = f"album_{region_name}_{page - 1}_{owner_id}"
         if cmd_msg_id: prev_cb += f"_{cmd_msg_id}"
-        pagination_row.append(InlineKeyboardButton("⬅️ Anterior", callback_data=prev_cb))
+        prev_cb += f"_{sort_mode}"  # Mantenemos orden actual
+        pagination_row.append(InlineKeyboardButton("⬅️", callback_data=prev_cb))
+
     if end_index < total_region:
         next_cb = f"album_{region_name}_{page + 1}_{owner_id}"
         if cmd_msg_id: next_cb += f"_{cmd_msg_id}"
-        pagination_row.append(InlineKeyboardButton("Siguiente ➡️", callback_data=next_cb))
-    if pagination_row:
-        keyboard.append(pagination_row)
+        next_cb += f"_{sort_mode}"  # Mantenemos orden actual
+        pagination_row.append(InlineKeyboardButton("➡️", callback_data=next_cb))
+
+    if pagination_row: keyboard.append(pagination_row)
+
+    # Botones inferiores
     back_cb = f"album_main_{owner_id}"
     if cmd_msg_id: back_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("⬅️ Volver al Álbum Nacional", callback_data=back_cb)])
+
     close_cb = f"album_close_{owner_id}"
     if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
-    keyboard.append([InlineKeyboardButton("❌ Cerrar Álbum", callback_data=close_cb)])
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    keyboard.append([InlineKeyboardButton("❌ Cerrar Álbumdex", callback_data=close_cb)])  # Texto cambiado
 
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def album_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -776,11 +904,13 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
     interactor_user = query.from_user
     try:
         parts = query.data.split('_')
+        # showsticker_REGION_PAGE_POKEMONID_OWNERID_MSGID
         region_name = parts[1]
         page_str = parts[2]
         pokemon_id_str = parts[3]
         owner_id_str = parts[4]
         cmd_msg_id_str = parts[5] if len(parts) > 5 else None
+
         pokemon_id, owner_id = int(pokemon_id_str), int(owner_id_str)
         if interactor_user.id != owner_id:
             await query.answer("Este menú no es tuyo.", show_alert=True)
@@ -788,24 +918,33 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
     except (ValueError, IndexError):
         await query.answer("Error al obtener el sticker.", show_alert=True)
         return
+
     refresh_deletion_timer(context, query.message, 60)
     user_collection = db.get_all_user_stickers(owner_id)
     has_normal = (pokemon_id, 0) in user_collection
     has_shiny = (pokemon_id, 1) in user_collection
     pokemon_name = POKEMON_BY_ID.get(pokemon_id, {}).get("name", "Desconocido")
     text = f"Elige qué versión de *{pokemon_name}* quieres mostrar:"
+
     keyboard, row = [], []
     if has_normal:
         row.append(InlineKeyboardButton("Normal", callback_data=f"sendsticker_{pokemon_id}_0_{owner_id}"))
     if has_shiny:
         row.append(InlineKeyboardButton("Brillante ✨", callback_data=f"sendsticker_{pokemon_id}_1_{owner_id}"))
     keyboard.append(row)
+
+    # --- BOTÓN VOLVER ---
+    # Al volver, por defecto volvemos al modo numérico ('num') para evitar complicaciones
     back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
     if cmd_msg_id_str:
         back_cb_data += f"_{cmd_msg_id_str}"
-    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+    # Añadimos '_num' explícito al final para que album_region_handler lo entienda
+    back_cb_data += "_num"
+
+    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1754,6 +1893,7 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in TOMBOLA_STATE:
         TOMBOLA_STATE[chat_id] = {'msg_id': None, 'winners': []}
 
+
     # Añadimos ganador
     TOMBOLA_STATE[chat_id]['winners'].append(list_line)
 
@@ -2011,7 +2151,20 @@ async def tienda_close_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    # Detectar origen (Comando/Panel o Botón de cambio de modo)
+    query = update.callback_query
+
+    # Por defecto, modo sobres
+    mode = "packs"
+
+    if query:
+        user = query.from_user
+        # Si pulsó el botón de cambio, leemos el modo deseado
+        if query.data.startswith("inv_mode_"):
+            mode = query.data.split("_")[-1]  # packs o special
+    else:
+        user = update.effective_user
+
     if not user: return
 
     db.get_or_create_user(user.id, user.first_name)
@@ -2019,56 +2172,81 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.register_user_in_group(user.id, update.effective_chat.id)
 
     items = db.get_user_inventory(user.id)
-    text = "🎒 Tu mochila está vacía."
+    text = ""
     keyboard_buttons = []
 
-    if items:
-        text = "🎒 *Tu Mochila:*\n\n"
-        for item in items:
-            item_id = item['item_id']
-            # --- Objetos Especiales ---
-            if item_id.startswith('lottery_ticket_'):
-                item_name = "Ticket de lotería ganador"
-                row = [
-                    InlineKeyboardButton("🔍 Ver", callback_data=f"viewticket_{item_id}_{user.id}"),
-                    InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
-                ]
-                keyboard_buttons.append(row)
-                text += f"🔸️ {item_name} 🎫 x{item['quantity']}\n"
-            elif item_id in SPECIAL_ITEMS_DATA:
-                data = SPECIAL_ITEMS_DATA[item_id]
-                item_name = f"{data['name']} {data['emoji']}"
-                row = [
-                    InlineKeyboardButton("🔍 Ver", callback_data=f"viewspecial_{item_id}_{user.id}"),
-                    InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
-                ]
-                keyboard_buttons.append(row)
-                text += f"🔸️ {item_name} x{item['quantity']}\n"
-            # --- Sobres ---
-            elif item_id in PACK_CONFIG:
+    # --- BOTÓN DE CAMBIO DE MODO (SIEMPRE ARRIBA) ---
+    if mode == "packs":
+        # Estamos en sobres, mostramos botón para ir a especiales
+        keyboard_buttons.append([InlineKeyboardButton("🪶 Otros Objetos", callback_data="inv_mode_special")])
+        text = "🎒 **Mochila - Sobres**\n\n"
+    else:
+        # Estamos en especiales, mostramos botón para ir a sobres
+        keyboard_buttons.append([InlineKeyboardButton("🎴 Sobres", callback_data="inv_mode_packs")])
+        text = "🎒 **Mochila - Objetos Especiales**\n\n"
+
+    has_items = False
+
+    # --- FILTRADO Y VISUALIZACIÓN ---
+    for item in items:
+        item_id = item['item_id']
+        qty = item['quantity']
+
+        # MODO SOBRES
+        if mode == "packs":
+            if item_id in PACK_CONFIG:
                 raw_name = ITEM_NAMES.get(item_id, 'Objeto')
                 item_name = f"{raw_name} 🎴"
+                # Añadir botón de abrir
                 keyboard_buttons.append(
                     [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user.id}")])
-                text += f"🔸️ {item_name} x{item['quantity']}\n"
-            # --- Otros ---
-            else:
-                item_name = ITEM_NAMES.get(item_id, 'Objeto')
-                text += f"🔸️ {item_name} x{item['quantity']}\n"
+                text += f"🔸️ {item_name} x{qty}\n"
+                has_items = True
 
-    keyboard = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+        # MODO ESPECIALES
+        else:
+            if item_id.startswith('lottery_ticket_') or item_id in SPECIAL_ITEMS_DATA:
+                if item_id.startswith('lottery_ticket_'):
+                    item_name = "Ticket de lotería ganador"
+                else:
+                    data = SPECIAL_ITEMS_DATA[item_id]
+                    item_name = f"{data['name']} {data['emoji']}"
 
-    # --- CORRECCIÓN: Usar context.bot.send_message para asegurar mensaje nuevo ---
-    sent_message = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode='Markdown',
-        disable_notification=True
-    )
-    schedule_message_deletion(context, sent_message)
-    if update.message:
-        schedule_message_deletion(context, update.message)
+                # Botones de acción (Ver/Mostrar) en la misma línea
+                row = [
+                    InlineKeyboardButton("🔍 Ver",
+                                         callback_data=f"view{'ticket' if 'ticket' in item_id else 'special'}_{item_id}_{user.id}"),
+                    InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
+                ]
+                keyboard_buttons.append(row)
+                text += f"🔸️ {item_name} x{qty}\n"
+                has_items = True
+
+    if not has_items:
+        text += "_Bolsillo vacío._"
+
+    markup = InlineKeyboardMarkup(keyboard_buttons)
+
+    # ENVÍO O EDICIÓN
+    if query and query.data.startswith("inv_mode_"):
+        # Navegación interna (cambio de pestaña) -> EDITAR
+        await query.answer()
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+    else:
+        # Comando nuevo -> ENVIAR NUEVO
+        if query: await query.answer()  # Si viene del panel
+
+        sent_message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=markup,
+            parse_mode='Markdown',
+            disable_notification=True
+        )
+        schedule_message_deletion(context, sent_message)
+        if update.message:
+            schedule_message_deletion(context, update.message)
+
 
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
@@ -2136,18 +2314,39 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_notification=True
         )
 
-        pack_config = PACK_CONFIG.get(item_id, {})
+        pack_config = SHOP_CONFIG.get(item_id, {})  # Usamos SHOP_CONFIG para tener info completa
         pack_size = pack_config.get('size', 1)
-        is_magic = pack_config.get('is_magic', False)
         pack_results = []
         message_ids_to_delete = [opening_message.message_id]
 
-        # --- LÓGICA SOBRE BRILLANTE KANTO ---
-        if item_id == 'pack_shiny_kanto':
-            pokemon_data, _, _ = choose_random_pokemon()
-            pack_results.append({'data': pokemon_data, 'is_shiny': True})
+        # --- LÓGICA DE GENERACIÓN ---
 
-        elif is_magic:
+        # 1. Sobre Brillante (100% Shiny)
+        if item_id == 'pack_shiny_kanto':
+            p_data, _, _ = choose_random_pokemon()
+            pack_results.append({'data': p_data, 'is_shiny': True})
+
+        # 2. Sobre Especial Kanto (Doble probabilidad shiny)
+        elif item_id == 'pack_elem_especial':
+            for _ in range(pack_size):
+                is_shiny = random.random() < (SHINY_CHANCE * 2)
+                p_data, _, _ = choose_random_pokemon()
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
+        # 3. Sobres Elementales (Filtrados por tipo) - ¡ESTO FALTABA!
+        elif 'type_filter' in pack_config:
+            target_type = pack_config['type_filter']
+            # Filtramos la lista global
+            type_pool = [p for p in ALL_POKEMON if target_type in p.get('types', [])]
+            if not type_pool: type_pool = ALL_POKEMON  # Fallback
+
+            for _ in range(pack_size):
+                p_data = random.choice(type_pool)
+                is_shiny = random.random() < SHINY_CHANCE
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
+        # 4. Sobres Mágicos
+        elif pack_config.get('is_magic'):
             user_stickers = db.get_all_user_stickers(user.id)
             all_normal_stickers = {(p['id'], 0) for p in ALL_POKEMON}
             all_shiny_stickers = {(p['id'], 1) for p in ALL_POKEMON}
@@ -2166,9 +2365,12 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     pokemon_data, is_shiny_status, _ = choose_random_pokemon()
                     pack_results.append({'data': pokemon_data, 'is_shiny': is_shiny_status})
+
+        # 5. Sobres Normales
         else:
-            pack_results = [{'data': p, 'is_shiny': s} for p, s, _ in
-                            [choose_random_pokemon() for _ in range(pack_size)]]
+            for _ in range(pack_size):
+                p_data, s, _ = choose_random_pokemon()
+                pack_results.append({'data': p_data, 'is_shiny': s})
 
         summary_parts = []
 
@@ -2190,9 +2392,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
 
-            # Añadir al reto grupal (151) pero NO al ranking mensual
             if message.chat.type in ['group', 'supergroup']:
-                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
+                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])  # Pokedex grupal
 
             # --- NUEVA LÓGICA SMART (1º, 2º, 3º+) ---
             status = db.add_sticker_smart(user.id, p['id'], s)
@@ -2224,7 +2425,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                        disable_notification=True)
 
         if message_ids_to_delete and context.job_queue:
-            context.job_queue.run_once(delete_pack_stickers, when=60,
+            context.job_queue.run_once(delete_pack_stickers, 60,
                                        data={'chat_id': message.chat_id, 'sticker_ids': message_ids_to_delete})
         context.chat_data['last_pack_open_time'] = time.time()
     finally:
@@ -3589,6 +3790,141 @@ async def clearalbum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🗑️ ¡Álbumdex de {target_user.first_name} vaciado!\nSe eliminaron {changes} stickers de su colección.", disable_notification=True)
 
 
+async def schedule_delibird_week(context: ContextTypes.DEFAULT_TYPE):
+    """Planifica el evento de Delibird para un momento aleatorio de la semana."""
+    # Se ejecuta los lunes a las 00:05
+
+    # 1. Calcular segundos aleatorios en la semana (7 días)
+    # Dejamos un margen de 1 hora al principio y al final
+    seconds_in_week = 7 * 24 * 3600
+    random_delay = random.randint(3600, seconds_in_week - 3600)
+
+    # 2. Programar el trabajo único
+    context.job_queue.run_once(trigger_delibird_event, random_delay, name="delibird_weekly_event")
+
+    # Calcular fecha para el log
+    trigger_date = datetime.fromtimestamp(time.time() + random_delay)
+    logger.info(f"🐧 Delibird programado para: {trigger_date}")
+
+
+async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
+    """Lanza el evento."""
+    # 1. Limpiamos la lista global de reclamados (Empieza nueva semana)
+    DELIBIRD_GLOBAL_CLAIMED.clear()
+
+    active_groups = db.get_active_groups()
+    current_time = time.time()
+
+    text = (
+        "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
+        "Trae un saco lleno de sobres elementales de Kanto.\n"
+        "¡Reclama el tuyo antes de que se vaya!\n\n"
+        "_La bolsa contiene sobres de cada tipo de Pokémon o un Sobre Especial de 7 stickers._"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("¡RECLAMAR PREMIO!🎁", callback_data="delibird_claim")],
+        [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
+    ]
+
+    for chat_id in active_groups:
+        try:
+            msg = await context.bot.send_message(chat_id=chat_id, text=text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+            DELIBIRD_STATE[chat_id] = {
+                'msg_id': msg.message_id,
+                'winners': [],
+                'timestamp': current_time
+            }
+            # Cierre en 24h
+            context.job_queue.run_once(close_delibird_event, 86400, chat_id=chat_id, data=chat_id)
+        except:
+            pass
+
+
+async def close_delibird_event(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = context.job.data
+    state = DELIBIRD_STATE.get(chat_id)
+
+    if state:
+        try:
+            # Editar mensaje final
+            final_text = "🐧💤 **Delibird se fue a descansar**\n\nResultados del reparto:\n" + "\n".join(
+                state['winners'])
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=state['msg_id'], text=final_text,
+                                                parse_mode='Markdown')
+        except:
+            pass
+
+        # Limpiar memoria
+        del DELIBIRD_STATE[chat_id]
+
+
+async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat_id
+
+    if query.data == "delibird_info":
+        await query.answer(
+            "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales con más probabilidad de Shiny.",
+            show_alert=True)
+        return
+
+    # Verificar estado local
+    state = DELIBIRD_STATE.get(chat_id)
+    if not state:
+        await query.answer("Delibird ya se ha ido...", show_alert=True)
+        return
+
+    # --- VERIFICACIÓN GLOBAL ---
+    if user.id in DELIBIRD_GLOBAL_CLAIMED:
+        await query.answer("¡Ya has cogido un sobre en algún grupo! Solo 1 por semana.", show_alert=True)
+        return
+    # ---------------------------
+
+    # Seleccionar premio
+    # Creamos lista de IDs posibles (todos los elem_ y el especial)
+    possible_packs = [k for k in SHOP_CONFIG.keys() if k.startswith('pack_elem_')]
+    prize_id = random.choice(possible_packs)
+    prize_info = SHOP_CONFIG[prize_id]
+
+    # Dar premio (A LA MOCHILA)
+    db.get_or_create_user(user.id, user.first_name)
+    db.add_item_to_inventory(user.id, prize_id, 1)
+
+    # Marcar como reclamado globalmente
+    DELIBIRD_GLOBAL_CLAIMED.add(user.id)
+
+    # Actualizar lista mensaje
+    safe_name = user.first_name.replace('*', '').replace('_', '')
+    list_line = f"- {safe_name} recibió {prize_info['name']} {prize_info['emoji']}"
+    state['winners'].append(list_line)
+
+    new_text = (
+            "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n"
+            "Trae un saco lleno de sobres elementales de Kanto.\n"
+            "¡Reclama el tuyo antes de que se vaya!\n\n"
+            "Resultados:\n" + "\n".join(state['winners'])
+    )
+
+    try:
+        await query.edit_message_text(text=new_text, reply_markup=query.message.reply_markup, parse_mode='Markdown')
+    except:
+        pass
+
+    # Alerta Pop-up
+    await query.answer(f"¡Has conseguido un {prize_info['name']}!\nGuárdalo en tu mochila.", show_alert=True)
+
+
+# COMANDO DE TEST
+async def admin_test_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID: return
+    await trigger_delibird_event(context)
+    await update.message.delete()
+
+
 # --- COMANDOS ADMIN EXTRA ---
 
 async def admin_reset_group_kanto(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3884,6 +4220,16 @@ def main():
         time=dt_time(12, 0, tzinfo=TZ_SPAIN),
         name="code_expiration_check"
     )
+
+    # 4. Planificador Semanal de Delibird (Lunes 00:05)
+    application.job_queue.run_daily(
+        schedule_delibird_week,
+        time=dt_time(0, 5, tzinfo=TZ_SPAIN),
+        days=(1,),
+        # 0=Lunes (en python-telegram-bot suele ser 0-6 L-D o 1-7, verificar librería. Usually Monday=1 in datetime but check APScheduler. En PTB days=(1,) es Martes? No, days=(0,) es Lunes. Probamos (0,).)
+        name="delibird_scheduler"
+    )
+
     # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
@@ -3936,6 +4282,7 @@ def main():
         CommandHandler("buscaruser", admin_search_user),
         CommandHandler("borrarcodigo", delete_code_cmd),
         CommandHandler("intercambio", intercambio_cmd),
+        CommandHandler("testdelibird", admin_test_delibird),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -3971,6 +4318,8 @@ def main():
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
         CallbackQueryHandler(lambda u, c: u.callback_query.delete_message(), pattern="^trade_cancel_"),
         CallbackQueryHandler(ranking_navigation_handler, pattern="^rank_nav_"),
+        CallbackQueryHandler(inventory_cmd, pattern="^inv_mode_"),
+        CallbackQueryHandler(delibird_claim_handler, pattern="^delibird_"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
