@@ -753,7 +753,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         parts = query.data.split('_')
         # Formato: album_REGION_PAGE_OWNERID_MSGID_SORTMODE
-        # Ejemplo: album_Kanto_0_123456_999_num
 
         region_name = parts[1]
         page = int(parts[2])
@@ -762,8 +761,7 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(parts) > 4 and parts[4].isdigit():
             cmd_msg_id = int(parts[4])
 
-        # Detectar modo de ordenación (por defecto numérico 'num')
-        # Buscamos si el último parámetro es 'az' o 'num'
+        # Detectar modo de ordenación
         sort_mode = 'num'
         if parts[-1] in ['num', 'az']:
             sort_mode = parts[-1]
@@ -782,14 +780,11 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # --- LÓGICA DE ORDENACIÓN ---
-    # Hacemos una copia para no alterar la lista global original
     pokemon_list_region = raw_list[:]
 
     if sort_mode == 'az':
-        # Ordenar alfabéticamente por nombre
         pokemon_list_region.sort(key=lambda x: x['name'])
     else:
-        # Ordenar por ID (numérico) - Ya suelen estar así, pero aseguramos
         pokemon_list_region.sort(key=lambda x: x['id'])
     # ----------------------------
 
@@ -804,7 +799,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     end_index = (page + 1) * POKEMON_PER_PAGE
     pokemon_on_page = pokemon_list_region[start_index:end_index]
 
-    # Título con indicación de orden
     order_icon = "🔤" if sort_mode == 'az' else "🔢"
     text = f"📖 *Álbumdex de {region_name}* ({order_icon})\n(Pág. {page + 1}/{total_pages})"
 
@@ -820,12 +814,8 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             elif has_normal:
                 button_text += f" {RARITY_VISUALS.get(get_rarity(pokemon['category'], False), '')}"
 
-            # Al ver detalle, mantenemos contexto básico
             cb_data = f"showsticker_{region_name}_{page}_{pokemon['id']}_{owner_id}"
             if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
-            # Nota: Al volver de ver el sticker, volverá al orden por defecto (num) salvo que pasemos sort_mode también.
-            # Para simplificar, showsticker no guarda el sort_mode, así que al volver reseteará a numérico.
-            # Si quieres persistencia total es más complejo.
 
             callback_data = cb_data
         else:
@@ -841,28 +831,28 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- BARRA DE NAVEGACIÓN ---
     pagination_row = []
 
-    # Botón Orden (Izquierda)
-    new_sort = 'num' if sort_mode == 'az' else 'az'
-    btn_sort_text = "Orden 🔢" if sort_mode == 'az' else "Orden 🔤"
+    # Botón Orden (SOLO EN LA PRIMERA PÁGINA)
+    if page == 0:
+        new_sort = 'num' if sort_mode == 'az' else 'az'
+        btn_sort_text = "Orden 🔢" if sort_mode == 'az' else "Orden 🔤"
 
-    # Construimos el callback conservando todo
-    cb_sort = f"album_{region_name}_0_{owner_id}"  # Reseteamos a pág 0 al cambiar orden
-    if cmd_msg_id: cb_sort += f"_{cmd_msg_id}"
-    cb_sort += f"_{new_sort}"
+        cb_sort = f"album_{region_name}_0_{owner_id}"
+        if cmd_msg_id: cb_sort += f"_{cmd_msg_id}"
+        cb_sort += f"_{new_sort}"
 
-    pagination_row.append(InlineKeyboardButton(btn_sort_text, callback_data=cb_sort))
+        pagination_row.append(InlineKeyboardButton(btn_sort_text, callback_data=cb_sort))
 
     # Botones Paginación
     if page > 0:
         prev_cb = f"album_{region_name}_{page - 1}_{owner_id}"
         if cmd_msg_id: prev_cb += f"_{cmd_msg_id}"
-        prev_cb += f"_{sort_mode}"  # Mantenemos orden actual
+        prev_cb += f"_{sort_mode}"
         pagination_row.append(InlineKeyboardButton("⬅️", callback_data=prev_cb))
 
     if end_index < total_region:
         next_cb = f"album_{region_name}_{page + 1}_{owner_id}"
         if cmd_msg_id: next_cb += f"_{cmd_msg_id}"
-        next_cb += f"_{sort_mode}"  # Mantenemos orden actual
+        next_cb += f"_{sort_mode}"
         pagination_row.append(InlineKeyboardButton("➡️", callback_data=next_cb))
 
     if pagination_row: keyboard.append(pagination_row)
@@ -874,7 +864,7 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     close_cb = f"album_close_{owner_id}"
     if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
-    keyboard.append([InlineKeyboardButton("❌ Cerrar Álbumdex", callback_data=close_cb)])  # Texto cambiado
+    keyboard.append([InlineKeyboardButton("❌ Cerrar Álbumdex", callback_data=close_cb)])
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
