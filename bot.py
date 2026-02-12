@@ -3786,7 +3786,7 @@ async def removemail_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.remove_mail_item_by_id(mail_id):
             await update.message.reply_text(f"✅ Regalo con ID `{mail_id}` eliminado correctamente.", disable_notification=True)
         else:
-            await update.message.reply_text(f"ℹ️ No se encontró ningún regalo con el ID `{mail_id}`.", disable_notification=True)
+            await update.message.reply_text(f"ℹ️No se encontró ningún regalo con el ID `{mail_id}`.", disable_notification=True)
     except (IndexError, ValueError):
         await update.message.reply_text(
             "Uso: `/removemail <mail_id>`\nPuedes ver la ID del regalo en el comando /buzon.", disable_notification=True)
@@ -3845,26 +3845,52 @@ async def check_delibird_startup(application):
 
 async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     """Lanza el evento."""
-    # 1. Limpiamos la programación de la BD (Ya se ha ejecutado)
+    # 1. Limpiamos la programación de la BD
     db.clear_delibird_schedule()
 
-    # 2. Limpiamos la lista global de reclamados (Empieza nueva semana)
+    # 2. Limpiamos lista global
     DELIBIRD_GLOBAL_CLAIMED.clear()
 
-    # ... (el resto de la función sigue igual: texto, envío a grupos, etc.) ...
     active_groups = db.get_active_groups()
     current_time = time.time()
+
+    # Log para saber qué está pasando
+    logger.info(f"🐧 Lanzando Delibird a {len(active_groups)} grupos activos.")
 
     text = (
         "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
         "Trae un saco lleno de sobres elementales de Kanto.\n"
         "¡Reclama el tuyo antes de que se vaya!\n\n"
-        "_La bolsa contiene sobres de cada tipo de Pokémon o un Sobre Especial de 7 stickers._"
     )
 
-    # ... (copia el resto de tu función antigua aquí) ...
-    # Si quieres que te pase la función entera dímelo, pero es solo añadir la línea db.clear_delibird_schedule() al principio.
+    keyboard = [
+        [InlineKeyboardButton("🎁 ¡RECLAMAR PREMIO!", callback_data="delibird_claim")],
+        [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
+    ]
 
+    count_sent = 0
+    for chat_id in active_groups:
+        try:
+            # Añadimos debug para ver a qué chat intenta enviar
+            logger.info(f"🐧 Enviando a chat: {chat_id}")
+
+            msg = await context.bot.send_message(chat_id=chat_id, text=text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+            DELIBIRD_STATE[chat_id] = {
+                'msg_id': msg.message_id,
+                'winners': [],
+                'timestamp': current_time
+            }
+            # Cierre en 24h
+            context.job_queue.run_once(close_delibird_event, 86400, chat_id=chat_id, data=chat_id)
+            count_sent += 1
+
+        except Exception as e:
+            # AQUÍ VERÁS EL ERROR EN RENDER SI FALLA
+            logger.error(f"❌ Error enviando Delibird a {chat_id}: {e}")
+
+    logger.info(f"🐧 Delibird enviado con éxito a {count_sent}/{len(active_groups)} grupos.")
 
 async def close_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data
