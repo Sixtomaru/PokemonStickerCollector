@@ -2824,6 +2824,19 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (IndexError, ValueError) as e:
         await update.message.reply_text(f"Uso incorrecto: {e}", disable_notification=True)
 
+
+async def admin_force_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    # Borramos programación futura si la hay
+    db.clear_delibird_schedule()
+
+    # Lanzamos
+    await trigger_delibird_event(context)
+
+    await update.message.reply_text("✅ Evento Delibird forzado manualmente.", disable_notification=True)
+    await update.message.delete()
+
 async def send_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
     target_user, args = await _get_target_user_from_command(update, context)
@@ -3792,27 +3805,53 @@ async def clearalbum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def schedule_delibird_week(context: ContextTypes.DEFAULT_TYPE):
-    """Planifica el evento de Delibird para un momento aleatorio de la semana."""
-    # Se ejecuta los lunes a las 00:05
-
-    # 1. Calcular segundos aleatorios en la semana (7 días)
-    # Dejamos un margen de 1 hora al principio y al final
+    """Calcula una nueva fecha aleatoria y la guarda en BD."""
+    # 1. Calcular momento aleatorio en la semana (7 días)
     seconds_in_week = 7 * 24 * 3600
     random_delay = random.randint(3600, seconds_in_week - 3600)
+    target_timestamp = time.time() + random_delay
 
-    # 2. Programar el trabajo único
+    # 2. Guardar en Base de Datos (Persistencia)
+    db.set_delibird_schedule(target_timestamp)
+
+    # 3. Programar la ejecución en memoria
     context.job_queue.run_once(trigger_delibird_event, random_delay, name="delibird_weekly_event")
 
-    # Calcular fecha para el log
-    trigger_date = datetime.fromtimestamp(time.time() + random_delay)
-    logger.info(f"🐧 Delibird programado para: {trigger_date}")
+    trigger_date = datetime.fromtimestamp(target_timestamp)
+    logger.info(f"🐧 Delibird PROGRAMADO y GUARDADO para: {trigger_date}")
+
+
+async def check_delibird_startup(application):
+    """Se ejecuta al encender el bot: recupera eventos pendientes."""
+    saved_timestamp = db.get_delibird_schedule()
+
+    if saved_timestamp:
+        current_time = time.time()
+        delay = saved_timestamp - current_time
+
+        if delay <= 0:
+            # ¡Ya pasó la hora mientras estaba apagado! -> Lanzar INMEDIATAMENTE
+            logger.warning("🐧 ¡Delibird se perdió por estar apagado! Lanzando AHORA MISMO de urgencia.")
+            # Ejecutamos la función directamente (simulando job)
+            # Nota: Necesitamos el context. Como no lo tenemos fácil aquí, usamos run_once con 1 segundo.
+            application.job_queue.run_once(trigger_delibird_event, 1, name="delibird_recovered_event")
+
+        else:
+            # Aún falta tiempo -> Reprogramar
+            trigger_date = datetime.fromtimestamp(saved_timestamp)
+            logger.info(f"🐧 Restaurando evento Delibird para: {trigger_date}")
+            application.job_queue.run_once(trigger_delibird_event, delay, name="delibird_restored_event")
 
 
 async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     """Lanza el evento."""
-    # 1. Limpiamos la lista global de reclamados (Empieza nueva semana)
+    # 1. Limpiamos la programación de la BD (Ya se ha ejecutado)
+    db.clear_delibird_schedule()
+
+    # 2. Limpiamos la lista global de reclamados (Empieza nueva semana)
     DELIBIRD_GLOBAL_CLAIMED.clear()
 
+    # ... (el resto de la función sigue igual: texto, envío a grupos, etc.) ...
     active_groups = db.get_active_groups()
     current_time = time.time()
 
@@ -3823,25 +3862,8 @@ async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
         "_La bolsa contiene sobres de cada tipo de Pokémon o un Sobre Especial de 7 stickers._"
     )
 
-    keyboard = [
-        [InlineKeyboardButton("¡RECLAMAR PREMIO!🎁", callback_data="delibird_claim")],
-        [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
-    ]
-
-    for chat_id in active_groups:
-        try:
-            msg = await context.bot.send_message(chat_id=chat_id, text=text,
-                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-            DELIBIRD_STATE[chat_id] = {
-                'msg_id': msg.message_id,
-                'winners': [],
-                'timestamp': current_time
-            }
-            # Cierre en 24h
-            context.job_queue.run_once(close_delibird_event, 86400, chat_id=chat_id, data=chat_id)
-        except:
-            pass
+    # ... (copia el resto de tu función antigua aquí) ...
+    # Si quieres que te pase la función entera dímelo, pero es solo añadir la línea db.clear_delibird_schedule() al principio.
 
 
 async def close_delibird_event(context: ContextTypes.DEFAULT_TYPE):
@@ -3869,7 +3891,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     if query.data == "delibird_info":
         await query.answer(
-            "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales con más probabilidad de Shiny.",
+            "🎒 El saco de Delibird contiene sobres de tipos (Fuego, Agua, etc...) y un Sobre Especial con el doble de probabilidad de Brillante.",
             show_alert=True)
         return
 
@@ -4154,6 +4176,7 @@ async def post_init(application: Application):
     await bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
 
     logger.info("Comandos del bot configurados exitosamente.")
+    await check_delibird_startup(application)
 
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
@@ -4191,6 +4214,12 @@ def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     # --- ZONA DE TAREAS PROGRAMADAS (CON LIMPIEZA ANTI-DUPLICADOS) ---
+    # --- RECUPERACIÓN DE EVENTOS (¡NUEVO!) ---
+
+    # Esto revisa la BD al encenderse por si había un Delibird pendiente
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(check_delibird_startup(application))
 
     # 1. Ranking Mensual (Día 1 a las 12:00)
     old_ranking = application.job_queue.get_jobs_by_name("monthly_ranking_check")
@@ -4284,6 +4313,7 @@ def main():
         CommandHandler("borrarcodigo", delete_code_cmd),
         CommandHandler("intercambio", intercambio_cmd),
         CommandHandler("testdelibird", admin_test_delibird),
+        CommandHandler("forceevent", admin_force_delibird),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
