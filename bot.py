@@ -547,7 +547,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                              disable_notification=True)
         schedule_message_deletion(context, msg, 60)
         if update.message:
-            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, update.message, 5)
 
 
 async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -752,19 +752,14 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         parts = query.data.split('_')
-        # Formato: album_REGION_PAGE_OWNERID_MSGID_SORTMODE
-
         region_name = parts[1]
         page = int(parts[2])
         owner_id = int(parts[3])
 
-        if len(parts) > 4 and parts[4].isdigit():
-            cmd_msg_id = int(parts[4])
+        if len(parts) > 4 and parts[4].isdigit(): cmd_msg_id = int(parts[4])
 
-        # Detectar modo de ordenación
         sort_mode = 'num'
-        if parts[-1] in ['num', 'az']:
-            sort_mode = parts[-1]
+        if parts[-1] in ['num', 'az']: sort_mode = parts[-1]
 
         if interactor_user.id != owner_id:
             await query.answer("Este álbum no es tuyo.", show_alert=True)
@@ -773,25 +768,38 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("Error en los datos del álbum.", show_alert=True)
         return
 
-    # Obtener lista base
     raw_list = POKEMON_REGIONS.get(region_name)
     if not raw_list:
         await query.answer("Región no encontrada.", show_alert=True)
         return
 
-    # --- LÓGICA DE ORDENACIÓN ---
+    # Lógica de ordenación
     pokemon_list_region = raw_list[:]
-
     if sort_mode == 'az':
         pokemon_list_region.sort(key=lambda x: x['name'])
     else:
         pokemon_list_region.sort(key=lambda x: x['id'])
-    # ----------------------------
 
     await query.answer()
     refresh_deletion_timer(context, query.message, 60)
 
     user_collection = db.get_all_user_stickers(owner_id)
+
+    # --- NUEVO: CALCULAR PROGRESO REGIONAL ---
+    # Contamos cuántos IDs únicos de ESTA región tiene el usuario
+    # (raw_list contiene los diccionarios de los pokémon de esta región)
+    region_ids = {p['id'] for p in raw_list}
+    owned_in_region = 0
+
+    # Recorremos la colección del usuario para contar
+    # user_collection es un set de tuplas (id, is_shiny)
+    # Usamos un set temporal para no contar dobles (normal + shiny del mismo pokémon cuenta como 1 capturado)
+    unique_owned_ids = {pid for pid, _ in user_collection}
+
+    # Intersección: IDs que tiene el usuario Y que pertenecen a esta región
+    owned_in_region = len(unique_owned_ids.intersection(region_ids))
+    # -----------------------------------------
+
     total_region = len(pokemon_list_region)
     total_pages = math.ceil(total_region / POKEMON_PER_PAGE)
 
@@ -800,7 +808,11 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     pokemon_on_page = pokemon_list_region[start_index:end_index]
 
     order_icon = "🔤" if sort_mode == 'az' else "🔢"
-    text = f"📖 *Álbumdex de {region_name}* ({order_icon})\n(Pág. {page + 1}/{total_pages})"
+
+    # --- TEXTO ACTUALIZADO ---
+    text = (f"📖 *Álbumdex de {region_name}* ({order_icon})\n"
+            f"📊 *{owned_in_region}/{total_region}*\n"
+            f"(Pág. {page + 1}/{total_pages})")
 
     keyboard, row = [], []
     for pokemon in pokemon_on_page:
@@ -816,7 +828,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
             cb_data = f"showsticker_{region_name}_{page}_{pokemon['id']}_{owner_id}"
             if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
-
             callback_data = cb_data
         else:
             button_text = f"#{pokemon['id']:03} ---"
@@ -828,21 +839,15 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             row = []
     if row: keyboard.append(row)
 
-    # --- BARRA DE NAVEGACIÓN ---
     pagination_row = []
-
-    # Botón Orden (SOLO EN LA PRIMERA PÁGINA)
     if page == 0:
         new_sort = 'num' if sort_mode == 'az' else 'az'
         btn_sort_text = "Orden 🔢" if sort_mode == 'az' else "Orden 🔤"
-
         cb_sort = f"album_{region_name}_0_{owner_id}"
         if cmd_msg_id: cb_sort += f"_{cmd_msg_id}"
         cb_sort += f"_{new_sort}"
-
         pagination_row.append(InlineKeyboardButton(btn_sort_text, callback_data=cb_sort))
 
-    # Botones Paginación
     if page > 0:
         prev_cb = f"album_{region_name}_{page - 1}_{owner_id}"
         if cmd_msg_id: prev_cb += f"_{cmd_msg_id}"
@@ -857,7 +862,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if pagination_row: keyboard.append(pagination_row)
 
-    # Botones inferiores
     back_cb = f"album_main_{owner_id}"
     if cmd_msg_id: back_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("⬅️ Volver al Álbum Nacional", callback_data=back_cb)])
@@ -1332,7 +1336,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             msg = await update.message.reply_text("El bot ya está en funcionamiento.", disable_notification=True)
 
-        schedule_message_deletion(context, update.message, 30)
+        schedule_message_deletion(context, update.message, 5)
         schedule_message_deletion(context, msg, 30)
 
     else:
@@ -1359,7 +1363,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
     if not jobs:
         msg = await update.message.reply_text("El juego ya está detenido.", disable_notification=True)
-        schedule_message_deletion(context, update.message, 30)
+        schedule_message_deletion(context, update.message, 5)
         schedule_message_deletion(context, msg, 30)
         return
     for job in jobs:
@@ -1367,7 +1371,7 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db.set_group_active(chat.id, False)
     msg = await update.message.reply_text("❌ La aparición de Pokémon salvajes se ha desactivado.", disable_notification=True)
-    schedule_message_deletion(context, update.message, 30)
+    schedule_message_deletion(context, update.message, 5)
     schedule_message_deletion(context, msg, 30)
 
 
@@ -1405,7 +1409,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         current_time = time.time()
         if current_time - last_attempt_time < 30:
             time_left = math.ceil(30 - (current_time - last_attempt_time))
-            await query.answer(f"Espera unos {time_left} segundos...", show_alert=True)
+            await query.answer(f"Espera a que se recargue la energía del Álbumdex ({time_left} segundos).", show_alert=True)
             return
 
     current_chance = db.get_user_capture_chance(user.id)
@@ -1495,7 +1499,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode='Markdown',
             reply_to_message_id=msg_id
         )
-        schedule_message_deletion(context, fail_message, 120)
+        schedule_message_deletion(context, fail_message, 30)
 
 
 async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1807,7 +1811,7 @@ async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Verificar si ya jugó
     if db.get_last_daily_claim(user.id) == datetime.now(TZ_SPAIN).strftime('%Y-%m-%d'):
         msg = await update.message.reply_text("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", disable_notification=True)
-        schedule_message_deletion(context, msg, 5)
+        schedule_message_deletion(context, msg, 10)
         schedule_message_deletion(context, update.message, 5)
         return
 
@@ -1823,7 +1827,7 @@ async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                           disable_notification=True)
 
     # Programamos borrado por si no pulsa el botón
-    schedule_message_deletion(context, update.message, 60)
+    schedule_message_deletion(context, update.message, 5)
     schedule_message_deletion(context, msg, 60)
 
 # --- MODIFICADO: Lógica de Tómbola Pública ---
@@ -2016,7 +2020,7 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                              reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                              disable_notification=True)
         schedule_message_deletion(context, msg, 60)
-        if update.message: schedule_message_deletion(context, update.message, 60)
+        if update.message: schedule_message_deletion(context, update.message, 5)
 
 
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2282,7 +2286,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_time - last_open_time < PACK_OPEN_COOLDOWN:
         time_left = round(PACK_OPEN_COOLDOWN - (current_time - last_open_time))
-        await query.answer(f"Hay que esperar {time_left}s para abrir otro sobre en el grupo.", show_alert=True)
+        await query.answer(f"Hay que esperar {time_left}s para abrir otro sobre.", show_alert=True)
         return
 
     if context.chat_data.get('is_opening_pack', False):
@@ -2918,7 +2922,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "'/regalar @usuario <cantidad>'", disable_notification=True)
         # Borrar ayuda y comando en 60 segundos
         schedule_message_deletion(context, msg, 60)
-        schedule_message_deletion(context, update.message, 60)
+        schedule_message_deletion(context, update.message, 5)
         return
 
     # Caso: Auto-regalo
@@ -2948,7 +2952,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Por favor, especifica una cantidad válida.\nUso: `/regalar [@usuario|ID] <cantidad>`",
             disable_notification=True)
         schedule_message_deletion(context, msg, 20)
-        schedule_message_deletion(context, update.message, 20)
+        schedule_message_deletion(context, update.message, 5)
         return
 
     if update.effective_chat.type in ['group', 'supergroup']:
@@ -2960,7 +2964,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sender_money < amount:
         msg = await update.message.reply_text(f"No tienes suficiente dinero. Tienes *{format_money(sender_money)}₽*.",
                                               parse_mode='Markdown', disable_notification=True)
-        schedule_message_deletion(context, update.message, 120)
+        schedule_message_deletion(context, update.message, 5)
         schedule_message_deletion(context, msg, 120)
         return
 
@@ -3067,7 +3071,7 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
         if update.message:
-            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, update.message, 5)
 
 
 # --- SISTEMA DE CÓDIGOS DE AMIGO ---
@@ -3136,7 +3140,7 @@ async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown', disable_notification=True
         )
         schedule_message_deletion(context, msg, 30)
-        schedule_message_deletion(context, update.message, 30)
+        schedule_message_deletion(context, update.message, 5)
         return
 
     code_to_delete = context.args[0].upper().strip()
@@ -3165,7 +3169,7 @@ async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     schedule_message_deletion(context, msg, 30)
-    schedule_message_deletion(context, update.message, 30)
+    schedule_message_deletion(context, update.message, 5)
 
 
 async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3233,7 +3237,7 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
                     "❌ Ya tienes 3 códigos registrados (el máximo). Si quieres añadir otro, borra uno antiguo con /borrarcodigo.",
                     disable_notification=True
                 )
-                schedule_message_deletion(context, update.message, 60)
+                schedule_message_deletion(context, update.message, 5)
                 schedule_message_deletion(context, msg, 60)
                 return
 
@@ -3241,7 +3245,7 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
         if db.check_code_exists(code):
             msg = await update.message.reply_text("❌ Este código ya está registrado en la lista.",
                                                   disable_notification=True)
-            schedule_message_deletion(context, update.message, 60)
+            schedule_message_deletion(context, update.message, 5)
             schedule_message_deletion(context, msg, 60)
             return
 
@@ -3249,7 +3253,7 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
         db.add_friend_code(user.id, nick, region, code)
 
         msg = await update.message.reply_text("✅ Código agregado a la lista.", disable_notification=True)
-        schedule_message_deletion(context, update.message, 60)
+        schedule_message_deletion(context, update.message, 5)
         schedule_message_deletion(context, msg, 60)
 
 
