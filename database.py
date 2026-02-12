@@ -655,5 +655,32 @@ def has_duplicate(user_id, pokemon_id, is_shiny):
     )
     return res and res[0] >= 2
 
+
+# --- SISTEMA DELIBIRD PERSISTENTE ---
+
+def set_delibird_schedule(timestamp):
+    """Guarda la fecha (timestamp) del próximo evento Delibird."""
+    # Usamos la tabla system_flags: flag_name='next_delibird', value=timestamp
+    if DATABASE_URL:
+        sql = """
+        INSERT INTO system_flags (flag_name, value) VALUES ('next_delibird', %s)
+        ON CONFLICT (flag_name) DO UPDATE SET value = EXCLUDED.value;
+        """
+    else:
+        sql = "INSERT OR REPLACE INTO system_flags (flag_name, value) VALUES ('next_delibird', ?)"
+
+    query_db(sql, (int(timestamp),))
+
+
+def get_delibird_schedule():
+    """Devuelve el timestamp del próximo Delibird guardado, o None."""
+    res = query_db("SELECT value FROM system_flags WHERE flag_name = 'next_delibird'", one=True)
+    return res[0] if res else None
+
+
+def clear_delibird_schedule():
+    """Borra la fecha guardada (cuando el evento ya se ha ejecutado)."""
+    query_db("DELETE FROM system_flags WHERE flag_name = 'next_delibird'")
+
 # Iniciar la DB
 init_db()
