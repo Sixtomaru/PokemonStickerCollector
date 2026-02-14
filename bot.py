@@ -3339,13 +3339,12 @@ async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
 # --- SISTEMA DE INTERCAMBIOS ---
 
 async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detectar si viene del Panel
     query = update.callback_query
     is_panel = (query and query.data == "panel_intercambios")
 
     if is_panel:
         sender = query.from_user
-        message = query.message  # El panel (no lo usamos para reply)
+        message = query.message
     else:
         sender = update.effective_user
         message = update.effective_message
@@ -3353,7 +3352,6 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. Validar límite diario
     if not db.check_trade_daily_limit(sender.id):
-        # Si es panel, usamos answer, si es texto, reply
         text = "⛔ Has alcanzado tu límite de 2 intercambios diarios."
         if is_panel:
             await query.answer(text, show_alert=True)
@@ -3362,24 +3360,32 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, msg, 60)
         return
 
-    # 2. Obtener objetivo (Solo si es comando de texto con mención)
+    # 2. Obtener objetivo
     target_user = None
     if not is_panel:
         target_user, _ = await _get_target_user_from_command(update, context)
 
-    # --- NUEVO: Validar si ya tiene intercambio activo ---
+    # --- CAMBIO: DETECTAR BLOQUEO Y OFRECER SOLUCIÓN ---
     active_trades = context.chat_data.get('active_trades', {})
     if sender.id in active_trades:
-        text = "⛔ Ya tienes una petición de intercambio pendiente. Espéra a que la acepten o rechacen."
+        text = "⛔ Tienes un intercambio pendiente sin finalizar."
+        # Botón de emergencia
+        keyboard = [[InlineKeyboardButton("🗑️ Cancelar intercambio anterior", callback_data="trade_force_cancel")]]
+
         if is_panel:
-            await query.answer(text, show_alert=True)
+            # Si viene del panel, mandamos mensaje efímero con el botón
+            await query.answer()
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), disable_notification=True)
+            schedule_message_deletion(context, msg, 30)
         else:
-            msg = await message.reply_text(text, disable_notification=True)
+            msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), disable_notification=True)
+            # No lo borramos automáticamente rápido para que le de tiempo a pulsar
             schedule_message_deletion(context, msg, 60)
         return
     # ----------------------------------------------------
 
-    # Si no hay objetivo o es el mismo usuario -> Mostrar Ayuda
+    # Si no hay objetivo -> Ayuda
     if not target_user or target_user.id == sender.id or target_user.is_bot:
         help_text = (
             "♻ **Intercambios**\n\n"
@@ -3389,7 +3395,6 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
         )
         if is_panel:
-            # Enviamos mensaje nuevo temporal
             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
                                                  parse_mode='Markdown', disable_notification=True)
             schedule_message_deletion(context, msg, 60)
@@ -3548,7 +3553,6 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
     want_p, want_s = int(parts[4]), bool(int(parts[5]))
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
 
-    # Obtenemos los objetos de chat completos para poder mencionar
     sender = await context.bot.get_chat(sender_id)
     target = await context.bot.get_chat(target_id)
 
@@ -3564,14 +3568,12 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
     s_new = "🆕" if (want_p, want_s) not in s_coll else ""
     t_new = "🆕" if (offer_p, offer_s) not in t_coll else ""
 
-    # --- CAMBIO: MENCIONES REALES ---
     text = (
         f"♻ **Petición de Intercambio**\n\n"
         f"👤 {sender.mention_markdown()} ofrece: {o_name} {t_new}\n"
         f"👤 Para {target.mention_markdown()} por: {w_name} {s_new}\n\n"
         f"Esperando confirmación de {target.mention_markdown()}..."
     )
-    # --------------------------------
 
     data_payload = f"{target_id}_{sender_id}_{want_p}_{int(want_s)}_{offer_p}_{int(offer_s)}"
 
@@ -3580,13 +3582,24 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("❌ Rechazar", callback_data=f"trade_reject_{data_payload}")]
     ]
 
+    # --- CAMBIO IMPORTANTE: GESTIÓN DE TIEMPO ---
+    # 1. Cancelamos borrado anterior del menú
     cancel_scheduled_deletion(context, query.message.chat_id, query.message.message_id)
+
+    # 2. Registramos al usuario como ocupado
     context.chat_data.setdefault('active_trades', {})
     context.chat_data['active_trades'][sender_id] = query.message.message_id
-    schedule_message_deletion(context, query.message, 86400)
+
+    # 3. Programamos la tarea de LIMPIEZA TOTAL en 24 horas (86400s)
+    context.job_queue.run_once(
+        trade_timeout_job,
+        86400,
+        data={'chat_id': query.message.chat_id, 'user_id': sender_id, 'message_id': query.message.message_id},
+        name=f"trade_timeout_{sender_id}"
+    )
+    # ---------------------------------------------
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
 
 async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3671,6 +3684,47 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     await query.edit_message_text(final_text, parse_mode='Markdown')
+
+
+async def trade_timeout_job(context: ContextTypes.DEFAULT_TYPE):
+    """Tarea que se ejecuta a las 24h para limpiar datos y mensaje."""
+    job_data = context.job.data
+    chat_id = job_data['chat_id']
+    user_id = job_data['user_id']
+    message_id = job_data['message_id']
+
+    # 1. Limpiar memoria (Liberar al usuario)
+    if user_id in context.chat_data.get('active_trades', {}):
+        del context.chat_data['active_trades'][user_id]
+
+    # 2. Borrar mensaje visual
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except BadRequest:
+        pass  # Si ya no existe, no pasa nada
+
+
+async def trade_force_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Botón de emergencia para desbloquearse."""
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    # Limpiar memoria
+    if user_id in context.chat_data.get('active_trades', {}):
+        # Intentamos borrar el mensaje viejo si aun existe
+        old_msg_id = context.chat_data['active_trades'][user_id]
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=old_msg_id)
+        except:
+            pass
+
+        del context.chat_data['active_trades'][user_id]
+        await query.answer("✅ Intercambio anterior cancelado. Ya puedes iniciar uno nuevo.", show_alert=True)
+        # Borramos el mensaje de error que contenía este botón
+        await query.delete_message()
+    else:
+        await query.answer("Ya no tienes intercambios pendientes.", show_alert=True)
+        await query.delete_message()
 
 async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -4377,6 +4431,7 @@ def main():
         CallbackQueryHandler(ranking_navigation_handler, pattern="^rank_nav_"),
         CallbackQueryHandler(inventory_cmd, pattern="^inv_mode_"),
         CallbackQueryHandler(delibird_claim_handler, pattern="^delibird_"),
+        CallbackQueryHandler(trade_force_cancel_handler, pattern="^trade_force_cancel$"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
