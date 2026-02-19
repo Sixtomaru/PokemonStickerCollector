@@ -30,7 +30,7 @@ from telegram.ext import filters, MessageHandler
 import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
 from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID
-from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
+from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 from events import EVENTS
 
 # --- CONFIGURACIÓN DEL SERVIDOR WEB ---
@@ -1099,6 +1099,9 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
     spawned_something = False
 
+    # Variable para guardar el sticker temporalmente
+    sticker_msg = None
+
     try:
         # 1. Evento
         if random.random() < EVENT_CHANCE:
@@ -1110,7 +1113,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             context.chat_data.setdefault('active_spawns', {})
             current_time = time.time()
 
-            #3 DÍAS (259200 segundos) ---
+            # Limpieza de viejos (3 días)
             TIMEOUT_SECONDS = 259200
 
             for msg_id in list(context.chat_data.get('active_spawns', {}).keys()):
@@ -1122,41 +1125,42 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                                 await context.bot.delete_message(chat_id=chat_id, message_id=spawn_data[key])
                             except BadRequest:
                                 pass
-            # ---------------------------------------------------------
 
             pokemon_data, is_shiny, rarity = choose_random_pokemon()
 
+            # Lógica Legendarios
             if pokemon_data['id'] == 144 and not db.is_event_completed(chat_id, 'mision_articuno'):
                 pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
                 rarity = get_rarity('C', is_shiny)
-
             if pokemon_data['id'] == 145 and not db.is_event_completed(chat_id, 'mision_zapdos'):
                 pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
                 rarity = get_rarity('C', is_shiny)
-
             if pokemon_data['id'] == 146 and not db.is_event_completed(chat_id, 'mision_moltres'):
                 pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
                 rarity = get_rarity('C', is_shiny)
-
             if pokemon_data['id'] == 150 and not db.is_event_completed(chat_id, 'mision_mewtwo'):
                 pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
                 rarity = get_rarity('C', is_shiny)
 
-            pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+            pokemon_name = get_formatted_name(pokemon_data, is_shiny)
             text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
             image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
             try:
+                # 1. Enviar Sticker
                 with open(image_path, 'rb') as sticker_file:
                     sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
 
+                # 2. Preparar Botón
                 callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
                 button_text = "¡Capturar! 📷"
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
+                # 3. Enviar Texto (Aquí es donde falló antes)
                 text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
                                                           reply_markup=reply_markup)
 
+                # 4. Guardar en memoria
                 context.chat_data['active_spawns'][text_msg.message_id] = {
                     'sticker_id': sticker_msg.message_id,
                     'text_id': text_msg.message_id,
@@ -1167,6 +1171,16 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"⚠️ Error en el ciclo de spawn para el chat {chat_id}: {e}")
+
+        # --- NUEVO: LIMPIEZA DE EMERGENCIA ---
+        # Si falló el texto pero el sticker se envió, borramos el sticker para no confundir
+        if sticker_msg:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg.message_id)
+                logger.info(f"Sticker huérfano eliminado en chat {chat_id}")
+            except:
+                pass
+        # -------------------------------------
 
     finally:
         # Reprogramar siempre
@@ -1186,7 +1200,7 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     chat_id = update.effective_chat.id
     pokemon_data, is_shiny, rarity = choose_random_pokemon()
-    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+    pokemon_name = get_formatted_name(pokemon_data, is_shiny)
     text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
     image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
@@ -1434,7 +1448,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 pass
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
-        pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+        pokemon_name = get_formatted_name(pokemon_data, is_shiny)
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
         # --- NUEVA LÓGICA DE CAPTURA (1º, 2º, 3º+) ---
@@ -1765,7 +1779,7 @@ async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"Error al reclamar mail: Pokémon ID {poke_id} no encontrado.")
             message_text = f"{user_mention}, intentaste reclamar un Pokémon que ya no existe."
         else:
-            pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+            pokemon_name = get_formatted_name(pokemon_data, is_shiny)
             rarity = get_rarity(pokemon_data['category'], is_shiny)
             rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
