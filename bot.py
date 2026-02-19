@@ -1142,7 +1142,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                 pokemon_data = random.choice(POKEMON_BY_CATEGORY['C'])
                 rarity = get_rarity('C', is_shiny)
 
-            pokemon_name = get_formatted_name(pokemon_data, is_shiny)
+            pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
             text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
             image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
@@ -4459,4 +4459,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
