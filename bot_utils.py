@@ -17,16 +17,17 @@ def get_rarity(category, is_shiny):
 
 
 # --- ESTA ES LA FUNCIÓN QUE TE FALTABA ---
+# En bot_utils.py
+
 def get_formatted_name(pokemon_data, is_shiny=False):
     """Devuelve el nombre formateado. Intenta mostrar el emoji custom mediante enlace Markdown."""
     shiny_text = " ✨" if is_shiny else ""
 
-    # Truco para Markdown V1: Enlace invisible con el ID del emoji
-    # El emoji aparecerá antes del nombre si el cliente de Telegram lo soporta en este modo
     emoji_display = ""
     if 'emoji_id' in pokemon_data:
         emoji_id = pokemon_data['emoji_id']
-        # Usamos el carácter invisible \u2060 para anclar el enlace del emoji
-        emoji_display = f"[\u2060](tg://emoji?id={emoji_id})"
+        # Usamos un espacio de no-separación (\u00A0) como ancla para el emoji
+        # Esto hace que el enlace sea válido pero invisible, mostrando solo el emoji
+        emoji_display = f"[\u00A0](tg://emoji?id={emoji_id})"
 
     return f"{emoji_display}{pokemon_data['name']}{shiny_text}"
