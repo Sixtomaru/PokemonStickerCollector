@@ -810,8 +810,8 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     order_icon = "🔤" if sort_mode == 'az' else "🔢"
 
     # --- TEXTO ACTUALIZADO ---
-    text = (f"📖 *Álbumdex de {region_name}* ({order_icon})\n"
-            f"📊 *{owned_in_region}/{total_region}*\n"
+    text = (f"📖 <b>Álbumdex de {region_name}</b> ({order_icon})\n"
+            f"📊 <b>{owned_in_region}/{total_region}</b>\n"
             f"(Pág. {page + 1}/{total_pages})")
 
     keyboard, row = [], []
@@ -870,7 +870,7 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd_msg_id: close_cb += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("❌ Cerrar Álbumdex", callback_data=close_cb)])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def album_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1143,7 +1143,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                 rarity = get_rarity('C', is_shiny)
 
             pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-            text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
+            text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
             image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
             try:
@@ -1157,8 +1157,12 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
                 # 3. Enviar Texto (Aquí es donde falló antes)
-                text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
-                                                          reply_markup=reply_markup)
+                text_msg = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text_message,
+                    parse_mode='HTML',  # <--- IMPORTANTE
+                    reply_markup=reply_markup
+                )
 
                 # 4. Guardar en memoria
                 context.chat_data['active_spawns'][text_msg.message_id] = {
@@ -1421,9 +1425,13 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         user_cooldowns = spawn_data.get('cooldowns', {})
         last_attempt_time = user_cooldowns.get(user.id, 0)
         current_time = time.time()
-        if current_time - last_attempt_time < 30:
-            time_left = math.ceil(30 - (current_time - last_attempt_time))
-            await query.answer(f"Espera a que se recargue la energía del Álbumdex ({time_left} segundos).", show_alert=True)
+
+        cooldown_duration = 30
+        if current_time - last_attempt_time < cooldown_duration:
+            time_left = math.ceil(cooldown_duration - (current_time - last_attempt_time))
+            await query.answer(
+                f"Espera unos {time_left} segundos a que se recargue la energía del Álbumdex antes de intentarlo de nuevo.",
+                show_alert=True)
             return
 
     current_chance = db.get_user_capture_chance(user.id)
@@ -1435,11 +1443,14 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         await query.answer()
+
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
+        # --- RANKING LOCAL (Sumar puntos al grupo) ---
         if message.chat.type in ['group', 'supergroup']:
             db.increment_group_monthly_stickers(user.id, message.chat.id)
+        # ---------------------------------------------
 
         for key in ['sticker_id', 'text_id']:
             try:
@@ -1448,60 +1459,67 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 pass
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
-        pokemon_name = get_formatted_name(pokemon_data, is_shiny)
+
+        # Usamos la función de formato con HTML
+        pokemon_display = get_formatted_name(pokemon_data, is_shiny)
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
+
+        message_text = ""
+        user_link = user.mention_html()  # Enlace HTML al usuario
 
         # --- NUEVA LÓGICA DE CAPTURA (1º, 2º, 3º+) ---
         status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
-        message_text = ""
 
         if status == 'NEW':
             # 1ª Vez
-            message_text = f"🎉 ¡Felicidades, {user.mention_markdown()}! Has conseguido un sticker de *{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex."
+            message_text = f"🎉 ¡Felicidades, {user_link}! Has conseguido un sticker de {pokemon_display} {rarity_emoji}. Lo has registrado en tu Álbumdex."
         elif status == 'DUPLICATE':
             # 2ª Vez
-            message_text = f"♻ ¡Genial, {user.mention_markdown()}! Conseguiste un sticker de *{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo."
+            message_text = f"♻ ¡Genial, {user_link}! Conseguiste un sticker de {pokemon_display} {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo."
         else:
             # 3ª Vez o más (MAX) -> Dinero
             money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
             db.update_money(user.id, money_earned)
-            message_text = f"✔️ ¡Genial, {user.mention_markdown()}! Conseguiste un sticker de *{pokemon_name} {rarity_emoji}*. Como ya lo tienes repetido, se convierte en *{format_money(money_earned)}₽* 💰."
+            message_text = f"✔️ ¡Genial, {user_link}! Conseguiste un sticker de {pokemon_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money_earned)}₽</b> 💰."
 
-        # ---------------------------------------------
-
-        # Reto Grupal
+        # --- RETO GRUPAL (Añadir a la Pokédex del grupo) ---
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
 
-        # Premio Individual (Kanto)
+        # --- PREMIO INDIVIDUAL (Kanto Completado) ---
         if not db.is_kanto_completed_by_user(user.id):
             unique_count = db.get_user_unique_kanto_count(user.id)
             if unique_count >= 151:
                 db.set_kanto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
-                message_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
 
-        # Premio Reto Grupal
+        # --- PREMIO RETO GRUPAL ---
         is_qualified = await is_group_qualified(message.chat.id, context)
+        chat_id = message.chat.id
         if message.chat.type in ['group', 'supergroup']:
-            if not db.is_event_completed(message.chat.id, 'kanto_group_challenge'):
-                group_unique = db.get_group_unique_kanto_ids(message.chat.id)
-                if len(group_unique) >= 151:
-                    db.mark_event_completed(message.chat.id, 'kanto_group_challenge')
-                    if is_qualified:
-                        for uid in db.get_users_in_group(message.chat.id):
-                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! Habéis completado Kanto y recibido 2000₽."
-                    else:
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! Habéis completado Kanto."
+            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
 
-        await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
+                if len(group_unique_ids) >= 151:
+                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
+
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
+                    else:
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
+
+        await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
     else:
         await query.answer()
         # Fallo
         new_chance = min(100, current_chance + 5)
         db.update_user_capture_chance(user.id, new_chance)
+
         spawn_data = context.chat_data['active_spawns'].get(msg_id)
         if spawn_data:
             if 'cooldowns' not in spawn_data: spawn_data['cooldowns'] = {}
@@ -1509,8 +1527,8 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         fail_message = await context.bot.send_message(
             chat_id=message.chat_id,
-            text=f"❌ La foto de {user.mention_markdown()} salió movida y no escaneó al pokémon.",
-            parse_mode='Markdown',
+            text=f"❌ La foto de {user.mention_html()} salió movida y no escaneó al pokémon.",
+            parse_mode='HTML',
             reply_to_message_id=msg_id
         )
         schedule_message_deletion(context, fail_message, 30)
@@ -2277,6 +2295,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
     message = cast(Message, query.message)
+
+    # --- Validaciones iniciales ---
     if not message:
         await query.answer("Error: El mensaje original no es accesible.", show_alert=True)
         return
@@ -2300,7 +2320,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_time - last_open_time < PACK_OPEN_COOLDOWN:
         time_left = round(PACK_OPEN_COOLDOWN - (current_time - last_open_time))
-        await query.answer(f"Hay que esperar {time_left}s para abrir otro sobre.", show_alert=True)
+        await query.answer(f"Hay que esperar {time_left}s para abrir otro sobre en el grupo.", show_alert=True)
         return
 
     if context.chat_data.get('is_opening_pack', False):
@@ -2314,23 +2334,22 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         context.chat_data['is_opening_pack'] = True
-        await query.answer(f"Abriendo {ITEM_NAMES.get(item_id)}...")
 
-        if message.chat.type in ['group', 'supergroup']:
-            db.register_user_in_group(user.id, message.chat.id)
-
+        # Eliminar el mensaje del sobre en la mochila (o donde se pulsó)
         await message.delete()
+
         db.remove_item_from_inventory(user.id, item_id, 1)
 
         opening_message = await context.bot.send_message(
             message.chat_id,
-            f"🎴 ¡{user.mention_markdown()} ha abierto un *{ITEM_NAMES.get(item_id)}*! ",
-            parse_mode='Markdown',
+            f"🎴 ¡{user.mention_html()} ha abierto un *{ITEM_NAMES.get(item_id)}*! ",
+            parse_mode='HTML',
             disable_notification=True
         )
 
-        pack_config = SHOP_CONFIG.get(item_id, {})  # Usamos SHOP_CONFIG para tener info completa
+        pack_config = SHOP_CONFIG.get(item_id, {})
         pack_size = pack_config.get('size', 1)
+        is_magic = pack_config.get('is_magic', False)
         pack_results = []
         message_ids_to_delete = [opening_message.message_id]
 
@@ -2348,10 +2367,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_data, _, _ = choose_random_pokemon()
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 3. Sobres Elementales (Filtrados por tipo) - ¡ESTO FALTABA!
+        # 3. Sobres Elementales (Filtrados por tipo)
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            # Filtramos la lista global
             type_pool = [p for p in ALL_POKEMON if target_type in p.get('types', [])]
             if not type_pool: type_pool = ALL_POKEMON  # Fallback
 
@@ -2361,7 +2379,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
         # 4. Sobres Mágicos
-        elif pack_config.get('is_magic'):
+        elif is_magic:
             user_stickers = db.get_all_user_stickers(user.id)
             all_normal_stickers = {(p['id'], 0) for p in ALL_POKEMON}
             all_shiny_stickers = {(p['id'], 1) for p in ALL_POKEMON}
@@ -2387,45 +2405,44 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_data, s, _ = choose_random_pokemon()
                 pack_results.append({'data': p_data, 'is_shiny': s})
 
+        # --- PROCESAMIENTO DE RESULTADOS ---
         summary_parts = []
 
         for result in pack_results:
             p, s = result['data'], result['is_shiny']
             rarity = get_rarity(p['category'], s)
+
+            # Enviar Sticker
             try:
-                with open(f"Stickers/Kanto/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png",
-                          'rb') as sticker_file:
-                    msg = await context.bot.send_sticker(
-                        chat_id=message.chat_id, sticker=sticker_file, disable_notification=True
-                    )
+                path = f"Stickers/Kanto/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png"
+                with open(path, 'rb') as f:
+                    msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
                     message_ids_to_delete.append(msg.message_id)
-                await asyncio.sleep(1.2)
-            except RetryAfter as e:
-                await asyncio.sleep(e.retry_after)
-            except Exception as e:
-                logger.error(f"Error enviando sticker {p['id']}: {e}")
+                await asyncio.sleep(1.0)
+            except:
+                pass
 
-            p_name, r_emoji = f"{p['name']}{' brillante ✨' if s else ''}", RARITY_VISUALS.get(rarity, '')
+            p_display = get_formatted_name(p, s)  # Nombre con Emoji HTML y Negrita
+            r_emoji = RARITY_VISUALS.get(rarity, '')
 
+            # Reto Grupal (Solo Pokedex, NO ranking)
             if message.chat.type in ['group', 'supergroup']:
-                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])  # Pokedex grupal
+                db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
 
             # --- NUEVA LÓGICA SMART (1º, 2º, 3º+) ---
             status = db.add_sticker_smart(user.id, p['id'], s)
 
             if status == 'NEW':
-                summary_parts.append(f"🔸🆕 {p_name} {r_emoji}")
+                summary_parts.append(f"🔸🆕 {p_display} {r_emoji}")
             elif status == 'DUPLICATE':
-                summary_parts.append(f"🔸♻️ {p_name} {r_emoji} (Repetido)")
+                summary_parts.append(f"🔸♻️ {p_display} {r_emoji}")
             else:  # MAX
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
                 db.update_money(user.id, money)
-                summary_parts.append(f"🔸✔️ {p_name} {r_emoji} (*{format_money(money)}₽*💰)")
-            # --------------------------
+                summary_parts.append(f"🔸✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
 
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
-        vertical_summary = "\n".join(summary_parts)
-        final_text = f"📜 Resultado del {pack_name} de {user.mention_markdown()}:\n\n{vertical_summary}"
+        final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
         # --- SECCIÓN DEL PREMIO POR COMPLETAR KANTO ---
         if not db.is_kanto_completed_by_user(user.id):
@@ -2433,16 +2450,19 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if unique_count >= 151:
                 db.set_kanto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_markdown()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
         # ----------------------------------------------
 
-        await context.bot.send_message(message.chat_id, text=final_text, parse_mode='Markdown',
-                                       disable_notification=True)
+        await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
-        if message_ids_to_delete and context.job_queue:
+        if message_ids_to_delete:
             context.job_queue.run_once(delete_pack_stickers, 60,
                                        data={'chat_id': message.chat_id, 'sticker_ids': message_ids_to_delete})
+
         context.chat_data['last_pack_open_time'] = time.time()
+
+    except Exception as e:
+        logger.error(f"Error pack: {e}")
     finally:
         context.chat_data['is_opening_pack'] = False
 
@@ -4458,4 +4478,5 @@ def main():
 
 
 if __name__ == '__main__':
+    main()
     main()
