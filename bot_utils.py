@@ -17,15 +17,12 @@ def get_rarity(category, is_shiny):
 
 
 def get_formatted_name(pokemon_data, is_shiny=False):
-    """Devuelve el nombre formateado usando la etiqueta HTML OFICIAL para Custom Emojis."""
+    """
+    Versión restaurada y limpia.
+    Devuelve solo el nombre en negrita (HTML) sin intentar cargar emojis personalizados.
+    """
     shiny_text = " ✨" if is_shiny else ""
 
-    emoji_html = ""
-    if 'emoji_id' in pokemon_data:
-        # Esta etiqueta le dice a Telegram que cree la 'entity' automáticamente
-        # El '👾' del centro es lo que se ve si el usuario tiene una versión muy vieja de Telegram
-        emoji_html = f'<tg-emoji emoji-id="{pokemon_data["emoji_id"]}">👾</tg-emoji>'
-
-    # Devolvemos el string completo en HTML
-    # Nota: El nombre va en <b> (negrita) para que destaque
-    return f"{emoji_html} <b>{pokemon_data['name']}</b>{shiny_text}"
+    # Devolvemos el nombre limpio en negrita.
+    # Usamos <b> porque tu bot.py ahora funciona en modo HTML.
+    return f"<b>{pokemon_data['name']}</b>{shiny_text}"
