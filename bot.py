@@ -1612,7 +1612,7 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         chat_id=message.chat_id,
         text=text,
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 
@@ -1672,7 +1672,7 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text(
             text=final_text,
             reply_markup=reply_markup,
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         await query.answer()
 
