@@ -4452,6 +4452,7 @@ def main():
         CommandHandler("intercambio", intercambio_cmd),
         CommandHandler("testdelibird", admin_test_delibird),
         CommandHandler("forceevent", admin_force_delibird),
+        CommandHandler("checkpack", check_pack_ids),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -4504,4 +4505,5 @@ def main():
 if __name__ == '__main__':
     main()
     main()
+
 
