@@ -679,30 +679,32 @@ async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
 
+
 async def check_pack_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
-    
+
     # Nombre del pack tal cual sale en tu captura
-    pack_name = "MiniStickersKanto" 
-    
+    pack_name = "MiniStickersKanto"
+
     try:
         # El bot busca el pack en los servidores de Telegram
         sticker_set = await context.bot.get_sticker_set(pack_name)
-        
+
         # Cogemos el primer sticker (Bulbasaur)
         sticker = sticker_set.stickers[0]
-        
+
         text = (
             f"📦 **Pack:** {sticker_set.title}\n"
             f"🔢 **Nombre:** {sticker_set.name}\n\n"
             f"🔍 **ID REAL que necesita el bot:**\n`{sticker.custom_emoji_id}`\n\n"
             f"📜 **ID que tienes en tu lista:**\n`5814460952195636965`"
         )
-        
+
         await update.message.reply_text(text, parse_mode='Markdown')
-        
+
     except Exception as e:
-        await update.message.reply_text(f"❌ Error buscando el pack: {e}\nAsegúrate de que el nombre 'MiniStickersKanto' es exacto.")
+        await update.message.reply_text(
+            f"❌ Error buscando el pack: {e}\nAsegúrate de que el nombre 'MiniStickersKanto' es exacto.")
 
 async def admin_send_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
@@ -1228,8 +1230,11 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     chat_id = update.effective_chat.id
     pokemon_data, is_shiny, rarity = choose_random_pokemon()
-    pokemon_name = get_formatted_name(pokemon_data, is_shiny)
-    text_message = f"¡Un *{pokemon_name} {RARITY_VISUALS.get(rarity, '')}* salvaje apareció!"
+
+    # Usamos nombre limpio (Sin Emoji) y formato HTML
+    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+    text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
+
     image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
     try:
@@ -1240,8 +1245,12 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         button_text = "¡Capturar! 📷"
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
-        text_msg = await context.bot.send_message(chat_id=chat_id, text=text_message, parse_mode='Markdown',
-                                                  reply_markup=reply_markup)
+        text_msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=text_message,
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
 
         context.chat_data.setdefault('active_spawns', {})
         context.chat_data['active_spawns'][text_msg.message_id] = {
@@ -1253,7 +1262,6 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except FileNotFoundError:
         logger.error(f"No se encontró la imagen: {image_path}")
-
 
 # --- PANEL DE CONTROL / MENÚ FIJO ---
 
@@ -4504,6 +4512,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    main()
-
-
