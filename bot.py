@@ -679,6 +679,30 @@ async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
 
+async def check_pack_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID: return
+    
+    # Nombre del pack tal cual sale en tu captura
+    pack_name = "MiniStickersKanto" 
+    
+    try:
+        # El bot busca el pack en los servidores de Telegram
+        sticker_set = await context.bot.get_sticker_set(pack_name)
+        
+        # Cogemos el primer sticker (Bulbasaur)
+        sticker = sticker_set.stickers[0]
+        
+        text = (
+            f"📦 **Pack:** {sticker_set.title}\n"
+            f"🔢 **Nombre:** {sticker_set.name}\n\n"
+            f"🔍 **ID REAL que necesita el bot:**\n`{sticker.custom_emoji_id}`\n\n"
+            f"📜 **ID que tienes en tu lista:**\n`5814460952195636965`"
+        )
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error buscando el pack: {e}\nAsegúrate de que el nombre 'MiniStickersKanto' es exacto.")
 
 async def admin_send_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
@@ -4480,3 +4504,4 @@ def main():
 if __name__ == '__main__':
     main()
     main()
+
