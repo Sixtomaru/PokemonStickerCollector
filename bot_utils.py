@@ -16,18 +16,16 @@ def get_rarity(category, is_shiny):
     return 'S' if category in ['C', 'B'] else 'SS' if category == 'A' else 'SSS'
 
 
-# --- ESTA ES LA FUNCIÓN QUE TE FALTABA ---
-# En bot_utils.py
-
 def get_formatted_name(pokemon_data, is_shiny=False):
-    """Devuelve el nombre formateado. Intenta mostrar el emoji custom mediante enlace Markdown."""
+    """Devuelve el nombre formateado usando la etiqueta HTML OFICIAL para Custom Emojis."""
     shiny_text = " ✨" if is_shiny else ""
 
-    emoji_display = ""
+    emoji_html = ""
     if 'emoji_id' in pokemon_data:
-        emoji_id = pokemon_data['emoji_id']
-        # Usamos un espacio de no-separación (\u00A0) como ancla para el emoji
-        # Esto hace que el enlace sea válido pero invisible, mostrando solo el emoji
-        emoji_display = f"[\u00A0](tg://emoji?id={emoji_id})"
+        # Esta etiqueta le dice a Telegram que cree la 'entity' automáticamente
+        # El '👾' del centro es lo que se ve si el usuario tiene una versión muy vieja de Telegram
+        emoji_html = f'<tg-emoji emoji-id="{pokemon_data["emoji_id"]}">👾</tg-emoji>'
 
-    return f"{emoji_display}{pokemon_data['name']}{shiny_text}"
+    # Devolvemos el string completo en HTML
+    # Nota: El nombre va en <b> (negrita) para que destaque
+    return f"{emoji_html} <b>{pokemon_data['name']}</b>{shiny_text}"
