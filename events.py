@@ -6,7 +6,7 @@ import database as db
 from pokemon_data import POKEMON_BY_ID
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
 
-# --- Listas de Pokémon ---
+# --- Listas de Pokémon (Igual que antes) ---
 PESCA_RUTA_12_PEQUEÑOS = [7, 54, 60, 61, 72, 90, 98, 99, 116, 117, 118, 119, 120, 121, 129, 138, 139]
 PESCA_RUTA_12_GRANDES = [7, 8, 54, 55, 60, 61, 62, 72, 90, 98, 99, 116, 117, 86, 118, 119, 120, 121, 129, 134, 138, 139]
 CASINO_TIER_1_POKEMON = [63, 35, 37, 147]
@@ -42,38 +42,33 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
     pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
-    # --- 1. ACTUALIZAR PROGRESO GRUPAL (Si es en grupo) ---
+    # Sumar al ranking del grupo
     if chat_id:
-        db.increment_group_monthly_stickers(user_id, chat_id)  # Ranking
-        db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)  # Reto 151
-    # ------------------------------------------------------
+        db.increment_group_monthly_stickers(user_id, chat_id)
+        db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)
 
-    # --- 2. LÓGICA SMART (1º, 2º, 3º+) ---
+    # Smart Add
     status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
 
     if status == 'NEW':
-        # Primera vez que lo consigue
         return (f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de "
-                f"*{pokemon_name} {rarity_emoji}*. Lo has registrado en tu Álbumdex.")
-
+                f"<b>{pokemon_name}</b> {rarity_emoji}. Lo has registrado en tu Álbumdex.")
     elif status == 'DUPLICATE':
-        # Segunda vez (se guarda copia para intercambio)
-        return (f"♻ ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"*{pokemon_name} {rarity_emoji}*. Como solo tenías 1, te lo guardas para intercambiarlo.")
-
-    else:  # status == 'MAX'
-        # Tercera vez o más (se vende)
+        return (f"🔄 ¡Genial, {user_mention}! Conseguiste un sticker de "
+                f"<b>{pokemon_name}</b> {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo.")
+    else: # MAX
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
         return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"*{pokemon_name} {rarity_emoji}*. Como ya lo tienes repetido, se convierte en *{format_money(money_earned)}₽* 💰.")
+                f"<b>{pokemon_name}</b> {rarity_emoji}. Como ya lo tenías, se convierte en <b>{format_money(money_earned)}₽</b> 💰.")
 
-# --- LÓGICA DE EVENTOS (DEFINICIONES DE FUNCIONES) ---
+
+# --- LÓGICA DE EVENTOS (TRADUCIDA A HTML) ---
 
 # 1. PESCA
 def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html() # Usamos HTML
     variant = decision_parts[0]
     choice = decision_parts[1]
 
@@ -94,7 +89,7 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
                 f"🔸{user.first_name} ve cómo el pescador se aleja rápidamente. "
                 "Mientras, la caña se mueve; algo está tirando de ella. "
                 "Instintivamente, la sujeta con fuerza y tira, mientras gira la manivela.\n\n"
-                f"🔸¡{user.first_name} ha pescado un *{POKEMON_BY_ID[pokemon_id]['name']}*!\n\n"
+                f"🔸¡{user.first_name} ha pescado un <b>{POKEMON_BY_ID[pokemon_id]['name']}</b>!\n\n"
                 "Mientras sujeta la caña, coge el Álbumdex y hace una foto con escáner.\n\n"
                 "El pescador llega rápidamente y agradece el favor.\n\n"
                 f"{reward_message}"
@@ -104,7 +99,7 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
             reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
             result_text = (
                 f"🔸{user.first_name} sigue su camino, no sin antes fijar su mirada sobre el "
-                f"*{POKEMON_BY_ID[pokemon_id]['name']}* ayudante del pescador. "
+                f"<b>{POKEMON_BY_ID[pokemon_id]['name']}</b> ayudante del pescador. "
                 "Coge su Álbumdex y lo registra con el modo escáner.\n\n"
                 f"{reward_message}"
             )
@@ -114,7 +109,7 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
             if db.get_user_money(user_id) < costo_caña:
                 result_text = ("🔸¡Oh, no! El pescadero te mira el bolsillo y ve que no tienes "
                                "suficiente dinero.\n\n"
-                               f"🔸*Necesitas {format_money(costo_caña)}₽* y no quieres quedar mal. "
+                               f"🔸<b>Necesitas {format_money(costo_caña)}₽</b> y no quieres quedar mal. "
                                "Mejor seguir tu camino...")
             else:
                 db.update_money(user_id, -costo_caña)
@@ -123,7 +118,7 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
                 result_text = (f"🔸{user.first_name} va con la caña a la zona de pescadores, "
                                "coloca el cebo, "
                                "lanza lejos el anzuelo, y... ... ... \n ¡oh, un "
-                               f"*{POKEMON_BY_ID[pokemon_id]['name']}* ha picado!\n\n"
+                               f"<b>{POKEMON_BY_ID[pokemon_id]['name']}</b> ha picado!\n\n"
                                f"🔸{user.first_name} le hace una foto con escáner y lo devuelve al agua.\n\n"
                                f"{reward_message}")
         else:
@@ -131,7 +126,7 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
                            "por lo que siguió disfrutando del camino y la brisa fluvial.")
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
@@ -142,15 +137,14 @@ def _get_casino_sale_variant(user):
     offer_texts = []
     buttons = []
     for poke_id in selected_ids:
-        price = random.choice([100, 200, 300]) if poke_id in CASINO_TIER_1_POKEMON else random.choice(
-            [300, 400, 500, 600])
+        price = random.choice([100, 200, 300]) if poke_id in CASINO_TIER_1_POKEMON else random.choice([300, 400, 500, 600])
         name = POKEMON_BY_ID[poke_id]['name']
         offer_texts.append(f"🔴 {name} ({price}₽)")
         buttons.append({'text': name, 'callback_data': f'ev|casino_rocket|decision|buy_pokemon|{poke_id}|{price}'})
     text = (
-            f"_Evento aceptado por {user.first_name}_\n\n"
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
             f"🔸{user.first_name} se encuentra en Ciudad Azulona, caminando cerca del Casino Rocket... A la entrada, un empleado con traje negro y gafas de sol le sonríe:\n\n"
-            "💬 *Eh, tú. Tengo algo que podría interesarte… pokémon bastante raros, ¿Quieres echar un vistazo?*\n\n"
+            "💬 <b>Eh, tú. Tengo algo que podría interesarte… pokémon bastante raros, ¿Quieres echar un vistazo?</b>\n\n"
             "🔸El hombre abre un maletín, y dentro hay tres Poké Balls junto a los nombres de tres pokémon:\n"
             + ", ".join(offer_texts))
     keyboard = [buttons,
@@ -160,7 +154,7 @@ def _get_casino_sale_variant(user):
 
 def evento_casino_rocket(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     variant = decision_parts[0]
     choice = decision_parts[1]
     text = ""
@@ -172,9 +166,9 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
         price_str = decision_parts[2] if len(decision_parts) > 2 else '0'
         if poke_id_str == 'no_buy':
             choice_made_text = "ℹ️ Decidiste no comprar nada."
-            text = (f"_{choice_made_text}_\n\n"
+            text = (f"<i>{choice_made_text}</i>\n\n"
                     "🔸El hombre suspira con un gesto de decepción.\n"
-                    "💬 *Tú te lo pierdes, amigo. Si te arrepientes, estaré por aquí.*")
+                    "💬 <b>Tú te lo pierdes, amigo. Si te arrepientes, estaré por aquí.</b>")
             return {'text': original_text + separator + text}
         try:
             poke_id = int(poke_id_str)
@@ -185,13 +179,13 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
         choice_made_text = f"ℹ️ Decidiste comprar a {poke_name} por {price}₽."
         if db.get_user_money(user_id) < price:
             text = (f"🔸Intentas comprar el Pokémon, pero al buscar en tus bolsillos te das cuenta de que no tienes "
-                    f"suficiente dinero. Necesitas *{format_money(price)}₽*.\n\n"
+                    f"suficiente dinero. Necesitas <b>{format_money(price)}₽</b>.\n\n"
                     "🔸El hombre del traje te mira con desdén y cierra el maletín.")
             return {'text': original_text + separator + text}
         db.update_money(user_id, -price)
         reward_message = _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
-        text = (f"_{choice_made_text}_\n\n"
-                "🔸El empleado se despide con una amplia sonrisa: 💬 *Gracias por tu compra, si te pasas otro día, tendremos especímenes diferentes.*\n\n"
+        text = (f"<i>{choice_made_text}</i>\n\n"
+                "🔸El empleado se despide con una amplia sonrisa: 💬 <b>Gracias por tu compra, si te pasas otro día, tendremos especímenes diferentes.</b>\n\n"
                 f"{reward_message}")
         return {'text': original_text + separator + text}
 
@@ -201,9 +195,9 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
         if choice == 'no_play':
             choice_made_text = "ℹ️ Decidiste no jugar."
             db.update_money(user_id, 200)
-            text = (f"_{choice_made_text}_\n\n"
+            text = (f"<i>{choice_made_text}</i>\n\n"
                     f"🔸{user.first_name} procede a continuar su camino, pero, al mirar en el suelo, junto a la máquina…\n"
-                    "💰 ¡Encuentra *200₽*!")
+                    "💰 ¡Encuentra <b>200₽</b>!")
             return {'text': base_text + separator + text}
         if choice == 'stop':
             text = f"🔸Decides que ya has tenido suficiente por hoy y te alejas de la máquina."
@@ -212,21 +206,21 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
             cost = 200
             if db.get_user_money(user_id) < cost:
                 text = (
-                    f"🔸Buscas en tus bolsillos y te das cuenta de que no tienes los *{format_money(cost)}₽* necesarios para jugar, por lo que te quedas con las ganas...\n\n"
+                    f"🔸Buscas en tus bolsillos y te das cuenta de que no tienes los <b>{format_money(cost)}₽</b> necesarios para jugar, por lo que te quedas con las ganas...\n\n"
                     )
                 return {'text': base_text + separator + text}
             db.update_money(user_id, -cost)
             current_attempts += 1
-            initial_text = f"_Decidiste jugar (Intento {current_attempts}/3)._\n\n"
+            initial_text = f"<i>Decidiste jugar (Intento {current_attempts}/3).</i>\n\n"
             if random.random() < 0.02:
-                win_msg = "🔸El gancho baja y... agarra con fuerza el sobre y lo lleva hasta la caja de premios, pero, al soltarlo, notas que ha caído algo más: ¡han caído dos sobres en lugar de uno! 💬 *¡¡Premio doble!!*"
+                win_msg = "🔸El gancho baja y... agarra con fuerza el sobre y lo lleva hasta la caja de premios, pero, al soltarlo, notas que ha caído algo más: ¡han caído dos sobres en lugar de uno! 💬 <b>¡¡Premio doble!!</b>"
                 db.add_item_to_inventory(user_id, 'pack_small_national', 2)
                 text = initial_text + win_msg + f"\n\n🎉 ¡{user_mention} ha conseguido dos Sobres Pequeños de Kanto!"
             elif random.random() < 0.25:
                 win_msgs = [
-                    "🔸El gancho baja y... agarra fuertemente el sobre, y lo deposita sobre el cajón de premios 💬 *¡Toma ya!*",
-                    "🔸El gancho baja y... agarra fuertemente el sobre, pero de camino lo deja caer, sin embargo, rebota y cae en el cajón de premios 💬 *¡Toma, vaya potra!*",
-                    "🔸El gancho baja y... agarra el sobre. Mientras está subiendo, el gancho se tambalea tanto, que el sobre comienza a dar saltos de un lado a otro. Sin embargo logra aguantar hasta el cajón de premios. 💬 *¡Sííííí!*"
+                    "🔸El gancho baja y... agarra fuertemente el sobre, y lo deposita sobre el cajón de premios 💬 <b>¡Toma ya!</b>",
+                    "🔸El gancho baja y... agarra fuertemente el sobre, pero de camino lo deja caer, sin embargo, rebota y cae en el cajón de premios 💬 <b>¡Toma, vaya potra!</b>",
+                    "🔸El gancho baja y... agarra el sobre. Mientras está subiendo, el gancho se tambalea tanto, que el sobre comienza a dar saltos de un lado a otro. Sin embargo logra aguantar hasta el cajón de premios. 💬 <b>¡Sííííí!</b>"
                 ]
                 db.add_item_to_inventory(user_id, 'pack_small_national', 1)
                 text = initial_text + random.choice(
@@ -234,15 +228,15 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
             else:
                 if current_attempts == 3:
                     fail_msg = (
-                        "🔸Pulsas el botón y el gancho baja. Por unos segundos, sientes cómo todo va, como a cámara lenta. Quedas mirando el gancho fijamente, aguantando la respiración, sientes que si bajas la atención un segundo, todo estará perdido. Notas una presión alrededor, tu cerebro te hace pensar que hay miradas de personas que llegan de todas direcciones, todas puestas sobre ti. No puedes fallar. La garra metálica se cierra, y mientras sube, los sobres se deslizan entre sus dedos, como el agua escapa cuando alguien intenta atraparla con las manos. Al subir, lo único que queda entre sus protuberancias ferrosas, es aire y tu frustración, que es casi palpable. Cansado por la estresante situación, lo único que alcanzas a decir es:\n 💬 *Si lo sé, ni vengo.*")
+                        "🔸Pulsas el botón y el gancho baja. Por unos segundos, sientes cómo todo va, como a cámara lenta. Quedas mirando el gancho fijamente, aguantando la respiración, sientes que si bajas la atención un segundo, todo estará perdido. Notas una presión alrededor, tu cerebro te hace pensar que hay miradas de personas que llegan de todas direcciones, todas puestas sobre ti. No puedes fallar. La garra metálica se cierra, y mientras sube, los sobres se deslizan entre sus dedos, como el agua escapa cuando alguien intenta atraparla con las manos. Al subir, lo único que queda entre sus protuberancias ferrosas, es aire y tu frustración, que es casi palpable. Cansado por la estresante situación, lo único que alcanzas a decir es:\n 💬 <b>Si lo sé, ni vengo.</b>")
                     text = initial_text + fail_msg
                 else:
                     fail_msgs = [
-                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 *¡Menuda estafa!*",
-                        "🔸El gancho baja y... agarra el sobre con fuerza, pero lo ha dejado caer en cuanto ha subido 💬 *La máquina está calentita, debo estar cerca de conseguir el premio... creo.*",
-                        "🔸El gancho baja y... agarra el sobre con fuerza y lo desplaza hacia el cajón de premios, pero cae por el camino 💬 *¡Aaaah, casi!*",
-                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 *Ahí van 200₽ a la basura...*",
-                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 *Espero que la próxima vaya mejor...*"
+                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 <b>¡Menuda estafa!</b>",
+                        "🔸El gancho baja y... agarra el sobre con fuerza, pero lo ha dejado caer en cuanto ha subido 💬 <b>La máquina está calentita, debo estar cerca de conseguir el premio... creo.</b>",
+                        "🔸El gancho baja y... agarra el sobre con fuerza y lo desplaza hacia el cajón de premios, pero cae por el camino 💬 <b>¡Aaaah, casi!</b>",
+                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 <b>Ahí van 200₽ a la basura...</b>",
+                        "🔸El gancho baja y... vuelve a subir sin ejercer la mínima presión. 💬 <b>Espero que la próxima vaya mejor...</b>"
                     ]
                     text = initial_text + random.choice(fail_msgs)
                     keyboard = [[{'text': 'Volver a jugar',
@@ -256,24 +250,21 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
 # 3. BOSQUE VERDE
 def _get_bosque_verde_variant(user: User):
     if random.random() < 0.5:
-        text = f"_Evento aceptado por {user.first_name}_\n\n🔸{user.first_name} pasea por el Bosque Verde, cuando un destello en el suelo llama su atención. Parece que alguien ha perdido algo...\n\n"
+        text = f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} pasea por el Bosque Verde, cuando un destello en el suelo llama su atención. Parece que alguien ha perdido algo...\n\n"
         if random.random() < 0.05:
             db.add_item_to_inventory(user.id, 'pack_small_national')
             text += "¡Anda, es un Sobre Pequeño Nacional! ¡Lo guardas en la mochila!"
         else:
             money_found = random.choice([100, 200, 300])
             db.update_money(user.id, money_found)
-            text += f"¡Anda, son *{format_money(money_found)}₽* 💰!"
+            text += f"¡Anda, son <b>{format_money(money_found)}₽</b> 💰!"
     else:
-        text = f"_Evento aceptado por {user.first_name}_\n\n🔸Mientras {user.first_name} se distrae con el canto y revoloteo de los Pidgey en las copas de los árboles del Bosque Verde, sin darse cuenta, se topa con algo en el camino...\n\n"
+        text = f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸Mientras {user.first_name} se distrae con el canto y revoloteo de los Pidgey en las copas de los árboles del Bosque Verde, sin darse cuenta, se topa con algo en el camino...\n\n"
         poke_id = random.choice(BOSQUE_VERDE_POKEMON)
         poke_name = POKEMON_BY_ID[poke_id]['name']
-        text += f"¡Es un *{poke_name}*!\n\n"
+        text += f"¡Es un <b>{poke_name}</b>!\n\n"
         text += "Rápidamente, saca su Álbumdex y escanea al Pokémon antes de que huya.\n\n"
-        # OJO: Los eventos de inicio directo no pasan por 'action', así que no tienen chat_id
-        # Para que sume, habría que cambiar la estructura del bot.py para pasar chat_id a 'get_text_and_keyboard'
-        # Por ahora, usamos una solución parcial:
-        text += _handle_sticker_reward(user.id, user.mention_markdown(), poke_id, False, None)
+        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, False, None)
     return {'text': text}
 
 
@@ -283,12 +274,12 @@ def _get_tunel_roca_variant(user: User):
         dominguera_name, poke_id = random.choice(list(TUNEL_ROCA_DOMINGUERAS.items()))
         poke_name = POKEMON_BY_ID[poke_id]['name']
         text = (
-            f"_Evento aceptado por {user.first_name}_\n\n"
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
             f"🔸{user.first_name} se adentra en la completa oscuridad del Túnel Roca. El aire es frío y húmedo.\n"
             "🔸De repente, el Álbumdex vibra con una llamada entrante. ¡Es Amelia!\n\n"
-            f"💬 *¡{user.first_name}!, tu Álbumdex me indica que estás cerca del Túnel Roca, ¿es correcto?\n Estoy recibiendo la señal de auxilio de una entrenadora perdida dentro del túnel. Es la Dominguera {dominguera_name}. Al parecer, a su {poke_name} se le han agotado los PP de Destello y no puede salir. Te mando las coordenadas.*\n\n"
+            f"💬 <b>¡{user.first_name}!, tu Álbumdex me indica que estás cerca del Túnel Roca, ¿es correcto?\n Estoy recibiendo la señal de auxilio de una entrenadora perdida dentro del túnel. Es la Dominguera {dominguera_name}. Al parecer, a su {poke_name} se le han agotado los PP de Destello y no puede salir. Te mando las coordenadas.</b>\n\n"
             f"🔸Siguiendo las instrucciones de Amelia, {user.first_name} utiliza su Álbumdex en modo linterna, encuentra a la asustada entrenadora y la acompaña a la salida.\n\n"
-            f"💬 *¡Oh, muchas gracias! Veo que tienes un Álbumdex; como agradecimiento, dejaré que escanees y registres a {poke_name}*."
+            f"💬 <b>¡Oh, muchas gracias! Veo que tienes un Álbumdex; como agradecimiento, dejaré que escanees y registres a {poke_name}</b>."
         )
         keyboard = [[
             {'text': '¡Vale!', 'callback_data': f'ev|tunel_roca|decision|vale|{poke_id}'},
@@ -299,19 +290,19 @@ def _get_tunel_roca_variant(user: User):
         poke_id = random.choice(TUNEL_ROCA_WILD_POKEMON)
         poke_name = POKEMON_BY_ID[poke_id]['name']
         text = (
-            f"_Evento aceptado por {user.first_name}_\n\n"
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
             f"🔸{user.first_name} se adentra en la completa oscuridad del Túnel Roca. A duras penas, avanza con el modo linterna de su Álbumdex.\n\n"
             "En un descuido, choca contra algo, haciéndole perder el equilibrio.\n\n"
-            f"Un gruñido resuena en la oscuridad... Rápidamente, {user.first_name} apunta en dirección al sonido con la luz del Álbumdex.\n ¡Es un *{poke_name}* salvaje!\n\n"
+            f"Un gruñido resuena en la oscuridad... Rápidamente, {user.first_name} apunta en dirección al sonido con la luz del Álbumdex.\n ¡Es un <b>{poke_name}</b> salvaje!\n\n"
             "Pone el modo escáner antes de que el Pokémon se vaya.\n\n"
         )
-        text += _handle_sticker_reward(user.id, user.mention_markdown(), poke_id, False, None)
+        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, False, None)
         return {'text': text}
 
 
 def evento_tunel_roca(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     poke_id = int(decision_parts[1])
     choice_made_text = ""
@@ -331,20 +322,20 @@ def evento_tunel_roca(user, decision_parts, original_text, chat_id):
         item_name = chosen_item['name']
         item_value = chosen_item['value']
         db.update_money(user_id, item_value)
-        result_text += "💬 *Al menos deja que te dé algo.*\n\n"
-        result_text += f"🔸 Antes de poder reaccionar, tienes en las manos un *{item_name}* que te ha dado {dominguera_name} antes de irse.\n\n"
+        result_text += "💬 <b>Al menos deja que te dé algo.</b>\n\n"
+        result_text += f"🔸 Antes de poder reaccionar, tienes en las manos un <b>{item_name}</b> que te ha dado {dominguera_name} antes de irse.\n\n"
         result_text += f"{user.first_name} no sabe muy bien qué hacer con el objeto, así que lo vende, pensando que le será más útil el dinero.\n\n"
-        result_text += f"🔸️ Recibes *{format_money(item_value)}₽* 💰."
+        result_text += f"🔸️ Recibes <b>{format_money(item_value)}₽</b> 💰."
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
 # 5. TORRE LAVANDA
 def _get_torre_lavanda_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸{user.first_name} se adentra en la espeluznante Torre Pokémon de Pueblo Lavanda. "
         "Mientras sube las escaleras, la niebla y un aire helado le hace tener escalofríos.\n\n"
         "De repente, una figura espectral aparece flotando justo enfrente...")
@@ -361,7 +352,7 @@ def _get_torre_lavanda_variant(user: User):
 
 def evento_torre_lavanda(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     pokemon_id = int(decision_parts[1])
     choice_made_text = ""
@@ -370,31 +361,31 @@ def evento_torre_lavanda(user, decision_parts, original_text, chat_id):
     if choice == 'scan':
         choice_made_text = "ℹ️ Decidiste escanearlo."
         if pokemon_id == TORRE_LAVANDA_SPECIAL_GHOST:
-            result_text += "🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un *Marowak*! ¿Qué?, ¿habrá escaneado mal?...\n\n"
+            result_text += "🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un <b>Marowak</b>! ¿Qué?, ¿habrá escaneado mal?...\n\n"
             result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_SPECIAL_GHOST, False, chat_id)
         else:
-            result_text += f"🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un *{POKEMON_BY_ID[pokemon_id]['name']}*!\n\n"
+            result_text += f"🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un <b>{POKEMON_BY_ID[pokemon_id]['name']}</b>!\n\n"
             result_text += _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
     else:
         choice_made_text = "ℹ️ Decidiste huir de allí."
         money_reward = 100
         result_text += "🔸 Baja rápidamente las escaleras y ve que hay algo en el primer peldaño.\n\n"
-        result_text += f"Al enfocar con la linterna del Álbumdex, ve a un pequeño y triste *Cubone*. Se pregunta qué hace solo en un sitio como ese. Se agacha y lo agarra entre tus brazos; pero en ese momento ve entre la niebla una silueta humana, diciendo cosas ininteligibles.\nDe repente desaparece y {user.first_name} siente un escalofrío por la espalda, por lo que decide salir de allí inmediatamente.\nLleva al Cubone al Centro Pokémon, y las enfermeras le cuentan que no está perdido, que vive allí en la Torre Pokémon, que ellas se encargan de cuidarlo.\n\n"
+        result_text += f"Al enfocar con la linterna del Álbumdex, ve a un pequeño y triste <b>Cubone</b>. Se pregunta qué hace solo en un sitio como ese. Se agacha y lo agarra entre tus brazos; pero en ese momento ve entre la niebla una silueta humana, diciendo cosas ininteligibles.\nDe repente desaparece y {user.first_name} siente un escalofrío por la espalda, por lo que decide salir de allí inmediatamente.\nLleva al Cubone al Centro Pokémon, y las enfermeras le cuentan que no está perdido, que vive allí en la Torre Pokémon, que ellas se encargan de cuidarlo.\n\n"
         result_text += "Antes de irte, escaneas al pequeño Pokémon.\n\n"
-        result_text += "Cuando vas a salir, notas algo en la espalda; es una enfermera quitándote un Amuleto que tenías pegado. 💬 *Ten cuidado con los exorcistas* - te dice con una sonrisa.\n\n"
+        result_text += "Cuando vas a salir, notas algo en la espalda; es una enfermera quitándote un Amuleto que tenías pegado. 💬 <b>Ten cuidado con los exorcistas</b> - te dice con una sonrisa.\n\n"
         result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_FLEE_POKEMON, False, chat_id)
         db.update_money(user_id, money_reward)
-        result_text += f"\n🔸 Además, ¡recibes *{format_money(money_reward)}₽* 💰 al vender el Amuleto!"
+        result_text += f"\n🔸 Además, ¡recibes <b>{format_money(money_reward)}₽</b> 💰 al vender el Amuleto!"
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
 # 6. CIUDAD AZULONA
 def _get_ciudad_azulona_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸 {user.first_name} va paseando por Ciudad Azulona. Puede notar el aroma de la comida de varios establecimientos cercanos.\nJusto enfrente, tiene dos opciones que le llaman la atención: un restaurante con una pinta increíble o un puesto de helados artesanales.\nPiensa que es muy pronto para comer, pero quizá tarde para el helado, por lo que, tarda un poco en elegir:")
     keyboard = [[
         {'text': 'Restaurante', 'callback_data': 'ev|ciudad_azulona|decision|restaurante'},
@@ -405,7 +396,7 @@ def _get_ciudad_azulona_variant(user: User):
 
 def evento_ciudad_azulona(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -416,11 +407,11 @@ def evento_ciudad_azulona(user, decision_parts, original_text, chat_id):
         db.update_money(user_id, premio)
 
         if premio == 100:
-            result_text = "🔸 Se decide por un clásico. Elige un helado de dos bolas: una de fresas silvestres y otra de moras. La mezcla de los trozos de fruta con la leche congelada, le parece simplemente deliciosa.\nCuando está a punto de sentarse en un banco, ve algo brillar entre unos arbustos. Se acerca y encuentra una Poké Ball. Piensa que no es algo que vaya a necesitar, así que decide venderla más tarde en el Centro Comercial.\n\n¡Obtienes *100₽* 💰!"
+            result_text = "🔸 Se decide por un clásico. Elige un helado de dos bolas: una de fresas silvestres y otra de moras. La mezcla de los trozos de fruta con la leche congelada, le parece simplemente deliciosa.\nCuando está a punto de sentarse en un banco, ve algo brillar entre unos arbustos. Se acerca y encuentra una Poké Ball. Piensa que no es algo que vaya a necesitar, así que decide venderla más tarde en el Centro Comercial.\n\n¡Obtienes <b>100₽</b> 💰!"
         elif premio == 200:
-            result_text = "🔸 Se decide por un Milk shake de durazno. El sabor de la leche mezclado con el dulzor del durazno maduro, le parece una combinación cremosa y frutal increíble. Mientras lo disfruta, nota que algo brilla en el suelo. Se acerca y encuentra una Super Ball. No es algo que necesite, así que decide venderla en el Centro Comercial.\n\n¡Obtienes *200₽* 💰!"
+            result_text = "🔸 Se decide por un Milk shake de durazno. El sabor de la leche mezclado con el dulzor del durazno maduro, le parece una combinación cremosa y frutal increíble. Mientras lo disfruta, nota que algo brilla en el suelo. Se acerca y encuentra una Super Ball. No es algo que necesite, así que decide venderla en el Centro Comercial.\n\n¡Obtienes <b>200₽</b> 💰!"
         else:
-            result_text = "🔸Se decide por un Melonpan helado. El pan, cuidadosamente calentado, hace contraste con el delicioso helado de vainilla de su interior. El azúcar glaseado por encima invita a seguir comiendo con el crujido de cada bocado.\nDe pronto, algo frena su instinto voraz: ve que algo reluce entre unos arbustos.\nSe acerca y encuentra una Ultra Ball. Decide que no es algo que vaya a utilizar, por lo que, al terminar el helado, la vende en el Centro Comercial.\n\n¡Obtienes *400₽* 💰!"
+            result_text = "🔸Se decide por un Melonpan helado. El pan, cuidadosamente calentado, hace contraste con el delicioso helado de vainilla de su interior. El azúcar glaseado por encima invita a seguir comiendo con el crujido de cada bocado.\nDe pronto, algo frena su instinto voraz: ve que algo reluce entre unos arbustos.\nSe acerca y encuentra una Ultra Ball. Decide que no es algo que vaya a utilizar, por lo que, al terminar el helado, la vende en el Centro Comercial.\n\n¡Obtienes <b>400₽</b> 💰!"
 
     elif choice == 'restaurante':
         choice_made_text = "ℹ️ Decidiste entrar en el restaurante."
@@ -434,7 +425,7 @@ def evento_ciudad_azulona(user, decision_parts, original_text, chat_id):
         result_text += "\n\n" + _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
@@ -444,16 +435,16 @@ def _get_erika_nap_variant(user: User):
         guard_poke_id = random.choice(ERIKA_GUARD_POKEMON)
         guard_poke_name = POKEMON_BY_ID[guard_poke_id]['name']
         text = (
-            f"_Evento aceptado por {user.first_name}_\n\n"
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
             f"🔸{user.first_name} camina por los jardines cercanos al Gimnasio de Ciudad Azulona y le vienen olores de todo tipo de flores.\n\n"
-            f"A lo lejos, en un banco, ve a la líder Erika aparentemente durmiendo plácidamente mientras toma el sol. A su lado, inmóvil, hay un imponente *{guard_poke_name}* haciendo lo mismo.\n\n"
+            f"A lo lejos, en un banco, ve a la líder Erika aparentemente durmiendo plácidamente mientras toma el sol. A su lado, inmóvil, hay un imponente <b>{guard_poke_name}</b> haciendo lo mismo.\n\n"
             f"{user.first_name} aprovecha que están distraídos para sacar el Álbumdex y escanearlo.\n\n"
         )
-        text += _handle_sticker_reward(user.id, user.mention_markdown(), guard_poke_id, False, None)
+        text += _handle_sticker_reward(user.id, user.mention_html(), guard_poke_id, False, None)
         return {'text': text}
     else:
         text = (
-            f"_Evento aceptado por {user.first_name}_\n\n"
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
             f"🔸{user.first_name} camina por los jardines cercanos al Gimnasio de Ciudad Azulona y le vienen olores de todo tipo de flores.\n\n"
             f"A lo lejos, en un banco, ve a la líder Erika aparentemente durmiendo plácidamente mientras toma el sol. {user.first_name} nota que hay un objeto cerca del banco, en el suelo. Lo recoge y piensa qué hacer con él:\n\n"
             f"-¿La despierto y le pregunto si es suyo?\n"
@@ -470,7 +461,7 @@ def _get_erika_nap_variant(user: User):
 
 def evento_erika_nap(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -479,11 +470,11 @@ def evento_erika_nap(user, decision_parts, original_text, chat_id):
         choice_made_text = "ℹ️ Decidiste despertarla."
         poke_id = random.choice(KANTO_GRASS_TYPES)
         result_text = (
-            "🔸💬 *Disculpa... creo que esto es tuyo.*\n\n"
+            "🔸💬 <b>Disculpa... creo que esto es tuyo.</b>\n\n"
             "Erika abre los ojos lentamente, aún adormilada.\n\n"
-            "💬 *Ah... sí. Me habré quedado dormida... Muchas gracias.*\n\n"
+            "💬 <b>Ah... sí. Me habré quedado dormida... Muchas gracias.</b>\n\n"
             "Después de un rato mirándote, todavía adormecida, se fija en algo que llevas.\n\n"
-            "💬 *Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.*\n\n"
+            "💬 <b>Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.</b>\n\n"
             "¡Erika te entrega una pegatina de su colección personal!\n\n"
         )
         result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
@@ -499,9 +490,9 @@ def evento_erika_nap(user, decision_parts, original_text, chat_id):
             poke_id = random.choice(better_grass_types)
             result_text = base_text + (
                 "En ese momento, Erika despierta y mira adormilada cómo le estás dejando el objeto a su lado.\n\n"
-                "💬 *¿Esto es para mí? —dijo Erika mirando el objeto fijamente— ¡Ah, si es mío!, debe habérseme caído mientras descansaba, ¡Muchas gracias por tu generosidad!*\n\n"
+                "💬 <b>¿Esto es para mí? —dijo Erika mirando el objeto fijamente— ¡Ah, si es mío!, debe habérseme caído mientras descansaba, ¡Muchas gracias por tu generosidad!</b>\n\n"
                 "De pronto se fija en un objeto que llevas.\n\n"
-                "💬 *Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.*\n\n"
+                "💬 <b>Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.</b>\n\n"
                 "¡Erika te entrega una pegatina de su colección personal!\n\n"
             )
             result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
@@ -515,23 +506,23 @@ def evento_erika_nap(user, decision_parts, original_text, chat_id):
         item = random.choice(ERIKA_DROPPED_ITEMS)
         db.update_money(user_id, item['value'])
         result_text = (
-            f"¡Es un *{item['name']}*!\n\n"
+            f"¡Es un <b>{item['name']}</b>!\n\n"
             f"🔸{user.first_name} pensó que el objeto no era de Erika, y lo llevó a vender en el centro comercial.\n\n"
-            f"¡Obtienes *{format_money(item['value'])}₽* 💰!"
+            f"¡Obtienes <b>{format_money(item['value'])}₽</b> 💰!"
         )
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
 # 8. LOTERÍA
 def _get_loteria_azafran_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸{user.first_name} llega a la bulliciosa estación del Magnetotrén, en Ciudad Azafrán. Entre la multitud, ve un mostrador muy colorido con un cartel que indica: 'LOTERÍA'.\n\n"
         "Un amable lotero exclama:\n"
-        "💬 *¡Compre su billete de lotería aquí, sabrá si ha ganado al instante!*"
+        "💬 <b>¡Compre su billete de lotería aquí, sabrá si ha ganado al instante!</b>"
     )
     keyboard = [[
         {'text': 'Comprar (100₽)', 'callback_data': 'ev|lottery_azafran|decision|play'},
@@ -542,22 +533,22 @@ def _get_loteria_azafran_variant(user: User):
 
 def evento_loteria_azafran(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
 
     if choice == 'no_play':
         choice_made_text = "ℹ️ Decidiste no jugar."
         text = f"🔸{user.first_name} decide que es mejor guardar el dinero y se aleja del mostrador."
         separator = "\n\n" + "—" * 20 + "\n\n"
-        return {'text': original_text + separator + f"_{choice_made_text}_\n\n{text}"}
+        return {'text': original_text + separator + f"<i>{choice_made_text}</i>\n\n{text}"}
 
     # Lógica de jugar
     cost = 100
     if db.get_user_money(user_id) < cost:
         choice_made_text = "ℹ️ Intentaste comprar un billete."
-        text = f"🔸Buscas en tus bolsillos pero no tienes suficientes monedas. Necesitas *{format_money(cost)}₽*."
+        text = f"🔸Buscas en tus bolsillos pero no tienes suficientes monedas. Necesitas <b>{format_money(cost)}₽</b>."
         separator = "\n\n" + "—" * 20 + "\n\n"
-        return {'text': original_text + separator + f"_{choice_made_text}_\n\n{text}"}
+        return {'text': original_text + separator + f"<i>{choice_made_text}</i>\n\n{text}"}
 
     db.update_money(user_id, -cost)
     user_num_int = random.randint(0, 9999)
@@ -566,11 +557,11 @@ def evento_loteria_azafran(user, decision_parts, original_text, chat_id):
     win_num_str = f"{win_num_int:04}"
 
     base_text = (
-        f"ℹ️ Decidiste probar suerte.\n\n"
-        f"🔸{user.first_name} paga *100₽* y recibe su billete impreso al instante.\n"
-        f"🎫 **Tu Número:** `{user_num_str}`\n\n"
+        f"<i>Decidiste probar suerte.</i>\n\n"
+        f"🔸{user.first_name} paga <b>100₽</b> y recibe su billete impreso al instante.\n"
+        f"🎫 <b>Tu Número:</b> <code>{user_num_str}</code>\n\n"
         f"En una pantalla del establecimiento, los números comienzan a aparecer uno a uno...\n"
-        f"🖥 **Número Ganador:** `{win_num_str}`\n\n"
+        f"🖥 <b>Número Ganador:</b> <code>{win_num_str}</code>\n\n"
         f"{user.first_name} compara los números...\n\n"
     )
     result_text = ""
@@ -580,40 +571,40 @@ def evento_loteria_azafran(user, decision_parts, original_text, chat_id):
         ticket_item_id = f"lottery_ticket_{user_num_str}"
         db.add_item_to_inventory(user_id, ticket_item_id, 1)
         result_text = (
-            "🔸🚨 *¡¡ALARMA DE GANADOR!!* 🚨\n"
+            "🔸🚨 <b>¡¡ALARMA DE GANADOR!!</b> 🚨\n"
             "¡¡Los números son idénticos!! ¡¡Has ganado el premio gordo!!\n"
             "Toda la estación aplaude mientras el vendedor te entrega el gran premio.\n\n"
-            f"¡Recibes *{format_money(prize)}₽* 💰!\n"
-            "🏆 *Has guardado el Ticket de lotería ganador en tu mochila.*"
+            f"¡Recibes <b>{format_money(prize)}₽</b> 💰!\n"
+            "🏆 <b>Has guardado el Ticket de lotería ganador en tu mochila.</b>"
         )
     elif user_num_str[-3:] == win_num_str[-3:]:
         prize = 15000
         db.update_money(user_id, prize)
         result_text = (
             "🔸¡¡Enhorabuena!! ¡Las tres últimas cifras coinciden!\n"
-            "💬 *¡Eso sí que es suerte!*\n\n"
-            f"¡Recibes *{format_money(prize)}₽* 💰!"
+            "💬 <b>¡Eso sí que es suerte!</b>\n\n"
+            f"¡Recibes <b>{format_money(prize)}₽</b> 💰!"
         )
     elif user_num_str[-2:] == win_num_str[-2:]:
         prize = 4000
         db.update_money(user_id, prize)
         result_text = (
             "🔸¡Las dos últimas cifras coinciden!\n"
-            "💬 *¡No está mal! Aquí tienes un pequeño premio.*\n\n"
-            f"¡Obtienes *{format_money(prize)}₽* 💰!"
+            "💬 <b>¡No está mal! Aquí tienes un pequeño premio.</b>\n\n"
+            f"¡Obtienes <b>{format_money(prize)}₽</b> 💰!"
         )
     elif user_num_str[-1] == win_num_str[-1]:
         prize = 500
         db.update_money(user_id, prize)
         result_text = (
             "🔸¡La última cifra coincide!\n"
-            "💬 *¡Bien!, al menos recuperas tu dinero y te llevas un extra.*\n\n"
-            f"¡Obtienes *{format_money(prize)}₽* 💰!"
+            "💬 <b>¡Bien!, al menos recuperas tu dinero y te llevas un extra.</b>\n\n"
+            f"¡Obtienes <b>{format_money(prize)}₽</b> 💰!"
         )
     else:
         result_text = (
             "🔸Los números no coinciden ni en la terminación.\n"
-            "💬 *¡Vaya, la próxima vez habrá más suerte! —dice el vendedor.*"
+            "💬 <b>¡Vaya, la próxima vez habrá más suerte! —dice el vendedor.</b>"
         )
 
     separator = "\n\n" + "—" * 20 + "\n\n"
@@ -626,9 +617,9 @@ def _get_dojo_azafran_variant(user: User):
     poke_name = POKEMON_BY_ID[poke_id]['name']
 
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸{user.first_name} camina por las calles de Ciudad Azafrán y pasa por delante del antiguo Dojo Karate.\n\n"
-        f"A través de una ventana, puede ver al Maestro Karateka entrenando intensamente, lanzando patadas y puñetazos al aire en perfecta sincronía con su *{poke_name}*.\n\n"
+        f"A través de una ventana, puede ver al Maestro Karateka entrenando intensamente, lanzando patadas y puñetazos al aire en perfecta sincronía con su <b>{poke_name}</b>.\n\n"
         f"{user.first_name} duda si sacar el Álbumdex para intentar registrar al Pokémon a escondidas..."
     )
 
@@ -641,7 +632,7 @@ def _get_dojo_azafran_variant(user: User):
 
 def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -668,7 +659,7 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
             poke_id = random.choice(GYM_MEDIUM_POKEMON)
             poke_name = POKEMON_BY_ID[poke_id]['name']
             result_text = base_text + (
-                f"sale una Médium seguida fielmente de su *{poke_name}*.\n\n"
+                f"sale una Médium seguida fielmente de su <b>{poke_name}</b>.\n\n"
                 f"{user.first_name} escanea al pokémon disimuladamente.\n\n"
             )
             result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
@@ -677,7 +668,7 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
             poke_id = random.choice(GYM_EXORCIST_POKEMON)
             poke_name = POKEMON_BY_ID[poke_id]['name']
             result_text = base_text + (
-                f"sale un Exorcista murmurando oraciones, seguido de su *{poke_name}*, que va flotando alrededor suya.\n"
+                f"sale un Exorcista murmurando oraciones, seguido de su <b>{poke_name}</b>, que va flotando alrededor suya.\n"
                 f"{user.first_name} aprovecha y apunta con el Álbumdex al pokémon y lo registra.\n\n"
             )
             result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
@@ -687,25 +678,25 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
             poke_name = POKEMON_BY_ID[poke_id]['name']
             result_text = base_text + (
                 f"sale la líder Sabrina rodeada de gente. Su presencia impone respeto, pero parece muy popular entre la multitud.\n\n"
-                f"Su *{poke_name}* hace de guardaespaldas y la protege con sus poderes psíquicos. {user.first_name} se mimetiza entre la gente, consigue escanear al pokémon con su Álbumdex, y de paso hace algunas fotos a Sabrina.\n\n"
+                f"Su <b>{poke_name}</b> hace de guardaespaldas y la protege con sus poderes psíquicos. {user.first_name} se mimetiza entre la gente, consigue escanear al pokémon con su Álbumdex, y de paso hace algunas fotos a Sabrina.\n\n"
             )
             result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
 # --- NUEVO EVENTO: MISIÓN RESCATE MEOWTH ---
 def _get_mision_meowth_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸{user.first_name} está caminando tranquilamente cuando su Álbumdex empieza a vibrar. ¡Es una llamada de Amelia!\n"
-        f"💬 *¡Hola! ¿{user.first_name}? Tengo una misión. Hay una anciana cerca del lugar que necesita ayuda; su Meowth se ha subido a un árbol muy alto y no sabe bajar. He enviado un Pidgeotto de la reserva al Centro Pokémon más cercano para que te sirva de apoyo. ¡Cuento contigo!*\n\n"
+        f"💬 <b>¡Hola! ¿{user.first_name}? Tengo una misión. Hay una anciana cerca del lugar que necesita ayuda; su Meowth se ha subido a un árbol muy alto y no sabe bajar. He enviado un Pidgeotto de la reserva al Centro Pokémon más cercano para que te sirva de apoyo. ¡Cuento contigo!</b>\n\n"
         f"🔸{user.first_name} recoge al Pidgeotto y llega al lugar. El árbol es grande, y el Meowth maúlla asustado mientras se aferra a una rama.\n\n"
         f"{user.first_name} piensa detenidamente cómo intervenir:\n"
         "-¿Intento subir yo?, el Pidgeotto podría ayudarme de alguna manera...\n"
-        "-Mejor envío al Pidgeotto y que lo baje él... ¿no?\n"
+        "-Mejor envío al Pidgeotto y que lo baje él... ¿o no?\n"
         "-¿Y si monto en Pidgeotto y lo bajamos entre los dos? tiene Vuelo..."
     )
     keyboard = [[
@@ -718,7 +709,7 @@ def _get_mision_meowth_variant(user: User):
 
 def evento_mision_meowth(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -728,10 +719,10 @@ def evento_mision_meowth(user, decision_parts, original_text, chat_id):
         prize = 400
         db.update_money(user_id, prize)
         result_text = (
-            f"🔸{user.first_name} comienza a trepar por el tronco. Le hace una señal al Pidgeotto, quien usa *Viento Afín* para crear una corriente de aire que empuja suavemente a {user.first_name} contra el árbol, mejorando su agarre y escalando el árbol fácilmente.\n\n"
+            f"🔸{user.first_name} comienza a trepar por el tronco. Le hace una señal al Pidgeotto, quien usa <b>Viento Afín</b> para crear una corriente de aire que empuja suavemente a {user.first_name} contra el árbol, mejorando su agarre y escalando el árbol fácilmente.\n\n"
             f"Al llegar a la rama, {user.first_name} le habla con suavidad al Pokémon. El Meowth va lentamente, se agarra en sus hombros y bajan juntos sin problemas.\n"
             "La anciana está encantada y te agradece el servicio.\n\n"
-            f"¡Recibes *{format_money(prize)}₽* 💰 como pago por el trabajo!"
+            f"¡Recibes <b>{format_money(prize)}₽</b> 💰 como pago por el trabajo!"
         )
 
     elif choice == 'send':
@@ -741,7 +732,7 @@ def evento_mision_meowth(user, decision_parts, original_text, chat_id):
         result_text = (
             f"🔸{user.first_name} prefiere no arriesgarse y manda al Pidgeotto a por él. El pájaro vuela rápidamente hacia la rama, pero el batir de sus alas pone muy nervioso al Meowth, el cual lanza un arañazo al aire, pierde el equilibrio, resbala y... ¡cae directamente sobre la cara de {user.first_name}!\n\n"
             "A pesar del golpe, el Meowth está a salvo. La dueña te da las gracias.\n\n"
-            f"¡Recibes *{format_money(prize)}₽* 💰 como pago por el trabajo!"
+            f"¡Recibes <b>{format_money(prize)}₽</b> 💰 como pago por el trabajo!"
         )
 
     elif choice == 'ride':
@@ -752,22 +743,22 @@ def evento_mision_meowth(user, decision_parts, original_text, chat_id):
             f"🔸{user.first_name} piensa que lo más rápido es volar hasta la rama. Se sube a lomos de Pidgeotto, pero el pobre Pokémon apenas puede con el peso.\n\n"
             f"Aleteando con gran esfuerzo y volando a trompicones, logran llegar a la altura del Meowth. {user.first_name} lo agarra como puede, pero un movimiento brusco desestabiliza al pájaro y se precipitan los tres hacia el suelo.\n\n"
             "Todos están bien, aunque un poco magullados. La anciana te agradece sin mucho entusiasmo.\n\n"
-            f"¡Recibes *{format_money(prize)}₽* 💰 como pago por el trabajo!"
+            f"¡Recibes <b>{format_money(prize)}₽</b> 💰 como pago por el trabajo!"
         )
 
     separator = "\n\n" + "—" * 20 + "\n\n"
-    final_text = original_text + separator + f"_{choice_made_text}_\n\n{result_text}"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
     return {'text': final_text}
 
 
 # --- NUEVO EVENTO: MISIÓN MOLTRES ---
 def _get_mision_moltres_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
-        f"🔹*_Misión especial_*\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔹<b><i>Misión especial</i></b>\n\n"
         f"🔸El Álbumdex de {user.first_name} suena y vibra. ¡Amelia está llamando!\n"
-        f"💬 *¡{user.first_name}, te necesito urgentemente! Se han alertado gritos desgarradores de lo que parece ser un Pokémon atrapado en el Monte Ascuas, en las Islas Sete.*\n"
-        f"💬 *Es una zona peligrosa con muchos desprendimientos. Te he mandado una Poké Ball con un Machamp al Centro Pokémon que tienes cerca; puede ser muy útil ¡Por favor, ve allí y averigua qué está pasando!*\n\n"
+        f"💬 <b>¡{user.first_name}, te necesito urgentemente! Se han alertado gritos desgarradores de lo que parece ser un Pokémon atrapado en el Monte Ascuas, en las Islas Sete.</b>\n"
+        f"💬 <b>Es una zona peligrosa con muchos desprendimientos. Te he mandado una Poké Ball con un Machamp al Centro Pokémon que tienes cerca; puede ser muy útil ¡Por favor, ve allí y averigua qué está pasando!</b>\n\n"
         f"🔸{user.first_name} llega al monte y ve la entrada de una cueva, pero un derrumbe reciente ha bloqueado completamente el paso con rocas enormes. Escucha el grito de un Pokémon; piensa que, sin lugar a dudas, viene de dentro.\n"
         f"Saca al Machamp y este se prepara para recibir órdenes.\n\n"
         f"{user.first_name} recuerda la nota que le dejó Amelia con los ataques que tiene Machamp, y elige uno de ellos:"
@@ -781,7 +772,7 @@ def _get_mision_moltres_variant(user: User):
 
 def evento_mision_moltres(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -809,14 +800,14 @@ def evento_mision_moltres(user, decision_parts, original_text, chat_id):
             f"🔸Machamp se acerca a las rocas y, con una concentración y fuerza notables, comienza a empujar y apartar los bloques más grandes, hasta que logra abrir un hueco considerable.\n"
             f"De repente, del interior de la cueva surge una llamarada cegadora. Un ave envuelta en fuego sale disparada hacia el cielo a una velocidad vertiginosa.\n\n"
             f"Casi instintivamente agarras el Álbumdex y apuntas al cielo, pero ya no está. Notas algo caer, es una pluma brillante.\n\n"
-            f"💬 *¡Impecable trabajo! Siéntete libre de registrar a Machamp* —te dice Amelia por el aparato—.\n\n"
+            f"💬 <b>¡Impecable trabajo! Siéntete libre de registrar a Machamp</b> —te dice Amelia por el aparato—.\n\n"
             f" Obtienes:\n"
-            f"-*{format_money(prize_money)}₽* 💰\n"
+            f"-<b>{format_money(prize_money)}₽</b> 💰\n"
             f"{feather_text}\n\n"
             f"{sticker_msg}\n\n"
-            f"🔓 _A partir de ahora, Moltres podrá aparecer salvaje en el grupo._"
+            f"🔓 <i>A partir de ahora, Moltres podrá aparecer salvaje en el grupo.</i>"
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': True, 'event_id': EVENT_ID}
 
     elif choice == 'hyperbeam':
@@ -824,22 +815,22 @@ def evento_mision_moltres(user, decision_parts, original_text, chat_id):
         result_text = (
             f"🔸Machamp carga una energía inmensa y la suelta toda de golpe en un Hiperrayo devastador apuntando hacia las rocas. La explosión pulveriza la entrada, pero la onda expansiva es tan fuerte que provoca un derrumbe aún mayor.\n"
             f"Se sigue escuchando al Pokémon en el interior, pero Machamp está agotado por el esfuerzo y el techo de la entrada empieza a ceder. {user.first_name} tiene que meter al Machamp a su Poké Ball y regresar para ponerse a salvo.\n"
-            f"💬 *Misión fallida...* —dice Amelia por el Álbumdex—. *La zona es inestable. Tendremos que intentarlo en otro momento.*"
+            f"💬 <b>Misión fallida...</b> —dice Amelia por el Álbumdex—. <b>La zona es inestable. Tendremos que intentarlo en otro momento.</b>"
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': False}
 
 
 # --- NUEVO EVENTO: MISIÓN ZAPDOS ---
 def _get_mision_zapdos_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
-        f"🔹*_Misión especial_*\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔹<b><i>Misión especial</i></b>\n\n"
         f"🔸El Álbumdex de {user.first_name} recibe una llamada. ¡Es de Amelia!\n\n"
-        f"💬 *¡{user.first_name}, tenemos un problema grave! La red eléctrica se ha vuelto loca. ¡Hay tanto apagones como picos de tensión en muchas zonas de Kanto! Estás cerca de la Central Eléctrica, ¿verdad?, ¿podrías echar un vistazo?\n"
-        f"Te he enviado al PC más cercano una Poké Ball con un Rhydon, intenta ir por él antes de ir a la central, te será de ayuda.*\n\n"
-        f"🔸*{user.first_name}* se adentra en la central. Se escucha un chisporroteo constante. Al mirar hacia los generadores, ve el problema, un enorme pájaro brillante está absorbiendo electricidad. \n"
-        f"*{user.first_name}*, precavido, saca a Rhydon antes de avanzar. El ave nota su presencia y lanza un rayo en su dirección; afortunadamente, Rhydon tiene la habilidad Pararrayos, por lo que absorbe el ataque sin sufrir ni un rasguño. En ese momento, da gracias a Amelia y piensa qué movimiento debe ordenar a Rhydon:"
+        f"💬 <b>¡{user.first_name}, tenemos un problema grave! La red eléctrica se ha vuelto loca. ¡Hay tanto apagones como picos de tensión en muchas zonas de Kanto! Estás cerca de la Central Eléctrica, ¿verdad?, ¿podrías echar un vistazo?\n"
+        f"Te he enviado al PC más cercano una Poké Ball con un Rhydon, intenta ir por él antes de ir a la central, te será de ayuda.</b>\n\n"
+        f"🔸<b>{user.first_name}</b> se adentra en la central. Se escucha un chisporroteo constante. Al mirar hacia los generadores, ve el problema, un enorme pájaro brillante está absorbiendo electricidad. \n"
+        f"<b>{user.first_name}</b>, precavido, saca a Rhydon antes de avanzar. El ave nota su presencia y lanza un rayo en su dirección; afortunadamente, Rhydon tiene la habilidad Pararrayos, por lo que absorbe el ataque sin sufrir ni un rasguño. En ese momento, da gracias a Amelia y piensa qué movimiento debe ordenar a Rhydon:"
     )
     keyboard = [[
         {'text': 'Usar Cara Susto', 'callback_data': 'ev|mision_zapdos|decision|scaryface'},
@@ -850,7 +841,7 @@ def _get_mision_zapdos_variant(user: User):
 
 def evento_mision_zapdos(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -878,14 +869,14 @@ def evento_mision_zapdos(user, decision_parts, original_text, chat_id):
             f"🔸Rhydon da un paso al frente y, con un rugido, pone una mueca terrorífica mirando fijamente al Pokémon centelleante.\n\n"
             f"El ave, que ya estaba confundido al ver que sus rayos no surtían efecto, entra en pánico ante la intimidación de Rhydon. Con un chirrido agudo, bate sus alas violentamente y sale volando del lugar, dejando un rastro de chispas tras de sí.\n\n"
             f"Entre las chispas que caen al suelo, ves descender lentamente un objeto brillante, una especie de pluma amarilla.\n\n"
-            f"💬 *¡Lo has conseguido!* —se escucha a Amelia a través del Álbumdex—. *Esperemos que todo vuelva a la normalidad. Buen trabajo con ese Rhydon, puedes escanearlo para tu colección, si quieres.*\n\n"
+            f"💬 <b>¡Lo has conseguido!</b> —se escucha a Amelia a través del Álbumdex—. <b>Esperemos que todo vuelva a la normalidad. Buen trabajo con ese Rhydon, puedes escanearlo para tu colección, si quieres.</b>\n\n"
             f"Obtienes:\n"
-            f"-💰 *{format_money(prize_money)}₽*\n"
+            f"-💰 <b>{format_money(prize_money)}₽</b>\n"
             f"{feather_text}\n\n"
             f"{sticker_msg}\n\n"
-            f"🔓 _A partir de ahora, Zapdos podrá aparecer salvaje en el grupo._"
+            f"🔓 <i>A partir de ahora, Zapdos podrá aparecer salvaje en el grupo.</i>"
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': True, 'event_id': EVENT_ID}
 
     elif choice == 'bulldoze':
@@ -894,23 +885,23 @@ def evento_mision_zapdos(user, decision_parts, original_text, chat_id):
             f"🔸Rhydon golpea el suelo con fuerza bruta y hace temblar toda la zona, pero... el Pokémon pájaro está flotando en el aire, ¡el ataque no le afecta en absoluto!\n"
             f"El ave, furiosa por el intento de ataque, emite un chillido ensordecedor y comienza a usar Danza Lluvia. \n"
             f"Nubes negras se forman de repente y empieza a llover. Rhydon se siente incómodo con la lluvia y deja de prestar atención al objetivo. La electricidad del ambiente comienza a intensificarse, están cayendo rayos por todas partes, convirtiendo la central en una trampa mortal.\n"
-            f"💬 *¡Es demasiado peligroso!* —grita Amelia, quien aún está en la llamada—. *¡Sal de ahí ahora mismo!*\n"
+            f"💬 <b>¡Es demasiado peligroso!</b> —grita Amelia, quien aún está en la llamada—. <b>¡Sal de ahí ahora mismo!</b>\n"
             f"{user.first_name} regresa a Rhydon a su Poké Ball y huye de la central antes de que sea demasiado tarde.\n\n"
             f"❌ Misión fallida."
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': False}
 
 
 # --- NUEVO EVENTO: MISIÓN ARTICUNO ---
 def _get_mision_articuno_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
-        f"🔹*_Misión especial_*\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔹<b><i>Misión especial</i></b>\n\n"
         f"🔸El Álbumdex de {user.first_name} recibe una llamada. ¡Es de Amelia!\n\n"
-        f"💬 *¡{user.first_name}, necesito tu ayuda! Los termómetros de Isla Canela están marcando temperaturas muy bajas, parece ser que corrientes de aire gélido llegan desde las Islas Espuma.*\n"
-        f"*Te he enviado un Slowbro al PC. ¡Por favor, ve e investiga qué ocurre!*\n\n"
-        f"🔸*{user.first_name}* recoge a Slowbro y navega sobre su lomo haciendo Surf hasta llegar a las Islas Espuma. El frío es cortante. Al llegar a la entrada de la cueva, se encuentran con un obstáculo: un bloque de hielo colosal ha sellado la entrada casi por completo.\n"
+        f"💬 <b>¡{user.first_name}, necesito tu ayuda! Los termómetros de Isla Canela están marcando temperaturas muy bajas, parece ser que corrientes de aire gélido llegan desde las Islas Espuma.</b>\n"
+        f"<b>Te he enviado un Slowbro al PC. ¡Por favor, ve e investiga qué ocurre!</b>\n\n"
+        f"🔸<b>{user.first_name}</b> recoge a Slowbro y navega sobre su lomo haciendo Surf hasta llegar a las Islas Espuma. El frío es cortante. Al llegar a la entrada de la cueva, se encuentran con un obstáculo: un bloque de hielo colosal ha sellado la entrada casi por completo.\n"
         f"Desde el interior, se escucha algo, pero lo único que puede ver es una silueta azul, parece que un Pokémon quedó atrapado dentro. Hay que intentar despejar la entrada. {user.first_name} mira a Slowbro, que bosteza despreocupado, y le ordena un ataque:"
     )
     keyboard = [[
@@ -923,7 +914,7 @@ def _get_mision_articuno_variant(user: User):
 
 def evento_mision_articuno(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -953,12 +944,12 @@ def evento_mision_articuno(user, decision_parts, original_text, chat_id):
             f"Ves caer del cielo algo parecido a una pluma azul y se posa en la cabeza de Slowbro, que ni se inmuta. {user.first_name} lo mira sonriendo, pensando en lo increíble que ha sido que un Pokémon de agua pueda lanzar tanto fuego.\n\n"
             f"Escanea a Slowbro y cuenta a Amelia lo ocurrido, y esta le recompensa por ello.\n\n"
             f"Obtienes:\n"
-            f"-💰 *{format_money(prize_money)}₽*\n"
+            f"-💰 <b>{format_money(prize_money)}₽</b>\n"
             f"{feather_text}\n\n"
             f"{sticker_msg}\n\n"
-            f"🔓 _A partir de ahora, Articuno podrá aparecer salvaje en el grupo._"
+            f"🔓 <i>A partir de ahora, Articuno podrá aparecer salvaje en el grupo.</i>"
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': True, 'event_id': EVENT_ID}
 
     elif choice == 'psychic':
@@ -968,7 +959,7 @@ def evento_mision_articuno(user, decision_parts, original_text, chat_id):
             f"{user.first_name} suspira y lo lleva al Centro Pokémon más cercano.\n\n"
             f"❌ Misión fallida."
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': False}
 
     elif choice == 'zenheadbutt':
@@ -979,19 +970,19 @@ def evento_mision_articuno(user, decision_parts, original_text, chat_id):
             f"{user.first_name} suspira y siente que no fue la opción más acertada. Rápidamente lo lleva al Centro Pokémon más cercano.\n\n"
             f"❌ Misión fallida."
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': False}
 
 
 # --- NUEVO EVENTO: MISIÓN MEWTWO ---
 def _get_mision_mewtwo_variant(user: User):
     text = (
-        f"_Evento aceptado por {user.first_name}_\n\n"
-        f"🔹*_Misión especial_*\n\n"
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔹<b><i>Misión especial</i></b>\n\n"
         f"🔸Hace un espléndido día por Isla Canela, {user.first_name} va paseando, disfrutando de la brisa marina. \n"
         f"De repente, se oye una explosión proveniente de una mansión cercana. \n"
         f"Rápidamente, llama a Amelia y le cuenta la situación.\n\n"
-        f"💬 *Vale {user.first_name}, te he mandado un Poliwrath al Centro Pokémon de Isla Canela, ¿podrías acercarte a investigar por si hubiera alguien herido? ten mucho cuidado, si la cosa se complica, ya sabes, para fuera...*\n\n"
+        f"💬 <b>Vale {user.first_name}, te he mandado un Poliwrath al Centro Pokémon de Isla Canela, ¿podrías acercarte a investigar por si hubiera alguien herido? ten mucho cuidado, si la cosa se complica, ya sabes, para fuera...</b>\n\n"
         f"🔸{user.first_name} entra en la mansión en ruinas y ve a gente que sale huyendo del lugar, algunos con magulladuras. No hay llamas, por lo que usa a Poliwrath para apartar escombros que ha dejado la explosión. Decide asomarse al sótano, para ver si hay alguien más.\n"
         f"Al entrar, activa la linterna de su Álbumdex, ya que todo está en la más absoluta oscuridad, pero no ve a nadie. \n"
         f"De pronto, una voz dice: \"Ayúdame...\".\n"
@@ -1008,7 +999,7 @@ def _get_mision_mewtwo_variant(user: User):
 
 def evento_mision_mewtwo(user, decision_parts, original_text, chat_id):
     user_id = user.id
-    user_mention = user.mention_markdown()
+    user_mention = user.mention_html()
     choice = decision_parts[0]
     result_text = ""
     choice_made_text = ""
@@ -1042,17 +1033,17 @@ def evento_mision_mewtwo(user, decision_parts, original_text, chat_id):
             f"De pronto, una onda expansiva de aire le empuja: el ser ha salido disparado a una velocidad supersónica, atravesando el techo de las diferentes plantas de la mansión.\n"
             f"{user.first_name} no entiende nada, pero sabe que es hora de actuar, ya que hay pequeños desprendimientos. Aprovechando la luz proveniente del agujero del techo, guarda a Poliwrath en su Poké Ball y sale del lugar.\n\n"
             f"Le cuenta todo a Amelia.\n\n"
-            f"💬 *¿Una armadura? ¿Telepatía? —Amelia intenta asimilarlo todo— Nunca oí nada parecido, ¿te imaginas que fuera un Pokémon legendario?* \n"
-            f"*Fuera lo que fuese, al final escapó; por lo que, \"Misión cumplida\", supongo.*\n"
-            f"*Aquí tienes una recompensa extra, por el riesgo corrido. Gracias por tu ayuda, {user.first_name}.*\n\n"
+            f"💬 <b>¿Una armadura? ¿Telepatía? —Amelia intenta asimilarlo todo— Nunca oí nada parecido, ¿te imaginas que fuera un Pokémon legendario?</b> \n"
+            f"<b>Fuera lo que fuese, al final escapó; por lo que, \"Misión cumplida\", supongo.</b>\n"
+            f"<b>Aquí tienes una recompensa extra, por el riesgo corrido. Gracias por tu ayuda, {user.first_name}.</b>\n\n"
             f"Obtienes:\n"
-            f"💰 *{format_money(prize_money)}₽*\n\n"
+            f"💰 <b>{format_money(prize_money)}₽</b>\n\n"
             f"Mientras {user.first_name} escanea a Poliwrath, ve que hay una foto que no había visto antes en el Modo Cámara del Álbumdex, y suspira: el Pokémon humanoide pensó que quería una foto suya, en lugar de escanearle.\n\n"
             f"{sticker_msg}\n\n"
             f"{photo_text}\n\n"
-            f"🔓 _A partir de ahora, Mewtwo podrá aparecer salvaje en el grupo._"
+            f"🔓 <i>A partir de ahora, Mewtwo podrá aparecer salvaje en el grupo.</i>"
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': True, 'event_id': EVENT_ID}
 
     elif choice == 'flee':
@@ -1060,10 +1051,10 @@ def evento_mision_mewtwo(user, decision_parts, original_text, chat_id):
         result_text = (
             f"🔸La presión psíquica es demasiado fuerte. {user.first_name} siente un mareo intenso que no le deja pensar con claridad.\n\n"
             f"El edificio comienza a temblar de nuevo. Temiendo un derrumbe inminente, {user.first_name} regresa a Poliwrath a su Poké Ball y sale corriendo del lugar.\n\n"
-            f"💬 *¿No había nadie? —pregunta Amelia—. Mejor, gracias por acercarte a echar un vistazo.*\n\n"
+            f"💬 <b>¿No había nadie? —pregunta Amelia—. Mejor, gracias por acercarte a echar un vistazo.</b>\n\n"
             f"❌ Misión fallida."
         )
-        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"_{choice_made_text}_\n\n{result_text}",
+        return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + f"<i>{choice_made_text}</i>\n\n{result_text}",
                 'event_completed': False}
 
 
@@ -1073,13 +1064,13 @@ EVENTS = {
         'name': "Aventura de Pesca en Ruta 12",
         'steps': {
             'start': {'get_text_and_keyboard': lambda user: random.choice([{'text': (
-                f"_Evento aceptado por {user.first_name}_\n\n🔸{user.first_name} va paseando por la Ruta 12, cuando de pronto escucha la voz de alguien:\n💬 *Oye, perdona, ¿puedes venir un momento?*\n\n🔸{user.first_name} dirige su mirada a un pescador, que le está indicando con la mano que se acerque:\n💬 *¿Podría pedirte un favor? ¿Puedes vigilar la caña? Voy a comprar cebo, solo será un momento.*"),
+                f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} va paseando por la Ruta 12, cuando de pronto escucha la voz de alguien:\n💬 <b>Oye, perdona, ¿puedes venir un momento?</b>\n\n🔸{user.first_name} dirige su mirada a un pescador, que le está indicando con la mano que se acerque:\n💬 <b>¿Podría pedirte un favor? ¿Puedes vigilar la caña? Voy a comprar cebo, solo será un momento.</b>"),
                                                                             'keyboard': [[{'text': 'Vale',
                                                                                            'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'},
                                                                                           {'text': 'No puedo',
                                                                                            'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|no_puedo'}]]},
                                                                            {'text': (
-                                                                               f"_Evento aceptado por {user.first_name}_\n\n🔸{user.first_name} va a entrar en la Ruta 12 y ve un puesto con cañas de pescar, con un cartel que anuncia:\n\"¡Alquila una caña de pescar por solo 200₽!\""),
+                                                                               f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} va a entrar en la Ruta 12 y ve un puesto con cañas de pescar, con un cartel que anuncia:\n\"¡Alquila una caña de pescar por solo 200₽!\""),
                                                                             'keyboard': [[{'text': 'Lo haré',
                                                                                            'callback_data': 'ev|pesca_ruta_12|decision|alquilar_caña|lo_hare'},
                                                                                           {'text': 'Nah, para qué',
@@ -1091,7 +1082,7 @@ EVENTS = {
         'name': "Negocios en el Casino Rocket",
         'steps': {
             'start': {'get_text_and_keyboard': lambda user: random.choice([_get_casino_sale_variant(user), {'text': (
-                f"_Evento aceptado por {user.first_name}_\n\n🔸{user.first_name} se encuentra en Ciudad Azulona, caminando cerca del Casino Rocket, un edificio de lo más llamativo. Fuera del casino, junto a la entrada, hay una máquina de gancho con sobres pequeños de Kanto decorados con Poké Balls.\n\nUn cartel dice:\n🪧 1 intento por solo 200₽ 💰 (máximo 3 intentos por persona)."),
+                f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} se encuentra en Ciudad Azulona, caminando cerca del Casino Rocket, un edificio de lo más llamativo. Fuera del casino, junto a la entrada, hay una máquina de gancho con sobres pequeños de Kanto decorados con Poké Balls.\n\nUn cartel dice:\n🪧 1 intento por solo 200₽ 💰 (máximo 3 intentos por persona)."),
                                                                                                             'keyboard': [
                                                                                                                 [{
                                                                                                                      'text': 'Jugar',
@@ -1177,4 +1168,3 @@ EVENTS = {
         }
     }
 }
-
