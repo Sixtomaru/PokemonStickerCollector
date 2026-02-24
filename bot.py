@@ -216,7 +216,9 @@ DAILY_WEIGHTS = [50, 32, 16, 2]
 USER_FRIENDLY_ITEM_IDS = {'sobremagicomedianonacional': 'pack_magic_medium_national'}
 POKEMON_BY_CATEGORY = {cat: [] for cat in PROBABILITIES.keys()}
 for pokemon_item in ALL_POKEMON:
-    POKEMON_BY_CATEGORY[pokemon_item['category']].append(pokemon_item)
+    # FILTRO: Solo añadimos Kanto (1-151) al pool de salvajes
+    if pokemon_item['id'] <= 151:
+        POKEMON_BY_CATEGORY[pokemon_item['category']].append(pokemon_item)
 POKEMON_PER_PAGE = 52
 PACK_OPEN_COOLDOWN = 15
 
@@ -571,6 +573,11 @@ async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: cb_kanto += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("🔸 Kanto", callback_data=cb_kanto)])
 
+    # --- NUEVO: Botón Johto ---
+    cb_johto = f"album_dupe_show_johto_{owner_id}"
+    if cmd_msg_id: cb_johto += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("🔹 Johto", callback_data=cb_johto)])
+
     # Botón Volver
     cb_back = f"album_main_{owner_id}"
     if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
@@ -584,7 +591,7 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         parts = query.data.split('_')
-        region = parts[3]  # kanto
+        region = parts[3]  # kanto o johto
         owner_id = int(parts[4])
         cmd_msg_id = parts[5] if len(parts) > 5 else ""
 
@@ -604,13 +611,20 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Filtro Kanto (1-151)
         if region == 'kanto' and 1 <= pid <= 151:
             p_data = POKEMON_BY_ID[pid]
+            # Usamos get_formatted_name si quieres emojis, o texto plano como tenías
+            name_display = f"{p_data['name']}{'✨' if is_shiny else ''}"
+            names_list.append(name_display)
+
+        # Filtro Johto (152-251)
+        elif region == 'johto' and 152 <= pid <= 251:
+            p_data = POKEMON_BY_ID[pid]
             name_display = f"{p_data['name']}{'✨' if is_shiny else ''}"
             names_list.append(name_display)
 
     # Ordenar alfabéticamente
     names_list.sort()
 
-    text = f"♻ **Repetidos de {region.capitalize()}:**\n\n"
+    text = f"🔄 **Repetidos de {region.capitalize()}:**\n\n"
     if not names_list:
         text += "_No tienes repetidos en esta región._"
     else:
@@ -650,6 +664,7 @@ async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error al banear grupo: {e}")
         await update.message.reply_text(f"❌ Error interno al banear: `{e}`", parse_mode='Markdown',
                                         disable_notification=True)
+
 
 async def admin_unban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Desbanea un grupo."""
@@ -2402,7 +2417,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 3. Sobres Elementales (Filtrados por tipo)
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            type_pool = [p for p in ALL_POKEMON if target_type in p.get('types', [])]
+            type_pool = [p for p in ALL_POKEMON if target_type in p.get('types', []) and p['id'] <= 151]
             if not type_pool: type_pool = ALL_POKEMON  # Fallback
 
             for _ in range(pack_size):
@@ -4398,6 +4413,10 @@ def main():
     )
 
     # 4. Planificador Semanal de Delibird (Lunes 00:05)
+    #LIMPIEZA PREVIA - --
+    old_delibird = application.job_queue.get_jobs_by_name("delibird_scheduler")
+    for job in old_delibird: job.schedule_removal()
+
     application.job_queue.run_daily(
         schedule_delibird_week,
         time=dt_time(0, 5, tzinfo=TZ_SPAIN),
