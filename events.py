@@ -6,6 +6,8 @@ import database as db
 from pokemon_data import POKEMON_BY_ID
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
 
+SHINY_CHANCE = 0.02 # 2% probabilidad
+
 # --- Listas de Pokémon (Igual que antes) ---
 PESCA_RUTA_12_PEQUEÑOS = [7, 54, 60, 61, 72, 90, 98, 99, 116, 117, 118, 119, 120, 121, 129, 138, 139]
 PESCA_RUTA_12_GRANDES = [7, 8, 54, 55, 60, 61, 62, 72, 90, 98, 99, 116, 117, 86, 118, 119, 120, 121, 129, 134, 138, 139]
@@ -32,6 +34,8 @@ GYM_MEDIUM_POKEMON = [79, 80, 122, 64]
 GYM_EXORCIST_POKEMON = [92, 93]
 GYM_SABRINA_POKEMON = [64, 65, 122, 49]
 
+def roll_shiny():
+    return random.random() < SHINY_CHANCE
 
 def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, chat_id=None):
     pokemon_data = POKEMON_BY_ID.get(pokemon_id)
@@ -84,7 +88,8 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
     if variant == 'vigilar_caña':
         if choice == 'vale':
             pokemon_id = random.choice(PESCA_RUTA_12_PEQUEÑOS)
-            reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
+            is_shiny = roll_shiny()
+            reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny, chat_id)
             result_text = (
                 f"🔸{user.first_name} ve cómo el pescador se aleja rápidamente. "
                 "Mientras, la caña se mueve; algo está tirando de ella. "
@@ -96,7 +101,8 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
             )
         else:
             pokemon_id = random.choice(PESCA_RUTA_12_GRANDES)
-            reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
+            is_shiny = roll_shiny()
+            reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny, chat_id)
             result_text = (
                 f"🔸{user.first_name} sigue su camino, no sin antes fijar su mirada sobre el "
                 f"<b>{POKEMON_BY_ID[pokemon_id]['name']}</b> ayudante del pescador. "
@@ -114,7 +120,8 @@ def evento_pesca_ruta_12(user, decision_parts, original_text, chat_id):
             else:
                 db.update_money(user_id, -costo_caña)
                 pokemon_id = random.choice(PESCA_RUTA_12_PEQUEÑOS)
-                reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
+                is_shiny = roll_shiny()
+                reward_message = _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny, chat_id)
                 result_text = (f"🔸{user.first_name} va con la caña a la zona de pescadores, "
                                "coloca el cebo, "
                                "lanza lejos el anzuelo, y... ... ... \n ¡oh, un "
@@ -183,7 +190,8 @@ def evento_casino_rocket(user, decision_parts, original_text, chat_id):
                     "🔸El hombre del traje te mira con desdén y cierra el maletín.")
             return {'text': original_text + separator + text}
         db.update_money(user_id, -price)
-        reward_message = _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+        is_shiny = roll_shiny()
+        reward_message = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
         text = (f"<i>{choice_made_text}</i>\n\n"
                 "🔸El empleado se despide con una amplia sonrisa: 💬 <b>Gracias por tu compra, si te pasas otro día, tendremos especímenes diferentes.</b>\n\n"
                 f"{reward_message}")
@@ -259,12 +267,13 @@ def _get_bosque_verde_variant(user: User):
             db.update_money(user.id, money_found)
             text += f"¡Anda, son <b>{format_money(money_found)}₽</b> 💰!"
     else:
+        is_shiny = roll_shiny()
         text = f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸Mientras {user.first_name} se distrae con el canto y revoloteo de los Pidgey en las copas de los árboles del Bosque Verde, sin darse cuenta, se topa con algo en el camino...\n\n"
         poke_id = random.choice(BOSQUE_VERDE_POKEMON)
         poke_name = POKEMON_BY_ID[poke_id]['name']
         text += f"¡Es un <b>{poke_name}</b>!\n\n"
         text += "Rápidamente, saca su Álbumdex y escanea al Pokémon antes de que huya.\n\n"
-        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, False, None)
+        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, is_shiny, None)
     return {'text': text}
 
 
@@ -296,7 +305,8 @@ def _get_tunel_roca_variant(user: User):
             f"Un gruñido resuena en la oscuridad... Rápidamente, {user.first_name} apunta en dirección al sonido con la luz del Álbumdex.\n ¡Es un <b>{poke_name}</b> salvaje!\n\n"
             "Pone el modo escáner antes de que el Pokémon se vaya.\n\n"
         )
-        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, False, None)
+        is_shiny = roll_shiny()
+        text += _handle_sticker_reward(user.id, user.mention_html(), poke_id, is_shiny, None)
         return {'text': text}
 
 
@@ -315,7 +325,8 @@ def evento_tunel_roca(user, decision_parts, original_text, chat_id):
 
     if choice == 'vale':
         choice_made_text = "ℹ️ Elegiste escanearlo."
-        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
     else:
         choice_made_text = "ℹ️ Elegiste no hacerlo."
         chosen_item = random.choices(TUNEL_ROCA_ITEMS, weights=[item['weight'] for item in TUNEL_ROCA_ITEMS], k=1)[0]
@@ -362,10 +373,12 @@ def evento_torre_lavanda(user, decision_parts, original_text, chat_id):
         choice_made_text = "ℹ️ Decidiste escanearlo."
         if pokemon_id == TORRE_LAVANDA_SPECIAL_GHOST:
             result_text += "🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un <b>Marowak</b>! ¿Qué?, ¿habrá escaneado mal?...\n\n"
-            result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_SPECIAL_GHOST, False, chat_id)
+            is_shiny = roll_shiny()
+            result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_SPECIAL_GHOST, is_shiny, chat_id)
         else:
             result_text += f"🔸 Apuntas con el Álbumdex y, después de un rato, logras escanear al fantasma antes de que se desvanezca en la niebla. ¡Has registrado un <b>{POKEMON_BY_ID[pokemon_id]['name']}</b>!\n\n"
-            result_text += _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
+            is_shiny = roll_shiny()
+            result_text += _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny, chat_id)
     else:
         choice_made_text = "ℹ️ Decidiste huir de allí."
         money_reward = 100
@@ -373,7 +386,8 @@ def evento_torre_lavanda(user, decision_parts, original_text, chat_id):
         result_text += f"Al enfocar con la linterna del Álbumdex, ve a un pequeño y triste <b>Cubone</b>. Se pregunta qué hace solo en un sitio como ese. Se agacha y lo agarra entre tus brazos; pero en ese momento ve entre la niebla una silueta humana, diciendo cosas ininteligibles.\nDe repente desaparece y {user.first_name} siente un escalofrío por la espalda, por lo que decide salir de allí inmediatamente.\nLleva al Cubone al Centro Pokémon, y las enfermeras le cuentan que no está perdido, que vive allí en la Torre Pokémon, que ellas se encargan de cuidarlo.\n\n"
         result_text += "Antes de irte, escaneas al pequeño Pokémon.\n\n"
         result_text += "Cuando vas a salir, notas algo en la espalda; es una enfermera quitándote un Amuleto que tenías pegado. 💬 <b>Ten cuidado con los exorcistas</b> - te dice con una sonrisa.\n\n"
-        result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_FLEE_POKEMON, False, chat_id)
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, TORRE_LAVANDA_FLEE_POKEMON, is_shiny, chat_id)
         db.update_money(user_id, money_reward)
         result_text += f"\n🔸 Además, ¡recibes <b>{format_money(money_reward)}₽</b> 💰 al vender el Amuleto!"
 
@@ -422,7 +436,8 @@ def evento_ciudad_azulona(user, decision_parts, original_text, chat_id):
             result_text = "🔸Entra en el restaurante. Se sienta y pide la comida: una pizza de champiñones, queso vegano y tofu. Mientras espera, ve a un imponente Machamp en la cocina usando sus cuatro brazos para fregar, secar y colocar los platos a la vez, con una eficiencia asombrosa.\nDisimuladamente, saca su Álbumdex y lo escanea."
         else:
             result_text = "🔸 Entra en el restaurante y pide un entrante: unas croquetas Pikachu; pequeñas bolitas crujientes de queso y patata decoradas estilo Pikachu.\nEscucha algo a su lado, es un Mr. Mime agarrando algo invisible y zarandeándolo de un lado para el otro. Parece que hace como que barre el restaurante, pero realmente lo está haciendo. 💭 ¿Será por sus poderes psíquicos?\nDisimuladamente, saca su Álbumdex y lo escanea."
-        result_text += "\n\n" + _handle_sticker_reward(user_id, user_mention, pokemon_id, False, chat_id)
+        is_shiny = roll_shiny()
+        result_text += "\n\n" + _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny, chat_id)
 
     separator = "\n\n" + "—" * 20 + "\n\n"
     final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
@@ -477,7 +492,8 @@ def evento_erika_nap(user, decision_parts, original_text, chat_id):
             "💬 <b>Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.</b>\n\n"
             "¡Erika te entrega una pegatina de su colección personal!\n\n"
         )
-        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
 
     elif choice == 'leave_it':
         choice_made_text = "ℹ️ Decidiste dejarlo en el banco."
@@ -495,7 +511,8 @@ def evento_erika_nap(user, decision_parts, original_text, chat_id):
                 "💬 <b>Anda, llevas un Álbumdex. Yo también adoro coleccionar stickers, sobre todo los de tipo Planta. Por favor, acepta esto como agradecimiento.</b>\n\n"
                 "¡Erika te entrega una pegatina de su colección personal!\n\n"
             )
-            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+            is_shiny = roll_shiny()
+            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
         else:
             result_text = base_text + (
                 f"🔸{user.first_name} se va satisfecho, pensando que ha hecho una buena acción."
@@ -643,7 +660,8 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
         result_text = (
             f"🔸{user.first_name} saca rápidamente el Álbumdex, aprovecha el descanso del Pokémon para escanearlo y huye de allí antes de ser visto.\n\n"
         )
-        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
 
     elif choice == 'walk':
         choice_made_text = "ℹ️ Decidiste seguir caminando."
@@ -662,7 +680,8 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
                 f"sale una Médium seguida fielmente de su <b>{poke_name}</b>.\n\n"
                 f"{user.first_name} escanea al pokémon disimuladamente.\n\n"
             )
-            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+            is_shiny = roll_shiny()
+            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
 
         elif variant == 'exorcist':
             poke_id = random.choice(GYM_EXORCIST_POKEMON)
@@ -671,7 +690,8 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
                 f"sale un Exorcista murmurando oraciones, seguido de su <b>{poke_name}</b>, que va flotando alrededor suya.\n"
                 f"{user.first_name} aprovecha y apunta con el Álbumdex al pokémon y lo registra.\n\n"
             )
-            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, False, chat_id)
+            is_shiny = roll_shiny()
+            result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
 
         elif variant == 'sabrina':
             poke_id = random.choice(GYM_SABRINA_POKEMON)
