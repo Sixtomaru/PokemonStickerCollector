@@ -271,3 +271,18 @@ POKEMON_REGIONS = {
 
 ALL_POKEMON = [p for region_list in POKEMON_REGIONS.values() for p in region_list]
 POKEMON_BY_ID = {p['id']: p for p in ALL_POKEMON}
+
+# --- LISTAS NEGRAS (EXCLUSIONES PARA SPAWN) ---
+# Bebés (No salen en sobres ni salvajes, se obtendrán por cría)
+BABY_IDS = [172, 173, 174, 175, 236, 238, 239, 240]
+# Unown (Saldrán por evento especial de ruinas)
+UNOWN_ID = [201]
+# Legendarios Johto (Saldrán por misiones de evento)
+LEGENDARY_JOHTO_IDS = [243, 244, 245, 249, 250, 251]
+
+# Lista combinada de todos los excluidos
+EXCLUDED_IDS = set(BABY_IDS + UNOWN_ID + LEGENDARY_JOHTO_IDS)
+
+# Pool limpio: Todos los Pokémon MENOS los excluidos.
+# Esta es la lista que usará bot.py para sacar Pokémon salvajes y sobres al azar.
+ALL_POKEMON_SPAWNABLE = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_IDS]
