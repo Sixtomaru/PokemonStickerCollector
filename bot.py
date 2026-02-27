@@ -78,33 +78,47 @@ MAX_SPAWN_TIME = 14400  # 4 horas
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 SHOP_CONFIG = {
+    # NACIONALES
     'pack_small_national': {'name': 'Sobre Pequeño Nacional', 'price': 1000, 'size': 3, 'is_magic': False,
-                            'desc': 'Contiene 3 stickers al azar.'},
+                            'desc': '3 al azar (Todas las regiones).'},
     'pack_medium_national': {'name': 'Sobre Mediano Nacional', 'price': 1500, 'size': 5, 'is_magic': False,
-                             'desc': 'Contiene 5 stickers al azar.'},
+                             'desc': '5 al azar (Todas las regiones).'},
     'pack_large_national': {'name': 'Sobre Grande Nacional', 'price': 1900, 'size': 7, 'is_magic': False,
-                            'desc': 'Contiene 7 stickers al azar.'},
+                            'desc': '7 al azar (Todas las regiones).'},
     'pack_magic_small_national': {'name': 'Sobre Mágico Pequeño', 'price': 1600, 'size': 1, 'is_magic': True,
-                                  'desc': 'Contiene 1 sticker que no tienes.'},
+                                  'desc': '1 NUEVO garantizado.'},
     'pack_magic_medium_national': {'name': 'Sobre Mágico Mediano', 'price': 2100, 'size': 3, 'is_magic': True,
-                                   'desc': 'Contiene 3 stickers que no tienes.'},
+                                   'desc': '3 NUEVOS garantizados.'},
     'pack_magic_large_national': {'name': 'Sobre Mágico Grande', 'price': 2500, 'size': 5, 'is_magic': True,
-                                  'desc': 'Contiene 5 stickers que no tienes.'},
-    # Sobres Kanto
+                                  'desc': '5 NUEVOS garantizados.'},
+
+    # KANTO
     'pack_small_kanto': {'name': 'Sobre Pequeño Kanto', 'price': 1000, 'size': 3, 'region_filter': 'Kanto',
                          'desc': '3 de Kanto.'},
     'pack_medium_kanto': {'name': 'Sobre Mediano Kanto', 'price': 1500, 'size': 5, 'region_filter': 'Kanto',
                           'desc': '5 de Kanto.'},
     'pack_large_kanto': {'name': 'Sobre Grande Kanto', 'price': 1900, 'size': 7, 'region_filter': 'Kanto',
                          'desc': '7 de Kanto.'},
+    'pack_magic_small_kanto': {'name': 'Sobre Mágico Peq. Kanto', 'price': 1600, 'size': 1, 'is_magic': True,
+                               'region_filter': 'Kanto', 'desc': '1 Kanto NUEVO.'},
+    'pack_magic_medium_kanto': {'name': 'Sobre Mágico Med. Kanto', 'price': 2100, 'size': 3, 'is_magic': True,
+                                'region_filter': 'Kanto', 'desc': '3 Kanto NUEVOS.'},
+    'pack_magic_large_kanto': {'name': 'Sobre Mágico Gra. Kanto', 'price': 2500, 'size': 5, 'is_magic': True,
+                               'region_filter': 'Kanto', 'desc': '5 Kanto NUEVOS.'},
 
-    # Sobres Johto
+    # JOHTO
     'pack_small_johto': {'name': 'Sobre Pequeño Johto', 'price': 1000, 'size': 3, 'region_filter': 'Johto',
                          'desc': '3 de Johto.'},
     'pack_medium_johto': {'name': 'Sobre Mediano Johto', 'price': 1500, 'size': 5, 'region_filter': 'Johto',
                           'desc': '5 de Johto.'},
     'pack_large_johto': {'name': 'Sobre Grande Johto', 'price': 1900, 'size': 7, 'region_filter': 'Johto',
                          'desc': '7 de Johto.'},
+    'pack_magic_small_johto': {'name': 'Sobre Mágico Peq. Johto', 'price': 1600, 'size': 1, 'is_magic': True,
+                               'region_filter': 'Johto', 'desc': '1 Johto NUEVO.'},
+    'pack_magic_medium_johto': {'name': 'Sobre Mágico Med. Johto', 'price': 2100, 'size': 3, 'is_magic': True,
+                                'region_filter': 'Johto', 'desc': '3 Johto NUEVOS.'},
+    'pack_magic_large_johto': {'name': 'Sobre Mágico Gra. Johto', 'price': 2500, 'size': 5, 'is_magic': True,
+                               'region_filter': 'Johto', 'desc': '5 Johto NUEVOS.'},
 
     # --- SOBRES DE EVENTO (OCULTOS) ---
     'pack_shiny_kanto': {'name': 'Sobre Brillante Kanto', 'price': 0, 'size': 1, 'is_magic': False,
@@ -1003,6 +1017,7 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+
 async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = query.from_user
@@ -1012,37 +1027,30 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("El mensaje original no está disponible.", show_alert=True)
         return
 
-    # --- NUEVO: LÓGICA DE COOLDOWN (2 veces cada 30 min) ---
-    # Usamos context.user_data para guardar el historial del usuario
+    # --- LÓGICA DE COOLDOWN (2 veces cada 30 min) ---
     now = time.time()
-    COOLDOWN_SECONDS = 1800  # 30 minutos
+    COOLDOWN_SECONDS = 1800
     MAX_SHOWS = 2
 
-    # Inicializamos la lista si no existe
     if 'show_history' not in context.user_data:
         context.user_data['show_history'] = []
 
-    # Limpiamos marcas de tiempo antiguas (mayores a 30 min)
     context.user_data['show_history'] = [
         t for t in context.user_data['show_history']
         if now - t < COOLDOWN_SECONDS
     ]
 
-    # Comprobamos si ha superado el límite
     if len(context.user_data['show_history']) >= MAX_SHOWS:
-        # Calculamos cuánto falta para que expire el más antiguo
         oldest_time = context.user_data['show_history'][0]
         wait_time = int(COOLDOWN_SECONDS - (now - oldest_time))
         minutes = wait_time // 60
         seconds = wait_time % 60
-
         await query.answer(
-            f"⛔ Para evitar spam, solo puedes mostrar 2 Pokémon cada 30 minutos.\n\n"
-            f"Podrás mostrar otro en: {minutes}m {seconds}s.",
+            f"⛔ Límite alcanzado (2/30min).\nEspera: {minutes}m {seconds}s.",
             show_alert=True
         )
         return
-    # -------------------------------------------------------
+    # ------------------------------------------------
 
     image_path = ""
     try:
@@ -1058,30 +1066,31 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("No se encontraron los datos de este Pokémon.", show_alert=True)
             return
 
-        # --- REGISTRAMOS EL USO ---
         context.user_data['show_history'].append(now)
-        # --------------------------
 
-        shiny_text = " Brillante" if is_shiny else ""
+        # Formato HTML y Emoji
+        pokemon_display = get_formatted_name(pokemon_data, is_shiny)
         final_rarity = get_rarity(pokemon_data['category'], is_shiny)
         rarity_emoji = RARITY_VISUALS.get(final_rarity, "")
 
-        message_text = f"{interactor_user.first_name} mostró su *{pokemon_data['name']}{shiny_text}* {rarity_emoji}"
+        message_text = f"{interactor_user.first_name} mostró su {pokemon_display} {rarity_emoji}"
 
-        # --- ENVIAMOS EN SILENCIO (disable_notification=True) ---
         await context.bot.send_message(
             chat_id=message.chat_id,
             text=message_text,
-            parse_mode='Markdown',
-            disable_notification=True  # <--- SILENCIO
+            parse_mode='HTML',
+            disable_notification=True
         )
 
-        image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+        # --- RUTA DINÁMICA KANTO / JOHTO ---
+        region_folder = "Johto" if pokemon_id > 151 else "Kanto"
+        image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+
         with open(image_path, 'rb') as sticker_file:
             await context.bot.send_sticker(
                 chat_id=message.chat_id,
                 sticker=sticker_file,
-                disable_notification=True  # <--- SILENCIO
+                disable_notification=True
             )
 
         await query.answer()
@@ -1090,7 +1099,7 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("Error al procesar la solicitud.", show_alert=True)
     except FileNotFoundError:
         logger.error(f"Sticker no encontrado: {image_path}")
-        await query.answer("¡Uy! No encuentro ese sticker.", show_alert=True)
+        await query.answer("¡Uy! No encuentro la imagen de ese sticker.", show_alert=True)
 
 
 def choose_random_pokemon():
@@ -2070,42 +2079,62 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     interactor_user = update.effective_user
+    cmd_msg_id = None
+    owner_user = None
     is_panel = (query and query.data == "panel_tienda")
 
     if query:
-        if not is_panel:
-            # Validar propiedad si es refresh
+        if is_panel:
+            owner_user = interactor_user
+        else:
             try:
                 parts = query.data.split('_')
-                owner_id = int(parts[-2]) if parts[-1].isdigit() and len(parts) > 2 else int(parts[-1])
+                if len(parts) > 3 and parts[-1].isdigit() and parts[-2].isdigit():
+                    owner_id = int(parts[-2])
+                    cmd_msg_id = int(parts[-1])
+                else:
+                    owner_id = int(parts[-1])
+
                 if interactor_user.id != owner_id:
                     await query.answer("Esta tienda no es tuya.", show_alert=True)
                     return
+                owner_user = interactor_user
             except:
-                pass
+                return
+    else:
+        owner_user = interactor_user
+        if update.message: cmd_msg_id = update.message.message_id
 
-    db.get_or_create_user(interactor_user.id, interactor_user.first_name)
-    user_money = db.get_user_money(interactor_user.id)
+    db.get_or_create_user(owner_user.id, owner_user.first_name)
+    user_money = db.get_user_money(owner_user.id)
 
-    text = (f"🏪 **Tienda Pokémon** 🏪\n\n"
+    text = (f"🏪 *Tienda de Sobres* 🏪\n\n"
             f"Tu saldo: **{format_money(user_money)}₽**\n\n"
             "Selecciona una categoría:")
 
+    # Preparamos el sufijo de ID
+    suffix = f"_{interactor_user.id}"
+    if cmd_msg_id: suffix += f"_{cmd_msg_id}"  # <--- IMPORTANTE: Pasamos el ID del mensaje
+
     keyboard = [
-        [InlineKeyboardButton("🗾 Sobres Nacionales", callback_data=f"shop_cat_national_{interactor_user.id}")],
-        [InlineKeyboardButton("🔸 Sobres Kanto", callback_data=f"shop_cat_kanto_{interactor_user.id}")],
-        [InlineKeyboardButton("🔹 Sobres Johto", callback_data=f"shop_cat_johto_{interactor_user.id}")],
-        [InlineKeyboardButton("❌ Salir", callback_data=f"shop_close_{interactor_user.id}")]
+        [InlineKeyboardButton("🌍 Sobres Nacionales", callback_data=f"shop_cat_national{suffix}")],
+        [InlineKeyboardButton("🔸 Sobres Kanto", callback_data=f"shop_cat_kanto{suffix}")],
+        [InlineKeyboardButton("🔹 Sobres Johto", callback_data=f"shop_cat_johto{suffix}")],
+        [InlineKeyboardButton("❌ Salir", callback_data=f"shop_close{suffix}")]
     ]
 
     if query and not is_panel:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            if query.data.startswith("shop_refresh_"): await query.answer()
+        except BadRequest:
+            pass
     else:
         msg = await context.bot.send_message(update.effective_chat.id, text,
                                              reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                              disable_notification=True)
-        if update.message: schedule_message_deletion(context, update.message, 60)
         schedule_message_deletion(context, msg, 60)
+        if update.message: schedule_message_deletion(context, update.message, 60)
 
 
 async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2114,37 +2143,48 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
     cat = parts[2]  # national, kanto, johto
     owner_id = int(parts[3])
 
+    # Intentar recuperar el msg_id del comando original si existe (está en parts[4] si viene de tienda_cmd)
+    cmd_msg_id = parts[4] if len(parts) > 4 else ""
+
     if query.from_user.id != owner_id:
         await query.answer("Esta tienda no es tuya.", show_alert=True)
         return
 
-    # Filtrar sobres según categoría
     filtered_items = []
 
     for item_id, details in SHOP_CONFIG.items():
-        if details.get('hidden'): continue  # Ignorar ocultos
+        if details.get('hidden'): continue
 
-        # Filtro Nacional: Los que NO tienen region_filter
-        if cat == 'national' and 'region_filter' not in details and 'National' in details['name']:
+        region = details.get('region_filter')
+
+        # Filtro Nacional: Los que NO tienen region_filter Y tienen "national" en el ID
+        if cat == 'national' and not region and 'national' in item_id:
             filtered_items.append((item_id, details))
 
-        # Filtro Kanto: Los que tienen region_filter = Kanto
-        elif cat == 'kanto' and details.get('region_filter') == 'Kanto':
+        # Filtro Kanto
+        elif cat == 'kanto' and region == 'Kanto':
             filtered_items.append((item_id, details))
 
-        # Filtro Johto: Los que tienen region_filter = Johto
-        elif cat == 'johto' and details.get('region_filter') == 'Johto':
+        # Filtro Johto
+        elif cat == 'johto' and region == 'Johto':
             filtered_items.append((item_id, details))
 
-    # Construir menú
+    # Ordenar por precio para que salgan bonitos (Pequeño -> Mediano -> Grande)
+    filtered_items.sort(key=lambda x: x[1]['price'])
+
     keyboard = []
     for item_id, details in filtered_items:
+        # Pasamos cmd_msg_id al prebuy para que se pueda borrar al final
         cb_data = f"prebuy_{item_id}_{owner_id}"
+        if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
+
         btn_text = f"{details['name']} - {format_money(details['price'])}₽"
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
 
-    # Botón Volver
-    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"shop_refresh_{owner_id}")])
+    # Volver (pasando ID mensaje)
+    cb_back = f"shop_refresh_{owner_id}"
+    if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=cb_back)])
 
     text = f"📂 **Sobres de {cat.capitalize()}**\nElige tu sobre:"
 
