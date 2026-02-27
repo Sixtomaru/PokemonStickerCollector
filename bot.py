@@ -2117,7 +2117,7 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: suffix += f"_{cmd_msg_id}"  # <--- IMPORTANTE: Pasamos el ID del mensaje
 
     keyboard = [
-        [InlineKeyboardButton("🌍 Sobres Nacionales", callback_data=f"shop_cat_national{suffix}")],
+        [InlineKeyboardButton("🗾 Sobres Nacionales", callback_data=f"shop_cat_national{suffix}")],
         [InlineKeyboardButton("🔸 Sobres Kanto", callback_data=f"shop_cat_kanto{suffix}")],
         [InlineKeyboardButton("🔹 Sobres Johto", callback_data=f"shop_cat_johto{suffix}")],
         [InlineKeyboardButton("❌ Salir", callback_data=f"shop_close{suffix}")]
@@ -2143,7 +2143,7 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
     cat = parts[2]  # national, kanto, johto
     owner_id = int(parts[3])
 
-    # Intentar recuperar el msg_id del comando original si existe (está en parts[4] si viene de tienda_cmd)
+    # Intentar recuperar el msg_id del comando original si existe
     cmd_msg_id = parts[4] if len(parts) > 4 else ""
 
     if query.from_user.id != owner_id:
@@ -2169,8 +2169,11 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
         elif cat == 'johto' and region == 'Johto':
             filtered_items.append((item_id, details))
 
-    # Ordenar por precio para que salgan bonitos (Pequeño -> Mediano -> Grande)
-    filtered_items.sort(key=lambda x: x[1]['price'])
+    # --- CORRECCIÓN DE ORDEN ---
+    # Ordenamos por una tupla: (Es Mágico, Precio)
+    # Python ordena False (0) antes que True (1), así que los normales salen primero.
+    filtered_items.sort(key=lambda x: (x[1].get('is_magic', False), x[1]['price']))
+    # ---------------------------
 
     keyboard = []
     for item_id, details in filtered_items:
@@ -2186,7 +2189,7 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
     if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=cb_back)])
 
-    text = f"📂 **Sobres de {cat.capitalize()}**\nElige tu sobre:"
+    text = f"📂 **Sobres de {cat.capitalize()}**\nElige un sobre:"
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
