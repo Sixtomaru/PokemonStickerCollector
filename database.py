@@ -222,6 +222,10 @@ def get_group_unique_kanto_ids(chat_id):
     rows = query_db('SELECT pokemon_id FROM group_pokedex WHERE chat_id = ? AND pokemon_id <= 151', (chat_id,))
     return {row[0] for row in rows}
 
+def get_group_unique_johto_ids(chat_id):
+    """Devuelve los IDs únicos de Johto (152-251) capturados en este grupo."""
+    rows = query_db('SELECT pokemon_id FROM group_pokedex WHERE chat_id = ? AND pokemon_id >= 152 AND pokemon_id <= 251', (chat_id,))
+    return {row[0] for row in rows}
 
 def reset_group_pokedex(chat_id):
     """Elimina el progreso del reto grupal para un grupo específico (Admin)."""
