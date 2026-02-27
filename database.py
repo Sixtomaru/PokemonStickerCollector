@@ -97,6 +97,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1",
         "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN last_delibird_claim TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN johto_completed INTEGER DEFAULT 0"
 
         # --- NUEVO PARA INTERCAMBIOS ---
         "ALTER TABLE collection ADD COLUMN quantity INTEGER DEFAULT 1",
@@ -571,6 +573,12 @@ def execute_trade(user_a, pokemon_a, is_shiny_a, user_b, pokemon_b, is_shiny_b):
 
     return status_a, status_b
 
+def get_user_collection_quantities(user_id):
+    """Devuelve un diccionario {(id, is_shiny): cantidad} para calcular sobres mágicos."""
+    rows = query_db("SELECT pokemon_id, is_shiny, quantity FROM collection WHERE user_id = ?", (user_id,))
+    # Devolvemos un diccionario fácil de leer: {(25, False): 1, (4, True): 0...}
+    return {(row[0], bool(row[1])): row[2] for row in rows}
+
 # --- SISTEMA DE CÓDIGOS DE AMIGO ---
 
 def add_friend_code(user_id, nick, region, code, days_valid=30):
@@ -685,6 +693,49 @@ def get_delibird_schedule():
 def clear_delibird_schedule():
     """Borra la fecha guardada (cuando el evento ya se ha ejecutado)."""
     query_db("DELETE FROM system_flags WHERE flag_name = 'next_delibird'")
+
+
+def check_delibird_claimed_this_week(user_id):
+    """Devuelve True si ya reclamó en los últimos 7 días."""
+    from datetime import datetime, timedelta
+    res = query_db("SELECT last_delibird_claim FROM users WHERE user_id = ?", (user_id,), one=True)
+    if not res or not res[0]: return False
+
+    last_date_str = res[0]
+    try:
+        last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
+        # Si la fecha guardada es reciente (menos de 6 días para asegurar la semana)
+        if (datetime.now() - last_date).days < 6:
+            return True
+    except:
+        pass
+    return False
+
+
+def set_delibird_claimed(user_id):
+    """Marca que ha reclamado hoy."""
+    from datetime import datetime
+    today = datetime.now().strftime('%Y-%m-%d')
+    # Aseguramos que existe
+    get_or_create_user(user_id, None)
+    query_db("UPDATE users SET last_delibird_claim = ? WHERE user_id = ?", (today, user_id))
+
+
+def is_johto_completed_by_user(user_id):
+    res = query_db("SELECT johto_completed FROM users WHERE user_id = ?", (user_id,), one=True)
+    return res[0] if res else 0
+
+
+def set_johto_completed_by_user(user_id):
+    query_db("UPDATE users SET johto_completed = 1 WHERE user_id = ?", (user_id,))
+
+
+def get_user_unique_johto_count(user_id):
+    res = query_db(
+        "SELECT COUNT(DISTINCT pokemon_id) FROM collection WHERE user_id = ? AND pokemon_id >= 152 AND pokemon_id <= 251",
+        (user_id,), one=True)
+    return res[0] if res else 0
+
 
 # Iniciar la DB
 init_db()
