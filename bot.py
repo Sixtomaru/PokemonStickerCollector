@@ -29,7 +29,7 @@ from telegram.ext import filters, MessageHandler
 
 import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
-from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID
+from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 from events import EVENTS
 
@@ -69,7 +69,6 @@ EVENT_CHANCE = 0.15
 TOMBOLA_STATE = {}
 # --- ESTADOS GLOBALES ---
 DELIBIRD_STATE = {}
-DELIBIRD_GLOBAL_CLAIMED = set() # Nueva variable: IDs de usuarios que ya reclamaron esta semana# --- CONFIGURACIÓN DE TIEMPOS DE APARICIÓN (En segundos) ---
 MIN_SPAWN_TIME = 7200  # 2 horas
 MAX_SPAWN_TIME = 14400  # 4 horas
 
@@ -85,12 +84,9 @@ SHOP_CONFIG = {
                              'desc': '5 al azar (Todas las regiones).'},
     'pack_large_national': {'name': 'Sobre Grande Nacional', 'price': 1900, 'size': 7, 'is_magic': False,
                             'desc': '7 al azar (Todas las regiones).'},
-    'pack_magic_small_national': {'name': 'Sobre Mágico Pequeño', 'price': 1600, 'size': 1, 'is_magic': True,
-                                  'desc': '1 NUEVO garantizado.'},
-    'pack_magic_medium_national': {'name': 'Sobre Mágico Mediano', 'price': 2100, 'size': 3, 'is_magic': True,
-                                   'desc': '3 NUEVOS garantizados.'},
-    'pack_magic_large_national': {'name': 'Sobre Mágico Grande', 'price': 2500, 'size': 5, 'is_magic': True,
-                                  'desc': '5 NUEVOS garantizados.'},
+    'pack_magic_small_national': {'name': 'Sobre Mágico Peq. Nacional', 'price': 1600, 'size': 1, 'is_magic': True, 'desc': '1 NUEVO garantizado.'},
+    'pack_magic_medium_national': {'name': 'Sobre Mágico Med. Nacional', 'price': 2100, 'size': 3, 'is_magic': True, 'desc': '3 NUEVOS garantizados.'},
+    'pack_magic_large_national': {'name': 'Sobre Mágico Gra. Nacional', 'price': 2500, 'size': 5, 'is_magic': True, 'desc': '5 NUEVOS garantizados.'},
 
     # KANTO
     'pack_small_kanto': {'name': 'Sobre Pequeño Kanto', 'price': 1000, 'size': 3, 'region_filter': 'Kanto',
@@ -123,6 +119,7 @@ SHOP_CONFIG = {
     # --- SOBRES DE EVENTO (OCULTOS) ---
     'pack_shiny_kanto': {'name': 'Sobre Brillante Kanto', 'price': 0, 'size': 1, 'is_magic': False,
                          'desc': 'Garantiza 1 Shiny.', 'hidden': True},
+    'pack_shiny_johto': {'name': 'Sobre Brillante Johto', 'price': 0, 'size': 1, 'is_magic': False, 'desc': 'Garantiza 1 Shiny Johto.', 'hidden': True},
 
     # Sobres Elementales
     'pack_elem_fuego': {'name': 'Sobre Fuego Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Fuego.',
@@ -275,6 +272,25 @@ async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error al borrar mensaje programado: {e}")
 
+
+async def check_and_unlock_johto(chat_id, context):
+    """Verifica si el grupo ha alcanzado el 75% de Kanto y desbloquea Johto."""
+    # Solo si no está desbloqueado ya
+    if not db.is_event_completed(chat_id, 'amelia_johto_unlock'):
+        group_unique_kanto = db.get_group_unique_kanto_ids(chat_id)
+        if len(group_unique_kanto) >= 113:
+            db.mark_event_completed(chat_id, 'amelia_johto_unlock')
+
+            amelia_text = (
+                "💬 <b>¡Hola a tod@s, aquí Amelia!</b>\nLo estáis haciendo muy bien, habéis recorrido todo Kanto y visto muchas especies de Pokémon.\n\n"
+                "Gracias a todo el esfuerzo que habéis hecho, las autoridades regionales han oído hablar de nosotros, y nos van a financiar la agencia, además de darnos permiso para operar por todo Kanto. "
+                "Además, ¡en Johto también quieren nuestros servicios!, siento que todo está yendo muy rápido, pero eso es buena señal.\n\n"
+                "<b>A partir de ahora, también podemos movernos por Johto, así que: ¡¡A seguir esforzándonos!!</b>"
+            )
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=amelia_text, parse_mode='HTML')
+            except:
+                pass
 
 def schedule_message_deletion(context: ContextTypes.DEFAULT_TYPE, message: Message, delay_seconds: int = 60):
     if context.job_queue and message:
@@ -1535,7 +1551,6 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        # --- RANKING LOCAL (Sumar puntos al grupo) ---
         if message.chat.type in ['group', 'supergroup']:
             db.increment_group_monthly_stickers(user.id, message.chat.id)
 
@@ -1547,12 +1562,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
 
-        # Formato HTML
         pokemon_display = get_formatted_name(pokemon_data, is_shiny)
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
         user_link = user.mention_html()
 
-        # --- LÓGICA SMART (Captura) ---
         status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
         message_text = ""
 
@@ -1565,26 +1578,11 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             db.update_money(user.id, money_earned)
             message_text = f"✔️ ¡Genial, {user_link}! Conseguiste un sticker de {pokemon_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money_earned)}₽</b> 💰."
 
-        # --- RETO GRUPAL & MENSAJE DE AMELIA ---
+        # --- RETO GRUPAL & DESBLOQUEO JOHTO ---
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
-
-            # Solo chequeamos progreso si es de Kanto (1-151)
-            if pokemon_id <= 151:
-                group_unique_kanto = db.get_group_unique_kanto_ids(message.chat.id)
-                count_kanto = len(group_unique_kanto)
-
-                # Check del 75% (113 Pokémon)
-                if count_kanto >= 113 and not db.is_event_completed(message.chat.id, 'amelia_johto_unlock'):
-                    db.mark_event_completed(message.chat.id, 'amelia_johto_unlock')
-
-                    amelia_text = (
-                        "💬 <b>¡Hola a tod@s, aquí Amelia!</b>\nLo estáis haciendo muy bien, habéis recorrido todo Kanto y visto muchas especies de Pokémon.\n\n"
-                        "Gracias a todo el esfuerzo que habéis hecho, las autoridades regionales han oído hablar de nosotros, y nos van a financiar la agencia, además de darnos permiso para operar por todo Kanto. "
-                        "Además, ¡en Johto también quieren nuestros servicios!, siento que todo está yendo muy rápido, pero eso es buena señal.\n\n"
-                        "<b>A partir de ahora, también podemos movernos por Johto, así que: ¡¡A seguir esforzándonos!!</b>"
-                    )
-                    await context.bot.send_message(chat_id=message.chat_id, text=amelia_text, parse_mode='HTML')
+            # Llamada a la función auxiliar para comprobar si se desbloquea Johto
+            await check_and_unlock_johto(message.chat.id, context)
 
         # --- PREMIO INDIVIDUAL (Kanto Completado) ---
         if not db.is_kanto_completed_by_user(user.id):
@@ -1594,7 +1592,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.update_money(user.id, 3000)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
 
-        # --- PREMIO RETO GRUPAL (100%) ---
+        # --- PREMIO RETO GRUPAL ---
         is_qualified = await is_group_qualified(message.chat.id, context)
         chat_id = message.chat.id
         if message.chat.type in ['group', 'supergroup']:
@@ -1608,15 +1606,14 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                         group_users = db.get_users_in_group(chat_id)
                         for uid in group_users:
                             db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto! Cada jugador ha recibido 2000₽ en su buzón."
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
                     else:
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto!"
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
     else:
         await query.answer()
-        # Fallo
         new_chance = min(100, current_chance + 5)
         db.update_user_capture_chance(user.id, new_chance)
 
@@ -1717,9 +1714,8 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not step_data: return
 
     if 'action' in step_data:
-        # --- AQUÍ PASAMOS EL CHAT_ID ---
+        # Pasamos el chat_id a la lógica del evento (events.py se encarga de guardar el sticker en la BD del grupo)
         result = step_data['action'](user, decision_parts, original_text=message.text, chat_id=message.chat_id)
-        # -------------------------------
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
@@ -1737,12 +1733,19 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 ])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
+        # 1. Editamos el mensaje original para mostrar el resultado del evento
         await query.edit_message_text(
             text=final_text,
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
         await query.answer()
+
+        # --- 2. CHEQUEO INMEDIATO DE DESBLOQUEO DE JOHTO ---
+        # Si el evento era en un grupo, comprobamos si ha saltado el 75%
+        if message.chat.type in ['group', 'supergroup']:
+            await check_and_unlock_johto(message.chat.id, context)
+        # ---------------------------------------------------
 
 
 async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2125,6 +2128,8 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query and not is_panel:
         try:
+            refresh_deletion_timer(context, query.message, 60)
+
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             if query.data.startswith("shop_refresh_"): await query.answer()
         except BadRequest:
@@ -2191,6 +2196,8 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
 
     text = f"📂 **Sobres de {cat.capitalize()}**\nElige un sobre:"
 
+    refresh_deletion_timer(context, query.message, 60)
+
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2199,15 +2206,11 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         parts = query.data.split('_')
-        # Formatos: prebuy_itemid_OWNERID o prebuy_itemid_OWNERID_MSGID
-
         if parts[-1].isdigit() and parts[-2].isdigit():
-            # Caso con MSG_ID
             cmd_msg_id = parts[-1]
             owner_id = int(parts[-2])
             item_id = '_'.join(parts[1:-2])
         else:
-            # Caso sin MSG_ID (ej: desde panel)
             cmd_msg_id = ""
             owner_id = int(parts[-1])
             item_id = '_'.join(parts[1:-1])
@@ -2224,9 +2227,11 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("Este sobre ya no está disponible.", show_alert=True)
         return
 
+    # --- CAMBIO: AÑADIDA LA DESCRIPCIÓN DEL SOBRE ---
     text = (f"🛒 **Confirmar Compra**\n\n"
+            f"_{pack_details.get('desc', 'Un sobre misterioso.')}_\n\n"
             f"¿Estás seguro de que quieres comprar:\n"
-            f"*{pack_details['name']}* por *{format_money(pack_details['price'])}₽*?")
+            f"**{pack_details['name']}** por **{format_money(pack_details['price'])}₽**?")
 
     confirm_data = f"confirmbuy_{item_id}_{owner_id}"
     if cmd_msg_id: confirm_data += f"_{cmd_msg_id}"
@@ -2239,9 +2244,9 @@ async def prebuy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("❌ Cancelar", callback_data=cancel_data)]
     ]
 
+    refresh_deletion_timer(context, query.message, 60)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     await query.answer()
-
 
 # --- NUEVO: COMPRA REAL (Confirmada) ---
 async def confirm_buy_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2479,7 +2484,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         opening_message = await context.bot.send_message(
             message.chat_id,
-            f"🎴 ¡{user.mention_html()} ha abierto un *{ITEM_NAMES.get(item_id)}*! ",
+            f"🎴 ¡{user.mention_html()} ha abierto un <b>{ITEM_NAMES.get(item_id)}</b>! ",
             parse_mode='HTML',
             disable_notification=True
         )
@@ -2492,66 +2497,99 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- LÓGICA DE GENERACIÓN ---
 
-        # 1. Sobre Brillante Kanto (Forzamos Kanto)
+        # 1. Sobre Brillante Kanto
         if item_id == 'pack_shiny_kanto':
-            kanto_pool = [p for p in ALL_POKEMON if p['id'] <= 151]
-            # Elegimos categoría según probabilidad
-            cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-            cat_pool = [p for p in kanto_pool if p['category'] == cat]
-            if not cat_pool: cat_pool = kanto_pool
-
-            p_data = random.choice(cat_pool)
+            kanto_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+            p_data = random.choice(kanto_pool)
             pack_results.append({'data': p_data, 'is_shiny': True})
 
-        # 2. Sobre Especial Kanto (Forzamos Kanto + Doble Shiny)
+        # 2. Sobre Brillante Johto
+        elif item_id == 'pack_shiny_johto':
+            johto_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
+            p_data = random.choice(johto_pool)
+            pack_results.append({'data': p_data, 'is_shiny': True})
+
+        # 3. Sobre Especial Kanto
         elif item_id == 'pack_elem_especial':
-            kanto_pool = [p for p in ALL_POKEMON if p['id'] <= 151]
+            kanto_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
             for _ in range(pack_size):
                 is_shiny = random.random() < (SHINY_CHANCE * 2)
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 cat_pool = [p for p in kanto_pool if p['category'] == cat]
                 if not cat_pool: cat_pool = kanto_pool
-
                 p_data = random.choice(cat_pool)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 3. Sobres Elementales (Usan TODO el pool: Kanto + Johto)
+        # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            type_pool = [p for p in ALL_POKEMON if target_type in p.get('types', [])]
-            if not type_pool: type_pool = ALL_POKEMON
-
+            type_pool = [p for p in ALL_POKEMON_SPAWNABLE if target_type in p.get('types', []) and p['id'] <= 151]
+            if not type_pool: type_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
             for _ in range(pack_size):
                 p_data = random.choice(type_pool)
                 is_shiny = random.random() < SHINY_CHANCE
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 4. Sobres Mágicos y Normales (Pool General o Regional según configuración)
-        else:
+        # 5. Sobres Mágicos
+        elif is_magic:
             region_filter = pack_config.get('region_filter')
-            base_pool = ALL_POKEMON
+            base_pool = ALL_POKEMON_SPAWNABLE
 
             if region_filter == 'Kanto':
-                base_pool = [p for p in ALL_POKEMON if p['id'] <= 151]
+                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
             elif region_filter == 'Johto':
-                base_pool = [p for p in ALL_POKEMON if 152 <= p['id'] <= 251]
+                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
 
-            # Preparamos pools por categoría dentro del base_pool elegido
+            user_quantities = db.get_user_collection_quantities(user.id)
+
+            for _ in range(pack_size):
+                s = random.random() < SHINY_CHANCE
+                missing_pool = []
+                one_qty_pool = []
+
+                for p in base_pool:
+                    qty = user_quantities.get((p['id'], s), 0)
+                    if qty == 0:
+                        missing_pool.append(p)
+                    elif qty == 1:
+                        one_qty_pool.append(p)
+
+                if missing_pool:
+                    p_data = random.choice(missing_pool)
+                elif one_qty_pool:
+                    p_data = random.choice(one_qty_pool)
+                else:
+                    pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+                    for p in base_pool: pool_by_cat[p['category']].append(p)
+                    cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                    possible = pool_by_cat[cat]
+                    if not possible: possible = base_pool
+                    p_data = random.choice(possible)
+
+                pack_results.append({'data': p_data, 'is_shiny': s})
+                user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
+
+        # 6. Sobres Normales
+        else:
+            region_filter = pack_config.get('region_filter')
+            base_pool = ALL_POKEMON_SPAWNABLE
+            if region_filter == 'Kanto':
+                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+            elif region_filter == 'Johto':
+                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
+
             pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-            for p in base_pool:
-                pool_by_cat[p['category']].append(p)
+            for p in base_pool: pool_by_cat[p['category']].append(p)
 
             for _ in range(pack_size):
                 is_shiny = random.random() < SHINY_CHANCE
-
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 possible = pool_by_cat[cat]
                 if not possible: possible = base_pool
-
                 p_data = random.choice(possible)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # --- PROCESAMIENTO ---
+        # --- PROCESAMIENTO DE RESULTADOS ---
         summary_parts = []
 
         for result in pack_results:
@@ -2559,10 +2597,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rarity = get_rarity(p['category'], s)
 
             try:
-                # Detectamos carpeta correcta (Kanto/Johto)
                 region_folder = "Johto" if p['id'] > 151 else "Kanto"
                 path = f"Stickers/{region_folder}/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png"
-
                 with open(path, 'rb') as f:
                     msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
                     message_ids_to_delete.append(msg.message_id)
@@ -2574,9 +2610,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
             if message.chat.type in ['group', 'supergroup']:
-                # Añadir a la pokédex grupal
                 db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
-                # ¡OJO! NO sumamos al ranking mensual (eliminado como pediste)
+                await check_and_unlock_johto(message.chat.id, context)
 
             status = db.add_sticker_smart(user.id, p['id'], s)
 
@@ -2592,13 +2627,20 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
-        # --- PREMIO KANTO (Solo comprueba si no lo tiene ya) ---
+        # --- PREMIOS INDIVIDUALES ---
         if not db.is_kanto_completed_by_user(user.id):
-            unique_count = db.get_user_unique_kanto_count(user.id)
-            if unique_count >= 151:
+            if db.get_user_unique_kanto_count(user.id) >= 151:
                 db.set_kanto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has conseguido los 151 Pokémon de Kanto! 🎊\n¡Recibes 3000₽ de recompensa!"
+                db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado Kanto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+
+        if not db.is_johto_completed_by_user(user.id):
+            if db.get_user_unique_johto_count(user.id) >= 100:
+                db.set_johto_completed_by_user(user.id)
+                db.update_money(user.id, 3000)
+                db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado Johto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
@@ -3603,11 +3645,14 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 4. Iniciar flujo
-    await show_trade_menu_target_duplicates(update, context, target_user.id, sender.id, page=0)
+    # Cogemos la ID del mensaje de comando original si existe (y si no es desde el panel)
+    cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
+
+    # Llamamos a la función pasándole el nuevo parámetro cmd_msg_id
+    await show_trade_menu_target_duplicates(update, context, target_user.id, sender.id, page=0, cmd_msg_id=cmd_msg_id)
 
 
-async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id,
-                                            page=0):
+async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id, page=0, cmd_msg_id=""):
     # Obtener repetidos del TARGET
     duplicates = db.get_user_duplicates(target_id)
 
@@ -3642,8 +3687,8 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
         shiny_mark = "✨" if is_shiny else ""
 
         btn_text = f"{p_data['name']}{shiny_mark} {RARITY_VISUALS.get(rarity, '')} {new_mark}"
-        # trade_select_target_TGT_SND_POKE_SHINY
-        cb_data = f"trade_step2_{target_id}_{sender_id}_{poke_id}_{int(is_shiny)}"
+        # Pasamos el cmd_msg_id en el callback
+        cb_data = f"trade_step2_{target_id}_{sender_id}_{poke_id}_{int(is_shiny)}_{cmd_msg_id}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
         if len(row) == 2:
@@ -3654,12 +3699,14 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
     # Botones navegación
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("⬅️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page - 1}"))
+        nav_row.append(InlineKeyboardButton("⬅️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page - 1}_{cmd_msg_id}"))
     if end < len(duplicates):
-        nav_row.append(InlineKeyboardButton("➡️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page + 1}"))
+        nav_row.append(InlineKeyboardButton("➡️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}")])
+    # --- BOTÓN DE CANCELAR ACTUALIZADO ---
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")])
+    # -------------------------------------
 
     target_name = (await context.bot.get_chat(target_id)).first_name
     text = f"♻ **Repetidos de {target_name}:**\nSelecciona qué quieres recibir."
@@ -3817,6 +3864,8 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if action == "reject":
         await query.edit_message_text("❌ Intercambio cancelado.")
+        # Programar borrado del aviso en 5 segundos (para que lo lea)
+        schedule_message_deletion(context, query.message, 5)
         return
 
     # 2. Validar límites diarios
@@ -3895,6 +3944,26 @@ async def trade_timeout_job(context: ContextTypes.DEFAULT_TYPE):
     except BadRequest:
         pass  # Si ya no existe, no pasa nada
 
+
+async def trade_cancel_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja el botón de Cancelar en el menú de selección de intercambio."""
+    query = update.callback_query
+    # Formato: trade_cancel_SENDER_MSGID
+    parts = query.data.split('_')
+    sender_id = int(parts[2])
+
+    if query.from_user.id != sender_id:
+        await query.answer("Solo quien inició puede cancelar.", show_alert=True)
+        return
+
+    await query.delete_message()
+
+    # Si hay un msg_id del comando, lo borramos en 1 segundo
+    if len(parts) > 3 and parts[3].isdigit():
+        cmd_msg_id = int(parts[3])
+        context.job_queue.run_once(delete_message_job, 1,
+                                   data={'chat_id': query.message.chat_id, 'message_id': cmd_msg_id},
+                                   name=f"del_{cmd_msg_id}")
 
 async def trade_force_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Botón de emergencia para desbloquearse."""
@@ -4019,14 +4088,15 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def trade_nav_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
-    # trade_nav_target_TGT_SND_PAGE
+    # trade_nav_target_TGT_SND_PAGE_MSGID
     target_id, sender_id, page = int(parts[3]), int(parts[4]), int(parts[5])
+    cmd_msg_id = parts[6] if len(parts) > 6 else ""
 
     if query.from_user.id != sender_id:
         await query.answer("No es tu menú.", show_alert=True)
         return
 
-    await show_trade_menu_target_duplicates(update, context, target_id, sender_id, page)
+    await show_trade_menu_target_duplicates(update, context, target_id, sender_id, page, cmd_msg_id)
 
 async def clemailbox_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
@@ -4112,9 +4182,6 @@ async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     # 1. Limpiamos la programación de la BD
     db.clear_delibird_schedule()
 
-    # 2. Limpiamos lista global
-    DELIBIRD_GLOBAL_CLAIMED.clear()
-
     active_groups = db.get_active_groups()
     current_time = time.time()
 
@@ -4178,45 +4245,63 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     user = query.from_user
     chat_id = query.message.chat_id
+    message = query.message
 
     if query.data == "delibird_info":
         await query.answer(
-            "🎒 El saco de Delibird contiene sobres de tipos (Fuego, Agua, etc...) y un Sobre Especial con el doble de probabilidad de Brillante.",
+            "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales con más probabilidad de Shiny.",
             show_alert=True)
         return
 
-    # Verificar estado local
+    # --- 1. RECUPERACIÓN DE ESTADO (SI SE REINICIÓ) ---
     state = DELIBIRD_STATE.get(chat_id)
-    if not state:
-        await query.answer("Delibird ya se ha ido...", show_alert=True)
-        return
 
-    # --- VERIFICACIÓN GLOBAL ---
-    if user.id in DELIBIRD_GLOBAL_CLAIMED:
-        await query.answer("¡Ya has cogido un sobre en algún grupo! Solo 1 por semana.", show_alert=True)
+    if not state:
+        # Intentamos reconstruir leyendo el mensaje del chat
+        current_text = message.text_markdown
+        if "DELIBIRD HA LLEGADO" in current_text:
+            winners_list = []
+            if "Resultados:" in current_text:
+                parts = current_text.split("Resultados:\n")
+                if len(parts) > 1:
+                    raw_lines = parts[1].split("\n")
+                    winners_list = [line for line in raw_lines if line.strip()]
+
+            DELIBIRD_STATE[chat_id] = {
+                'msg_id': message.message_id,
+                'winners': winners_list,
+                'timestamp': time.time()
+            }
+            state = DELIBIRD_STATE[chat_id]
+        else:
+            await query.answer("Delibird ya se ha ido...", show_alert=True)
+            return
+
+    # --- 2. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
+    if db.check_delibird_claimed_this_week(user.id):
+        await query.answer("¡Ya has cogido un sobre esta semana! Deja algo para los demás.", show_alert=True)
         return
-    # ---------------------------
+    # -----------------------------------------------
 
     # Seleccionar premio
-    # Creamos lista de IDs posibles (todos los elem_ y el especial)
     possible_packs = [k for k in SHOP_CONFIG.keys() if k.startswith('pack_elem_')]
     prize_id = random.choice(possible_packs)
     prize_info = SHOP_CONFIG[prize_id]
 
-    # Dar premio (A LA MOCHILA)
+    # Dar premio
     db.get_or_create_user(user.id, user.first_name)
     db.add_item_to_inventory(user.id, prize_id, 1)
 
-    # Marcar como reclamado globalmente
-    DELIBIRD_GLOBAL_CLAIMED.add(user.id)
+    # MARCAR EN BASE DE DATOS
+    db.set_delibird_claimed(user.id)
 
-    # Actualizar lista mensaje
+    # Actualizar lista visual
     safe_name = user.first_name.replace('*', '').replace('_', '')
     list_line = f"- {safe_name} recibió {prize_info['name']} {prize_info['emoji']}"
     state['winners'].append(list_line)
 
     new_text = (
-            "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n"
+            "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
             "Trae un saco lleno de sobres elementales de Kanto.\n"
             "¡Reclama el tuyo antes de que se vaya!\n\n"
             "Resultados:\n" + "\n".join(state['winners'])
@@ -4227,16 +4312,74 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     except:
         pass
 
-    # Alerta Pop-up
     await query.answer(f"¡Has conseguido un {prize_info['name']}!\nGuárdalo en tu mochila.", show_alert=True)
-
 
 # COMANDO DE TEST
 async def admin_test_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
-    await trigger_delibird_event(context)
+
+    chat_id = update.effective_chat.id
+    # Borrar mensaje del comando
     await update.message.delete()
 
+    # --- CORRECCIÓN AQUÍ: Añadido 'db.' delante de query_db ---
+    # Limpiar mi estado en la base de datos para poder probar
+    db.query_db("UPDATE users SET last_delibird_claim = NULL WHERE user_id = ?", (update.effective_user.id,))
+    # ----------------------------------------------------------
+
+    text = (
+        "🐧🎁 **¡DELIBIRD HA LLEGADO!** (Test)\n\n"
+        "Trae un saco lleno de sobres elementales de Kanto.\n"
+        "¡Reclama el tuyo antes de que se vaya!\n\n"
+        "_La bolsa contiene sobres de cada tipo de Pokémon o un Sobre Especial de 7 stickers._"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🎁 ¡RECLAMAR PREMIO!", callback_data="delibird_claim")],
+        [InlineKeyboardButton("ℹ️ ¿Qué hay en el saco?", callback_data="delibird_info")]
+    ]
+
+    try:
+        msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard),
+                                             parse_mode='Markdown')
+
+        # Guardar estado SOLO para este chat
+        DELIBIRD_STATE[chat_id] = {
+            'msg_id': msg.message_id,
+            'winners': [],
+            'timestamp': time.time()
+        }
+
+        # Programar cierre
+        context.job_queue.run_once(close_delibird_event, 86400, chat_id=chat_id, data=chat_id)
+
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Error test: {e}")
+
+
+async def admin_force_unlock_johto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza el desbloqueo de Johto en el grupo actual."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    chat_id = update.effective_chat.id
+
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Este comando solo funciona en grupos.", disable_notification=True)
+        return
+
+    # Comprobamos si ya estaba desbloqueado
+    if db.is_event_completed(chat_id, 'amelia_johto_unlock'):
+        msg = await update.message.reply_text("ℹ️ Johto ya estaba desbloqueado en este grupo.",
+                                              disable_notification=True)
+    else:
+        # Marcamos el evento como completado
+        db.mark_event_completed(chat_id, 'amelia_johto_unlock')
+        msg = await update.message.reply_text("✅ ¡Región de Johto desbloqueada manualmente para este grupo!",
+                                              disable_notification=True)
+
+    # Borrar mensajes
+    schedule_message_deletion(context, update.message, 5)
+    schedule_message_deletion(context, msg, 10)
 
 # --- COMANDOS ADMIN EXTRA ---
 
@@ -4601,7 +4744,7 @@ def main():
         CommandHandler("intercambio", intercambio_cmd),
         CommandHandler("testdelibird", admin_test_delibird),
         CommandHandler("forceevent", admin_force_delibird),
-        CommandHandler("checkpack", check_pack_ids),  # (Opcional, si ya no lo usas puedes quitarlo)
+        CommandHandler("unlockjohto", admin_force_unlock_johto),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -4635,7 +4778,7 @@ def main():
         CallbackQueryHandler(trade_confirm_handler, pattern="^trade_conf_"),
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
-        CallbackQueryHandler(lambda u, c: u.callback_query.delete_message(), pattern="^trade_cancel_"),
+        CallbackQueryHandler(trade_cancel_menu_handler, pattern="^trade_cancel_"),
         CallbackQueryHandler(ranking_navigation_handler, pattern="^rank_nav_"),
         CallbackQueryHandler(inventory_cmd, pattern="^inv_mode_"),
         CallbackQueryHandler(delibird_claim_handler, pattern="^delibird_"),
