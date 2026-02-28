@@ -702,6 +702,75 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
+# --- SISTEMA DE GUARDERÍA ---
+
+async def guarderia_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    # Detectar si viene del panel
+    is_panel = (query and query.data == "panel_guarderia")
+
+    if query and not is_panel:
+        message = query.message
+        user_id = query.from_user.id
+    else:
+        message = update.effective_message
+        user_id = update.effective_user.id
+        if update.message: schedule_message_deletion(context, update.message, 60)
+
+    db.get_or_create_user(user_id, update.effective_user.first_name)
+
+    text = (
+        "🏡 <b>Guardería Pokémon:</b>\n\n"
+        "💬 <b>Te doy la bienvenida a la guardería de Pokémon. Veo que tienes un Álbumdex, por lo que eres de esas personas que viajan ayudando a los demás, ¿verdad?</b>\n"
+        "<b>Nos vendría bien que nos echaras una mano, ¿podrías quedarte con uno de nuestros huevos e incubarlo?</b>"
+    )
+
+    keyboard = [[InlineKeyboardButton("Recibir 🥚", callback_data=f"egg_claim_{user_id}")]]
+
+    if query and not is_panel:
+        refresh_deletion_timer(context, message, 60)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    else:
+        msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML',
+                                       disable_notification=True)
+        schedule_message_deletion(context, msg, 60)
+
+
+async def egg_claim_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    # Validar usuario
+    try:
+        owner_id = int(query.data.split('_')[2])
+        if user_id != owner_id:
+            await query.answer("Este menú no es tuyo.", show_alert=True)
+            return
+    except:
+        pass
+
+    # 1. Comprobar si ya tiene huevo
+    if db.get_user_egg(user_id):
+        await query.answer("💬 Con uno que cuides, de momento es suficiente, gracias.", show_alert=True)
+        return
+
+    # 2. Generar Huevo
+    # Lista de bebés: Pichu, Cleffa, Igglybuff, Togepi, Tyrogue, Smoochum, Elekid, Magby
+    BABY_POOL = [172, 173, 174, 175, 236, 238, 239, 240]
+
+    pokemon_id = random.choice(BABY_POOL)
+    is_shiny = random.random() < SHINY_CHANCE
+
+    # Tiempo de eclosión: 40 a 70 horas (en segundos)
+    # 40h = 144000s, 70h = 252000s
+    wait_time = random.randint(144000, 252000)
+    hatch_timestamp = time.time() + wait_time
+
+    # Guardar en BD
+    db.add_egg_to_incubator(user_id, hatch_timestamp, pokemon_id, is_shiny)
+
+    await query.answer("¡Conseguiste un huevo! Con el tiempo se abrirá. Puedes ver su estado en tu mochila.", show_alert=True)
+
 async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Banea un grupo por su ID de forma silenciosa."""
     if update.effective_user.id != ADMIN_USER_ID: return
@@ -1250,11 +1319,11 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
             # Filtramos ALL_POKEMON por región y categoría
             if chosen_region == 'Kanto':
-                candidates = [p for p in ALL_POKEMON if p['category'] == category and p['id'] <= 151]
+                candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and p['id'] <= 151]
             else:  # Johto
-                candidates = [p for p in ALL_POKEMON if p['category'] == category and 152 <= p['id'] <= 251]
+                candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and 152 <= p['id'] <= 251]
 
-            if not candidates: candidates = [p for p in ALL_POKEMON if p['category'] == category]  # Fallback
+            if not candidates: candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category]  # Fallback
 
             pokemon_data = random.choice(candidates)
             is_shiny = random.random() < SHINY_CHANCE
@@ -1381,6 +1450,7 @@ async def setup_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📖 Álbumdex", callback_data="panel_album")],
         [InlineKeyboardButton("🏪 Tienda", callback_data="panel_tienda"),
          InlineKeyboardButton("♻ Intercambios", callback_data="panel_intercambios")],  # <--- AQUÍ
+        [InlineKeyboardButton("🏡 Guardería", callback_data="panel_guarderia")],
         [InlineKeyboardButton("🎟️ Tómbola", callback_data="panel_tombola"),
          InlineKeyboardButton("📬 Buzón", callback_data="panel_buzon")],
         [InlineKeyboardButton("💰 Dinero", callback_data="panel_dinero"),
@@ -1434,6 +1504,8 @@ async def panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "panel_intercambios":
         await intercambio_cmd(update, context)
         # intercambio_cmd gestiona sus propias alertas (answer) o mensajes nuevos
+
+    elif query.data == "panel_guarderia": await guarderia_cmd(update, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -2358,17 +2430,13 @@ async def tienda_close_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detectar origen (Comando/Panel o Botón de cambio de modo)
     query = update.callback_query
-
-    # Por defecto, modo sobres
     mode = "packs"
 
     if query:
         user = query.from_user
-        # Si pulsó el botón de cambio, leemos el modo deseado
         if query.data.startswith("inv_mode_"):
-            mode = query.data.split("_")[-1]  # packs o special
+            mode = query.data.split("_")[-1]  # packs, special, eggs
     else:
         user = update.effective_user
 
@@ -2381,47 +2449,75 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = db.get_user_inventory(user.id)
     text = ""
     keyboard_buttons = []
-
-    # --- BOTÓN DE CAMBIO DE MODO (SIEMPRE ARRIBA) ---
-    if mode == "packs":
-        # Estamos en sobres, mostramos botón para ir a especiales
-        keyboard_buttons.append([InlineKeyboardButton("🪶 Otros Objetos", callback_data="inv_mode_special")])
-        text = "🎒 **Mochila - Sobres**\n\n"
-    else:
-        # Estamos en especiales, mostramos botón para ir a sobres
-        keyboard_buttons.append([InlineKeyboardButton("🎴 Sobres", callback_data="inv_mode_packs")])
-        text = "🎒 **Mochila - Objetos Especiales**\n\n"
-
     has_items = False
 
-    # --- FILTRADO Y VISUALIZACIÓN ---
-    for item in items:
-        item_id = item['item_id']
-        qty = item['quantity']
+    # --- BOTONES DE NAVEGACIÓN (3 Pestañas) ---
+    nav_row = []
+    if mode != "packs": nav_row.append(InlineKeyboardButton("🎴 Sobres", callback_data="inv_mode_packs"))
+    if mode != "eggs": nav_row.append(InlineKeyboardButton("🥚 Huevos", callback_data="inv_mode_eggs"))
+    if mode != "special": nav_row.append(InlineKeyboardButton("🪶 Otros", callback_data="inv_mode_special"))
+    keyboard_buttons.append(nav_row)
 
-        # MODO SOBRES
-        if mode == "packs":
+    # --- MODO HUEVOS ---
+    if mode == "eggs":
+        text = "🎒 **Mochila - Huevos**\n\n"
+        egg = db.get_user_egg(user.id)
+
+        if egg:
+            # Calcular tiempo restante
+            remaining = egg['hatch_time'] - time.time()
+
+            # Si ya está listo (tiempo <= 0), avisamos que nacerá pronto
+            # (El Job se encargará de abrirlo, aquí solo mostramos estado)
+            if remaining <= 0:
+                status_text = "¡Está eclosionando!"
+                alert_text = "¡El huevo se está rompiendo!"
+            else:
+                hours_left = remaining / 3600
+                if hours_left > 30:
+                    alert_text = "Parece que aún falta mucho para que eclosione."
+                elif hours_left > 6:
+                    alert_text = "A veces se mueve, ¿qué saldrá de aquí?"
+                else:
+                    alert_text = "Se oyen ruidos dentro, debe de estar a punto de abrirse."
+
+                status_text = "Incubando."
+
+            text += f"🥚 **Huevo Guardería**\nEstado: {status_text}"
+            keyboard_buttons.append([InlineKeyboardButton("Examinar Huevo", callback_data=f"egg_check_{user.id}")])
+            has_items = True
+        else:
+            text += "_No tienes ningún huevo._"
+            has_items = True  # Para que no salga doble mensaje de vacío
+
+    # --- MODO SOBRES ---
+    elif mode == "packs":
+        text = "🎒 **Mochila - Sobres**\n\n"
+        for item in items:
+            item_id = item['item_id']
+            qty = item['quantity']
             if item_id in PACK_CONFIG:
                 raw_name = ITEM_NAMES.get(item_id, 'Objeto')
                 item_name = f"{raw_name} 🎴"
-                # Añadir botón de abrir
                 keyboard_buttons.append(
                     [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user.id}")])
                 text += f"🔸️ {item_name} x{qty}\n"
                 has_items = True
 
-        # MODO ESPECIALES
-        else:
+    # --- MODO ESPECIALES ---
+    else:
+        text = "🎒 **Mochila - Objetos Especiales**\n\n"
+        for item in items:
+            item_id = item['item_id']
+            qty = item['quantity']
             if item_id.startswith('lottery_ticket_') or item_id in SPECIAL_ITEMS_DATA:
                 if item_id.startswith('lottery_ticket_'):
                     item_name = "Ticket de lotería ganador"
                 else:
                     data = SPECIAL_ITEMS_DATA[item_id]
                     item_name = f"{data['name']} {data['emoji']}"
-
-                # Botones de acción (Ver/Mostrar) en la misma línea
                 row = [
-                    InlineKeyboardButton("🔍 Ver",
+                    InlineKeyboardButton("👀 Ver",
                                          callback_data=f"view{'ticket' if 'ticket' in item_id else 'special'}_{item_id}_{user.id}"),
                     InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
                 ]
@@ -2429,31 +2525,111 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"🔸️ {item_name} x{qty}\n"
                 has_items = True
 
-    if not has_items:
+    if not has_items and mode != "eggs":
         text += "_Bolsillo vacío._"
 
     markup = InlineKeyboardMarkup(keyboard_buttons)
 
-    # ENVÍO O EDICIÓN
     if query and query.data.startswith("inv_mode_"):
-        # Navegación interna (cambio de pestaña) -> EDITAR
         await query.answer()
         await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
     else:
-        # Comando nuevo -> ENVIAR NUEVO
-        if query: await query.answer()  # Si viene del panel
-
+        if query: await query.answer()
         sent_message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=markup,
-            parse_mode='Markdown',
+            chat_id=update.effective_chat.id, text=text, reply_markup=markup, parse_mode='Markdown',
             disable_notification=True
         )
-        schedule_message_deletion(context, sent_message)
-        if update.message:
-            schedule_message_deletion(context, update.message)
+        schedule_message_deletion(context, sent_message, 60)
+        if update.message: schedule_message_deletion(context, update.message, 60)
 
+
+async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    egg = db.get_user_egg(user_id)
+    if not egg:
+        await query.answer("Ya no tienes el huevo.", show_alert=True)
+        return
+
+    remaining = egg['hatch_time'] - time.time()
+    hours_left = remaining / 3600
+
+    if hours_left > 30:
+        text = "Parece que aún falta mucho para que eclosione."
+    elif hours_left > 6:
+        text = "A veces se mueve, ¿qué saldrá de aquí?"
+    else:
+        text = "Se oyen ruidos dentro, debe de estar a punto de abrirse."
+
+    await query.answer(text, show_alert=True)
+
+
+async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
+    """Revisa huevos listos para abrirse."""
+    current_time = time.time()
+    ready_eggs = db.get_ready_eggs(current_time)
+
+    for egg in ready_eggs:
+        user_id = egg['user_id']
+        pokemon_id = egg['pokemon_id']
+        is_shiny = bool(egg['is_shiny'])
+
+        # 1. Borrar huevo de la incubadora
+        db.remove_user_egg(user_id)
+
+        # 2. Obtener datos del Pokémon
+        p_data = POKEMON_BY_ID.get(pokemon_id)
+        if not p_data: continue
+
+        # Nombre limpio para texto
+        p_name_clean = f"{p_data['name']}{' brillante ✨' if is_shiny else ''}"
+        # Nombre con emoji HTML para visual
+        p_display = get_formatted_name(p_data, is_shiny)
+
+        # 3. Añadir a colección (Smart)
+        status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
+
+        # 4. Construir mensaje
+        rarity = get_rarity(p_data['category'], is_shiny)
+        r_emoji = RARITY_VISUALS.get(rarity, '')
+
+        final_msg = ""
+        if status == 'NEW':
+            final_msg = f"🎉 ¡Felicidades! Has conseguido un sticker de {p_display} {r_emoji}. Lo has registrado en tu Álbumdex."
+        elif status == 'DUPLICATE':
+            final_msg = f"♻ ¡Genial! Conseguiste un sticker de {p_display} {r_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo."
+        else:
+            money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+            db.update_money(user_id, money)
+            final_msg = f"✔️ ¡Genial! Conseguiste un sticker de {p_display} {r_emoji}. Como ya lo tenías repetido, se convierte en <b>{format_money(money)}₽</b> 💰."
+
+        # Intentamos obtener el nombre del chat para personalizar, si falla usamos genérico
+        user_name = "El entrenador"
+        try:
+            chat = await context.bot.get_chat(user_id)
+            if chat.first_name: user_name = chat.first_name
+        except:
+            pass
+
+        text = (
+            "🐣 <b>¡Anda!, ¡el huevo se ha abierto!</b>\n\n"
+            f"¡Ha nacido un <b>{p_name_clean}</b>!\n\n"
+            f"{user_name} lo escanea en su Álbumdex y lo devuelve a la guardería Pokémon.\n\n"
+            f"{final_msg}"
+        )
+
+        # 5. Notificar por privado
+        try:
+            region_folder = "Johto" if pokemon_id > 151 else "Kanto"
+            path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_id}{'s' if is_shiny else ''}.png"
+
+            with open(path, 'rb') as f:
+                await context.bot.send_sticker(chat_id=user_id, sticker=f)
+
+            await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
+        except Exception:
+            pass  # Si el usuario bloqueó al bot, no podemos hacer nada
 
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
@@ -2508,9 +2684,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.chat_data['is_opening_pack'] = True
 
-        # Eliminar el mensaje del inventario
         await message.delete()
-
         db.remove_item_from_inventory(user.id, item_id, 1)
 
         opening_message = await context.bot.send_message(
@@ -2526,7 +2700,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_results = []
         message_ids_to_delete = [opening_message.message_id]
 
-        # --- LÓGICA DE GENERACIÓN ---
+        # --- LÓGICA DE GENERACIÓN (CORREGIDA CON ALL_POKEMON_SPAWNABLE) ---
 
         # 1. Sobre Brillante Kanto
         if item_id == 'pack_shiny_kanto':
@@ -2536,6 +2710,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 2. Sobre Brillante Johto
         elif item_id == 'pack_shiny_johto':
+            # ¡OJO! Aquí antes salían bebés. Ahora ya no.
             johto_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
             p_data = random.choice(johto_pool)
             pack_results.append({'data': p_data, 'is_shiny': True})
@@ -2554,16 +2729,20 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            type_pool = [p for p in ALL_POKEMON_SPAWNABLE if target_type in p.get('types', []) and p['id'] <= 151]
-            if not type_pool: type_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+            # CORREGIDO: Usamos SPAWNABLE para que no salgan bebés (ej: Pichu en eléctrico)
+            type_pool = [p for p in ALL_POKEMON_SPAWNABLE if target_type in p.get('types', [])]
+            if not type_pool: type_pool = ALL_POKEMON_SPAWNABLE  # Fallback
+
             for _ in range(pack_size):
                 p_data = random.choice(type_pool)
                 is_shiny = random.random() < SHINY_CHANCE
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 5. Sobres Mágicos
-        elif is_magic:
+        # 5. Sobres Mágicos y Normales
+        else:
             region_filter = pack_config.get('region_filter')
+
+            # CORREGIDO: Base pool segura
             base_pool = ALL_POKEMON_SPAWNABLE
 
             if region_filter == 'Kanto':
@@ -2571,58 +2750,50 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
 
-            user_quantities = db.get_user_collection_quantities(user.id)
+            # Lógica Mágica
+            if is_magic:
+                user_quantities = db.get_user_collection_quantities(user.id)
+                for _ in range(pack_size):
+                    s = random.random() < SHINY_CHANCE
+                    missing_pool = []
+                    one_qty_pool = []
+                    for p in base_pool:
+                        qty = user_quantities.get((p['id'], s), 0)
+                        if qty == 0:
+                            missing_pool.append(p)
+                        elif qty == 1:
+                            one_qty_pool.append(p)
 
-            for _ in range(pack_size):
-                s = random.random() < SHINY_CHANCE
-                missing_pool = []
-                one_qty_pool = []
+                    if missing_pool:
+                        p_data = random.choice(missing_pool)
+                    elif one_qty_pool:
+                        p_data = random.choice(one_qty_pool)
+                    else:
+                        # Fallback random
+                        pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+                        for p in base_pool: pool_by_cat[p['category']].append(p)
+                        cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                        possible = pool_by_cat[cat]
+                        if not possible: possible = base_pool
+                        p_data = random.choice(possible)
 
-                for p in base_pool:
-                    qty = user_quantities.get((p['id'], s), 0)
-                    if qty == 0:
-                        missing_pool.append(p)
-                    elif qty == 1:
-                        one_qty_pool.append(p)
+                    pack_results.append({'data': p_data, 'is_shiny': s})
+                    user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
 
-                if missing_pool:
-                    p_data = random.choice(missing_pool)
-                elif one_qty_pool:
-                    p_data = random.choice(one_qty_pool)
-                else:
-                    pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-                    for p in base_pool: pool_by_cat[p['category']].append(p)
+            # Lógica Normal
+            else:
+                pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+                for p in base_pool: pool_by_cat[p['category']].append(p)
+                for _ in range(pack_size):
+                    is_shiny = random.random() < SHINY_CHANCE
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                     possible = pool_by_cat[cat]
                     if not possible: possible = base_pool
                     p_data = random.choice(possible)
+                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-                pack_results.append({'data': p_data, 'is_shiny': s})
-                user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
-
-        # 6. Sobres Normales
-        else:
-            region_filter = pack_config.get('region_filter')
-            base_pool = ALL_POKEMON_SPAWNABLE
-            if region_filter == 'Kanto':
-                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
-            elif region_filter == 'Johto':
-                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
-
-            pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-            for p in base_pool: pool_by_cat[p['category']].append(p)
-
-            for _ in range(pack_size):
-                is_shiny = random.random() < SHINY_CHANCE
-                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-                possible = pool_by_cat[cat]
-                if not possible: possible = base_pool
-                p_data = random.choice(possible)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
-
-        # --- PROCESAMIENTO DE RESULTADOS ---
+        # --- PROCESAMIENTO ---
         summary_parts = []
-
         for result in pack_results:
             p, s = result['data'], result['is_shiny']
             rarity = get_rarity(p['category'], s)
@@ -2658,7 +2829,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
-        # --- PREMIOS INDIVIDUALES ---
         if not db.is_kanto_completed_by_user(user.id):
             if db.get_user_unique_kanto_count(user.id) >= 151:
                 db.set_kanto_completed_by_user(user.id)
@@ -4721,6 +4891,15 @@ def main():
         days=(0,),  # 0 = Lunes (Corregido)
         name="delibird_scheduler"
     )
+
+    # 5. Incubadora de Huevos (Cada 5 minutos)
+    application.job_queue.run_repeating(
+        egg_hatch_job,
+        interval=300,
+        first=10,
+        name="egg_hatching_check"
+    )
+
     # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
@@ -4777,6 +4956,7 @@ def main():
         CommandHandler("forceevent", admin_force_delibird),
         CommandHandler("unlockjohto", admin_force_unlock_johto),
         CommandHandler("fixdb", admin_fix_johto_db),
+        CommandHandler("guarderia", guarderia_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -4816,6 +4996,8 @@ def main():
         CallbackQueryHandler(delibird_claim_handler, pattern="^delibird_"),
         CallbackQueryHandler(trade_force_cancel_handler, pattern="^trade_force_cancel$"),
         CallbackQueryHandler(tienda_category_handler, pattern="^shop_cat_"),
+        CallbackQueryHandler(egg_claim_handler, pattern="^egg_claim_"),
+        CallbackQueryHandler(egg_check_handler, pattern="^egg_check_"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
