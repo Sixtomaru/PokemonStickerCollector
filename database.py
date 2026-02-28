@@ -84,6 +84,15 @@ def init_db():
             PRIMARY KEY (user_id, code) 
         )''')
 
+    # Tabla HUEVOS (Incubadora)
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS incubator (
+            user_id {id_type} PRIMARY KEY,
+            hatch_time REAL,  -- Timestamp de cuando se abre
+            pokemon_id INTEGER, -- Qué pokémon saldrá (ya decidido al nacer)
+            is_shiny INTEGER -- Si será shiny
+        )''')
+
     # --- MIGRACIONES MANUALES (A prueba de fallos) ---
     # Intentamos añadir las columnas una a una. Si ya existen, el error se ignora.
     migraciones = [
@@ -736,6 +745,29 @@ def get_user_unique_johto_count(user_id):
         (user_id,), one=True)
     return res[0] if res else 0
 
+# --- SISTEMA DE GUARDERÍA (HUEVOS) ---
+
+def add_egg_to_incubator(user_id, hatch_time, pokemon_id, is_shiny):
+    """Añade un huevo a la incubadora del usuario."""
+    if DATABASE_URL:
+        query_db("INSERT INTO incubator (user_id, hatch_time, pokemon_id, is_shiny) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id) DO NOTHING", (user_id, hatch_time, pokemon_id, int(is_shiny)))
+    else:
+        query_db("INSERT OR IGNORE INTO incubator (user_id, hatch_time, pokemon_id, is_shiny) VALUES (?, ?, ?, ?)", (user_id, hatch_time, pokemon_id, int(is_shiny)))
+
+def get_user_egg(user_id):
+    """Devuelve los datos del huevo del usuario o None."""
+    res = query_db("SELECT hatch_time, pokemon_id, is_shiny FROM incubator WHERE user_id = ?", (user_id,), one=True)
+    if res:
+        return {'hatch_time': res[0], 'pokemon_id': res[1], 'is_shiny': bool(res[2])}
+    return None
+
+def remove_user_egg(user_id):
+    """Borra el huevo (cuando eclosiona)."""
+    query_db("DELETE FROM incubator WHERE user_id = ?", (user_id,))
+
+def get_ready_eggs(current_timestamp):
+    """Devuelve todos los huevos que ya han cumplido su tiempo."""
+    return query_db("SELECT user_id, pokemon_id, is_shiny FROM incubator WHERE hatch_time <= ?", (current_timestamp,), dict_cursor=True)
 
 # Iniciar la DB
 init_db()
