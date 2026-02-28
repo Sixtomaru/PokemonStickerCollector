@@ -264,6 +264,25 @@ async def is_group_qualified(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -
     return False
 
 
+async def check_and_unlock_johto(chat_id, context):
+    """Verifica si el grupo ha alcanzado el 75% de Kanto y desbloquea Johto."""
+    # Solo si no está desbloqueado ya
+    if not db.is_event_completed(chat_id, 'amelia_johto_unlock'):
+        group_unique_kanto = db.get_group_unique_kanto_ids(chat_id)
+        if len(group_unique_kanto) >= 113:
+            db.mark_event_completed(chat_id, 'amelia_johto_unlock')
+
+            amelia_text = (
+                "💬 <b>¡Hola a tod@s, aquí Amelia!</b>\nLo estáis haciendo muy bien, habéis recorrido todo Kanto y visto muchas especies de Pokémon.\n\n"
+                "Gracias a todo el esfuerzo que habéis hecho, las autoridades regionales han oído hablar de nosotros, y nos van a financiar la agencia, además de darnos permiso para operar por todo Kanto. "
+                "Además, ¡en Johto también quieren nuestros servicios!, siento que todo está yendo muy rápido, pero eso es buena señal.\n\n"
+                "<b>A partir de ahora, también podemos movernos por Johto, así que: ¡¡A seguir esforzándonos!!</b>"
+            )
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=amelia_text, parse_mode='HTML')
+            except:
+                pass
+
 async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.delete_message(chat_id=context.job.data['chat_id'], message_id=context.job.data['message_id'])
