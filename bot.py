@@ -721,7 +721,7 @@ async def guarderia_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         "🏡 <b>Guardería Pokémon:</b>\n\n"
-        "💬 <b>Te doy la bienvenida a la guardería de Pokémon. Veo que tienes un Álbumdex, por lo que eres de esas personas que viajan ayudando a los demás, ¿verdad?</b>\n"
+        "💬 <b>¡Hola!, esta es la guardería de Pokémon. Veo que tienes un Álbumdex, por lo que eres de esas personas que viajan ayudando a los demás, ¿verdad?</b>\n\n"
         "<b>Nos vendría bien que nos echaras una mano, ¿podrías quedarte con uno de nuestros huevos e incubarlo?</b>"
     )
 
@@ -2575,22 +2575,21 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
         pokemon_id = egg['pokemon_id']
         is_shiny = bool(egg['is_shiny'])
 
-        # 1. Borrar huevo de la incubadora
+        # 1. Borrar huevo y DAR PREMIO POR CUIDARLO
         db.remove_user_egg(user_id)
+        db.update_money(user_id, 400)  # <--- PREMIO GUARDERÍA
 
-        # 2. Obtener datos del Pokémon
+        # 2. Datos Pokémon
         p_data = POKEMON_BY_ID.get(pokemon_id)
         if not p_data: continue
 
-        # Nombre limpio para texto
         p_name_clean = f"{p_data['name']}{' brillante ✨' if is_shiny else ''}"
-        # Nombre con emoji HTML para visual
         p_display = get_formatted_name(p_data, is_shiny)
 
-        # 3. Añadir a colección (Smart)
+        # 3. Añadir a colección
         status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
 
-        # 4. Construir mensaje
+        # 4. Mensaje Estado
         rarity = get_rarity(p_data['category'], is_shiny)
         r_emoji = RARITY_VISUALS.get(rarity, '')
 
@@ -2604,7 +2603,6 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
             db.update_money(user_id, money)
             final_msg = f"✔️ ¡Genial! Conseguiste un sticker de {p_display} {r_emoji}. Como ya lo tenías repetido, se convierte en <b>{format_money(money)}₽</b> 💰."
 
-        # Intentamos obtener el nombre del chat para personalizar, si falla usamos genérico
         user_name = "El entrenador"
         try:
             chat = await context.bot.get_chat(user_id)
@@ -2616,10 +2614,11 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
             "🐣 <b>¡Anda!, ¡el huevo se ha abierto!</b>\n\n"
             f"¡Ha nacido un <b>{p_name_clean}</b>!\n\n"
             f"{user_name} lo escanea en su Álbumdex y lo devuelve a la guardería Pokémon.\n\n"
-            f"{final_msg}"
+            f"{final_msg}\n\n"
+            "La persona encargada de la guardería te da las gracias y <b>400₽</b> por cuidarlo."
         )
 
-        # 5. Notificar por privado
+        # 5. Notificar
         try:
             region_folder = "Johto" if pokemon_id > 151 else "Kanto"
             path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_id}{'s' if is_shiny else ''}.png"
@@ -2629,7 +2628,7 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
 
             await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
         except Exception:
-            pass  # Si el usuario bloqueó al bot, no podemos hacer nada
+            pass
 
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
@@ -4796,6 +4795,7 @@ async def post_init(application: Application):
         BotCommand("tienda", "🏪 Compra sobres de stickers."),
         BotCommand("mochila", "🎒 Revisa tus objetos."),
         BotCommand("intercambio", "♻ Intercambia stickers."),
+        BotCommand("guarderia", "🏡 Guardería Pokémon."),
         BotCommand("tombola", "🎟️ Tómbola diaria."),
         BotCommand("buzon", "💌 Revisa tu buzón."),
         BotCommand("retos", "🤝 Retos Grupales."),
