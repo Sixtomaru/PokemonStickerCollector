@@ -729,6 +729,18 @@ async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error interno al banear: `{e}`", parse_mode='Markdown',
                                         disable_notification=True)
 
+async def admin_fix_johto_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando de emergencia para reparar la columna faltante."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        # Forzamos la ejecución del comando SQL directamente
+        # Nota: Si usas Postgres, esto lanzará error si ya existe, lo cual nos confirmará el estado.
+        db.query_db("ALTER TABLE users ADD COLUMN johto_completed INTEGER DEFAULT 0")
+        await update.message.reply_text("✅ **ÉXITO:** Columna `johto_completed` creada manualmente.", parse_mode='Markdown')
+    except Exception as e:
+        # Si falla, te dirá exactamente por qué
+        await update.message.reply_text(f"⚠️ **Resultado:** {e}", parse_mode='Markdown')
 
 async def admin_unban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Desbanea un grupo."""
@@ -4764,6 +4776,7 @@ def main():
         CommandHandler("testdelibird", admin_test_delibird),
         CommandHandler("forceevent", admin_force_delibird),
         CommandHandler("unlockjohto", admin_force_unlock_johto),
+        CommandHandler("fixdb", admin_fix_johto_db),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
