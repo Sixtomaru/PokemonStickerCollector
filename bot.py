@@ -246,7 +246,7 @@ for pokemon_item in ALL_POKEMON:
     if pokemon_item['id'] <= 151:
         POKEMON_BY_CATEGORY[pokemon_item['category']].append(pokemon_item)
 POKEMON_PER_PAGE = 52
-PACK_OPEN_COOLDOWN = 15
+PACK_OPEN_COOLDOWN = 30
 
 
 # --- FUNCIONES AUXILIARES ---
@@ -379,7 +379,7 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE, force=False):
                             if len(pool) > 0:
                                 prize_item = pool.pop(0)
                                 p_name = "Sobre Grande" if 'large' in prize_item else "Sobre Mediano" if 'medium' in prize_item else "Sobre Pequeño"
-                                db.add_mail(uid, 'inventory_item', prize_item, f"🥇 Premio Ranking Grupo {chat_id}")
+                                db.add_mail(uid, 'inventory_item', prize_item, f"🏆 Premio Ranking Grupo {chat_id}")
                                 global_pack_winners.add(uid)
                                 prize_text = f"(+ {p_name} 🎴)"
                             else:
@@ -2524,14 +2524,33 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
+    user = query.from_user
 
-    egg = db.get_user_egg(user_id)
+    # --- SEGURIDAD: Verificar dueño ---
+    try:
+        # Formato: egg_check_OWNERID
+        owner_id = int(query.data.split('_')[2])
+
+        if user.id != owner_id:
+            await query.answer("Este menú no es tuyo.", show_alert=True)
+            return
+    except (ValueError, IndexError):
+        await query.answer("Error en el botón.", show_alert=True)
+        return
+    # ----------------------------------
+
+    egg = db.get_user_egg(user.id)
     if not egg:
-        await query.answer("Ya no tienes el huevo.", show_alert=True)
+        await query.answer("Ya no tienes el huevo (quizás ya eclosionó).", show_alert=True)
         return
 
     remaining = egg['hatch_time'] - time.time()
+
+    # Si ya se pasó el tiempo pero el job no lo ha borrado aún
+    if remaining <= 0:
+        await query.answer("¡Está eclosionando! Revisa tus mensajes privados.", show_alert=True)
+        return
+
     hours_left = remaining / 3600
 
     if hours_left > 30:
@@ -2539,7 +2558,7 @@ async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif hours_left > 6:
         text = "A veces se mueve, ¿qué saldrá de aquí?"
     else:
-        text = "Se oyen ruidos dentro, debe de estar a punto de abrirse."
+        text = "Se oyen ruidos dentro, debe estar a punto de abrirse."
 
     await query.answer(text, show_alert=True)
 
