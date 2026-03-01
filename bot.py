@@ -72,9 +72,9 @@ DELIBIRD_STATE = {}
 MIN_SPAWN_TIME = 7200  # 2 horas
 MAX_SPAWN_TIME = 14400  # 4 horas
 
-# --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
-# --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
-# --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
+# --- ALMACÉN DEL RANKING (GLOBAL) ---
+RANKING_ARCHIVE = {}
+
 # --- CONFIGURACIÓN DE OBJETOS Y SOBRES ---
 SHOP_CONFIG = {
     # NACIONALES
@@ -336,27 +336,17 @@ def refresh_deletion_timer(context: ContextTypes.DEFAULT_TYPE, message: Message,
 
 
 # --- RANKING MENSUAL ---
-async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
+async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE, force=False):
     """Tarea mensual: Ranking por grupo y reseteo."""
     now = datetime.now(TZ_SPAIN)
 
-    if now.day == 1:
+    if now.day == 1 or force:
         active_groups = db.get_active_groups()
 
-        # Filtro Global de ganadores (para no repetir premio gordo)
+        groups_data = {}
         global_pack_winners = set()
 
-        # Diccionario para guardar el ranking calculado antes de borrar la BD
-        final_rankings_cache = {}
-
-        # FASE 1: CALCULAR GANADORES Y PREMIOS (Igual que antes)
-        # ------------------------------------------------------
-
-        # Pre-calculamos todo para poder dar los premios y vaciar la BD
-        # pero guardamos la lista visual para enviarla paginada después.
-
-        groups_data = {}
-
+        # 1. Recopilar datos
         for chat_id in active_groups:
             group_users = db.get_users_in_group(chat_id)
             if len(group_users) < 4: continue
@@ -370,28 +360,20 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
                 'lines': []
             }
 
-        # Procesamiento Horizontal (Niveles 1 al 10 reciben premio/mención especial)
-        # El resto (11+) solo sale en la lista sin premio.
+        # 2. Procesamiento Horizontal
+        max_rank_depth = 10
 
-        # Calculamos premios para todos (aunque sean 100)
-        max_rank = 0
-        for data in groups_data.values():
-            if len(data['ranking']) > max_rank: max_rank = len(data['ranking'])
-
-        for i in range(max_rank):
+        for i in range(max_rank_depth):
             for chat_id, data in groups_data.items():
                 ranking = data['ranking']
                 if i < len(ranking):
                     user_row = ranking[i]
                     uid, uname, count = user_row[0], user_row[1], user_row[2]
-
                     prize_text = ""
 
-                    # Solo damos premios hasta el Top 10 (configurable)
                     if i < 10:
                         if uid in global_pack_winners:
                             prize_text = "_(👑 Ya premiado)_"
-                            # No damos dinero si ya ganó
                         else:
                             pool = data['prizes_pool']
                             if len(pool) > 0:
@@ -409,22 +391,18 @@ async def check_monthly_job(context: ContextTypes.DEFAULT_TYPE):
                     line = f"{visual_rank} {uname}: {count} stickers {prize_text}"
                     data['lines'].append(line)
 
-        # FASE 2: ENVIAR MENSAJES Y GUARDAR PARA PAGINACIÓN
-        # -------------------------------------------------
-
+        # 3. Envío y Guardado
         for chat_id, data in groups_data.items():
             lines = data['lines']
             if not lines: continue
 
-            # Guardamos la lista completa en la memoria del chat para poder paginarla
-            # Usamos una clave especial 'monthly_ranking_archive'
-            context.application.chat_data.setdefault(chat_id, {})
-            context.application.chat_data[chat_id]['monthly_ranking_archive'] = lines
+            # --- CORRECCIÓN: USAR VARIABLE GLOBAL ---
+            RANKING_ARCHIVE[chat_id] = lines
+            # ----------------------------------------
 
-            # Enviamos la página 0
             await send_ranking_page(context.bot, chat_id, lines, 0)
 
-        # FASE 3: RESETEO FINAL
+        # 4. Reseteo
         db.reset_group_monthly_stickers()
         db.reset_monthly_stickers()
 
@@ -472,11 +450,12 @@ async def ranking_navigation_handler(update: Update, context: ContextTypes.DEFAU
     except:
         return
 
-    # Recuperamos la lista de la memoria
-    lines = context.chat_data.get('monthly_ranking_archive')
+    # --- CORRECCIÓN: LEER DE VARIABLE GLOBAL ---
+    lines = RANKING_ARCHIVE.get(chat_id)
+    # -------------------------------------------
 
     if not lines:
-        await query.answer("Este ranking ha caducado.", show_alert=True)
+        await query.answer("Este ranking ha caducado (reinicio del bot).", show_alert=True)
         return
 
     ITEMS_PER_PAGE = 20
@@ -4759,6 +4738,24 @@ async def admin_search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}", disable_notification=True)
 
 
+async def admin_force_ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza el reparto de premios y el ranking del mes actual manualmente."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    try:
+        await update.message.reply_text("🚀 Iniciando proceso de Ranking Mensual forzado...", disable_notification=True)
+
+        # Llamamos a la función del trabajo mensual forzando la ejecución
+        await check_monthly_job(context, force=True)
+
+        await update.message.reply_text("✅ Ranking calculado, premios enviados y contadores reseteados.",
+                                        disable_notification=True)
+
+    except Exception as e:
+        logger.error(f"Error forzando ranking: {e}")
+        await update.message.reply_text(f"❌ Error al forzar ranking: {e}", disable_notification=True)
+
+
 async def admin_force_stop_remote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
 
@@ -4957,6 +4954,7 @@ def main():
         CommandHandler("unlockjohto", admin_force_unlock_johto),
         CommandHandler("fixdb", admin_fix_johto_db),
         CommandHandler("guarderia", guarderia_cmd),
+        CommandHandler("forceranking", admin_force_ranking),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
