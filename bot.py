@@ -1208,33 +1208,40 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
     context.chat_data.setdefault('active_events', {})
 
-    # --- CAMBIO: LIMPIEZA CADA 3 DÍAS ---
+    # Limpieza de eventos viejos (3 días = 259200 segundos)
     current_time = time.time()
-    # 3 días = 259200 segundos
     TIMEOUT_SECONDS = 259200
-
     for msg_id, data in list(context.chat_data['active_events'].items()):
         if current_time - data.get('timestamp', 0) > TIMEOUT_SECONDS:
             del context.chat_data['active_events'][msg_id]
-            # Opcional: Intentar borrar el mensaje viejo de Telegram para limpiar el chat
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except BadRequest:
                 pass
-    # ------------------------------------
 
     is_qualified = await is_group_qualified(chat_id, context)
 
     available_events = []
     legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
 
+    # Comprobar si Johto está desbloqueado en este grupo
+    johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
+
     for ev_id in EVENTS.keys():
+        # Filtro de grupo cualificado para legendarios Kanto
         if not is_qualified and ev_id in legendary_missions:
             continue
 
-        if ev_id in legendary_missions:
-            if db.is_event_completed(chat_id, ev_id):
-                continue
+        # Filtro de misiones únicas (si ya se hizo, no sale más)
+        if ev_id in legendary_missions and db.is_event_completed(chat_id, ev_id):
+            continue
+
+        # --- FILTRO JOHTO ---
+        # Si el evento empieza por "johto_" y el grupo NO lo ha desbloqueado, lo saltamos
+        if ev_id.startswith('johto_') and not johto_unlocked:
+            continue
+        # --------------------
+
         available_events.append(ev_id)
 
     if not available_events:
@@ -1245,7 +1252,8 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     text = "¡Un evento especial ha aparecido!"
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
-    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='Markdown')
+
+    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='HTML')
 
     # Guardamos el evento con la hora actual
     context.chat_data['active_events'][msg.message_id] = {
@@ -2409,67 +2417,78 @@ async def tienda_close_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detectar origen (Comando/Panel o Botón de cambio de modo)
     query = update.callback_query
+
+    # Por defecto, modo sobres
     mode = "packs"
 
     if query:
-        user = query.from_user
+        # Si viene de un botón "inv_mode_MODO_OWNERID"
         if query.data.startswith("inv_mode_"):
-            mode = query.data.split("_")[-1]  # packs, special, eggs
+            parts = query.data.split("_")
+            mode = parts[2]  # packs, special, eggs
+
+            # --- SEGURIDAD: Verificar dueño ---
+            if len(parts) > 3:
+                owner_id = int(parts[3])
+                if query.from_user.id != owner_id:
+                    await query.answer("Esta mochila no es tuya.", show_alert=True)
+                    return
+                user_id = owner_id
+            else:
+                # Fallback antiguo (no debería pasar con el código nuevo)
+                user_id = query.from_user.id
+            # ----------------------------------
+
+            # REINICIAR TEMPORIZADOR AL PULSAR
+            refresh_deletion_timer(context, query.message, 60)
+
+        else:
+            # Viene del Panel (panel_mochila)
+            user_id = query.from_user.id
+
     else:
-        user = update.effective_user
+        # Viene de comando de texto /mochila
+        user_id = update.effective_user.id
 
-    if not user: return
-
-    db.get_or_create_user(user.id, user.first_name)
+    db.get_or_create_user(user_id, "")  # Aseguramos usuario (nombre vacío para no hacer query extra si no hace falta)
     if update.effective_chat.type in ['group', 'supergroup']:
-        db.register_user_in_group(user.id, update.effective_chat.id)
+        db.register_user_in_group(user_id, update.effective_chat.id)
 
-    items = db.get_user_inventory(user.id)
+    items = db.get_user_inventory(user_id)
     text = ""
     keyboard_buttons = []
-    has_items = False
 
-    # --- BOTONES DE NAVEGACIÓN (3 Pestañas) ---
+    # --- BOTONES DE NAVEGACIÓN (CON ID DE DUEÑO) ---
     nav_row = []
-    if mode != "packs": nav_row.append(InlineKeyboardButton("🎴 Sobres", callback_data="inv_mode_packs"))
-    if mode != "eggs": nav_row.append(InlineKeyboardButton("🥚 Huevos", callback_data="inv_mode_eggs"))
-    if mode != "special": nav_row.append(InlineKeyboardButton("🪶 Otros", callback_data="inv_mode_special"))
+    if mode != "packs": nav_row.append(InlineKeyboardButton("🎴 Sobres", callback_data=f"inv_mode_packs_{user_id}"))
+    if mode != "eggs": nav_row.append(InlineKeyboardButton("🥚 Huevos", callback_data=f"inv_mode_eggs_{user_id}"))
+    if mode != "special": nav_row.append(InlineKeyboardButton("🪶 Otros", callback_data=f"inv_mode_special_{user_id}"))
     keyboard_buttons.append(nav_row)
+
+    has_items = False
 
     # --- MODO HUEVOS ---
     if mode == "eggs":
         text = "🎒 **Mochila - Huevos**\n\n"
-        egg = db.get_user_egg(user.id)
+        egg = db.get_user_egg(user_id)
 
         if egg:
-            # Calcular tiempo restante
             remaining = egg['hatch_time'] - time.time()
-
-            # Si ya está listo (tiempo <= 0), avisamos que nacerá pronto
-            # (El Job se encargará de abrirlo, aquí solo mostramos estado)
             if remaining <= 0:
-                status_text = "¡Está eclosionando!"
-                alert_text = "¡El huevo se está rompiendo!"
+                status_text = "¡Está eclosionando! (Revisa tu privado pronto)"
             else:
-                hours_left = remaining / 3600
-                if hours_left > 30:
-                    alert_text = "Parece que aún falta mucho para que eclosione."
-                elif hours_left > 6:
-                    alert_text = "A veces se mueve, ¿qué saldrá de aquí?"
-                else:
-                    alert_text = "Se oyen ruidos dentro, debe de estar a punto de abrirse."
+                status_text = "En incubación"
 
-                status_text = "Incubando."
-
-            text += f"🥚 **Huevo Guardería**\nEstado: {status_text}"
-            keyboard_buttons.append([InlineKeyboardButton("Examinar Huevo", callback_data=f"egg_check_{user.id}")])
+            text += f"🥚 <b>Huevo Guardería</b>\nEstado: {status_text}"
+            keyboard_buttons.append([InlineKeyboardButton("Examinar Huevo", callback_data=f"egg_check_{user_id}")])
             has_items = True
         else:
             text += "_No tienes ningún huevo._"
-            has_items = True  # Para que no salga doble mensaje de vacío
+            has_items = True
 
-    # --- MODO SOBRES ---
+            # --- MODO SOBRES ---
     elif mode == "packs":
         text = "🎒 **Mochila - Sobres**\n\n"
         for item in items:
@@ -2479,7 +2498,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raw_name = ITEM_NAMES.get(item_id, 'Objeto')
                 item_name = f"{raw_name} 🎴"
                 keyboard_buttons.append(
-                    [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user.id}")])
+                    [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user_id}")])
                 text += f"🔸️ {item_name} x{qty}\n"
                 has_items = True
 
@@ -2496,9 +2515,9 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     data = SPECIAL_ITEMS_DATA[item_id]
                     item_name = f"{data['name']} {data['emoji']}"
                 row = [
-                    InlineKeyboardButton("👀 Ver",
-                                         callback_data=f"view{'ticket' if 'ticket' in item_id else 'special'}_{item_id}_{user.id}"),
-                    InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user.id}")
+                    InlineKeyboardButton("🔍 Ver",
+                                         callback_data=f"view{'ticket' if 'ticket' in item_id else 'special'}_{item_id}_{user_id}"),
+                    InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user_id}")
                 ]
                 keyboard_buttons.append(row)
                 text += f"🔸️ {item_name} x{qty}\n"
@@ -2509,17 +2528,26 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     markup = InlineKeyboardMarkup(keyboard_buttons)
 
+    # ENVÍO O EDICIÓN
     if query and query.data.startswith("inv_mode_"):
         await query.answer()
-        await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+        try:
+            await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+        except BadRequest:
+            pass
     else:
-        if query: await query.answer()
+        if query: await query.answer()  # Panel
+
         sent_message = await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=text, reply_markup=markup, parse_mode='Markdown',
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=markup,
+            parse_mode='Markdown',
             disable_notification=True
         )
         schedule_message_deletion(context, sent_message, 60)
-        if update.message: schedule_message_deletion(context, update.message, 60)
+        if update.message:
+            schedule_message_deletion(context, update.message, 5)
 
 
 async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
