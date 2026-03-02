@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 # events.py
 import random
-from telegram import User
+from datetime import datetime
+import pytz
+from telegram import User, InlineKeyboardButton, InlineKeyboardMarkup
 import database as db
 from pokemon_data import POKEMON_BY_ID
-from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES
+from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 
-SHINY_CHANCE = 0.02 # 2% probabilidad
+# --- CONSTANTES ---
+SHINY_CHANCE = 0.02
+TZ_SPAIN = pytz.timezone('Europe/Madrid')
 
-# --- Listas de Pokémon (Igual que antes) ---
+# --- Listas de Pokémon (KANTO) ---
 PESCA_RUTA_12_PEQUEÑOS = [7, 54, 60, 61, 72, 90, 98, 99, 116, 117, 118, 119, 120, 121, 129, 138, 139]
 PESCA_RUTA_12_GRANDES = [7, 8, 54, 55, 60, 61, 62, 72, 90, 98, 99, 116, 117, 86, 118, 119, 120, 121, 129, 134, 138, 139]
 CASINO_TIER_1_POKEMON = [63, 35, 37, 147]
@@ -34,6 +38,23 @@ GYM_MEDIUM_POKEMON = [79, 80, 122, 64]
 GYM_EXORCIST_POKEMON = [92, 93]
 GYM_SABRINA_POKEMON = [64, 65, 122, 49]
 
+# --- DATOS QUIZ PRIMO (JOHTO) ---
+QUIZ_DATA = [
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Eyección?", 'opts': ['Piplup', 'Floatzel', 'Noivern', 'Sunkern'], 'ans': 'C'},
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Colofón?", 'opts': ['Corphish', 'Código Cero', 'Whiscash', 'Tyrantrum'], 'ans': 'A'},
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Zafabloques?", 'opts': ['Kyogre', 'Popplio', 'Lycanroc', 'Donphan'], 'ans': 'B'},
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Demolerrocas?", 'opts': ['Hitmontop', 'Palkia', 'Rowlet', 'Kyogre Primigenio'], 'ans': 'C'},
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Anulabarreras?", 'opts': ['Diancie', 'Reshiram', 'Arcanine', 'Cryogonal'], 'ans': 'D'},
+    {'q': "¿Cuál de los siguientes Pokémon puede aprender Combo Omnitipo?", 'opts': ['Deoxys (Normal)', 'Deoxys (Ataque)', 'Deoxys (Defensa)', 'Deoxys (Velocidad)'], 'ans': 'B'},
+    {'q': "¿Cuál de los siguientes Pokémon alcanza un mayor ataque en Pokémon Shuffle?", 'opts': ['Victini', 'Hoopa', 'Snorlax', 'Lucario'], 'ans': 'A'},
+    {'q': "¿Cuál de las siguientes capacidades tiene un mayor multiplicador de daño subida al máximo (C5)?", 'opts': ['Incisión', 'Eyección', 'Caída en picado', 'Sintonía'], 'ans': 'D'},
+    {'q': "¿Cuál de las siguientes capacidades tiene menor porcentaje de activación de alineación de 3, estando la capacidad a nivel máximo (C5)?", 'opts': ['Paralizante+', 'Ovación', 'Colofón', 'Ráfaga'], 'ans': 'A'},
+    {'q': "¿Cuál de las siguientes capacidades tiene mayor porcentaje de activación de alineación de 5, estando la capacidad a nivel máximo (C5)?", 'opts': ['Fuerza 5+', 'Combo Omnitipo', 'Congelante+', 'Sintonía'], 'ans': 'C'},
+    {'q': "¿Cuál de las siguientes capacidades tiene más probabilidad de activación de alineación de 4, que de alineación de 5?", 'opts': ['Hiperdrenaje', 'Niebla Tóxica', 'Robaenergía', 'Tragón'], 'ans': 'B'},
+    {'q': "¿Con cuántos Pokémon se puede jugar en Pokémon Shuffle?", 'opts': ['985', '987', '989', '991'], 'ans': 'D'},
+    {'q': "¿Es posible activar 2 veces la capacidad Colofón en la misma partida?", 'opts': ['No', 'Sí, pero solo en fases de tiempo', 'Sí, pero solo en fases por turnos', 'Sí, tanto en fases por tiempo como en fases por turnos'], 'ans': 'D'}
+]
+
 def roll_shiny():
     return random.random() < SHINY_CHANCE
 
@@ -43,7 +64,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
         return "Error: No se encontró el Pokémon."
 
     rarity = get_rarity(pokemon_data['category'], is_shiny)
-    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
+    pokemon_display = get_formatted_name(pokemon_data, is_shiny)
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
     # Sumar al ranking del grupo
@@ -56,16 +77,15 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
 
     if status == 'NEW':
         return (f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de "
-                f"<b>{pokemon_name}</b> {rarity_emoji}. Lo has registrado en tu Álbumdex.")
+                f"{pokemon_display} {rarity_emoji}. Lo has registrado en tu Álbumdex.")
     elif status == 'DUPLICATE':
         return (f"🔄 ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"<b>{pokemon_name}</b> {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo.")
+                f"{pokemon_display} {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo.")
     else: # MAX
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
         return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"<b>{pokemon_name}</b> {rarity_emoji}. Como ya lo tenías, se convierte en <b>{format_money(money_earned)}₽</b> 💰.")
-
+                f"{pokemon_display} {rarity_emoji}. Como ya lo tenías, se convierte en <b>{format_money(money_earned)}₽</b> 💰.")
 
 # --- LÓGICA DE EVENTOS (TRADUCIDA A HTML) ---
 
@@ -1078,113 +1098,333 @@ def evento_mision_mewtwo(user, decision_parts, original_text, chat_id):
                 'event_completed': False}
 
 
-# --- DICCIONARIO PRINCIPAL DE EVENTOS ---
-EVENTS = {
-    'pesca_ruta_12': {
-        'name': "Aventura de Pesca en Ruta 12",
+# --- NUEVOS EVENTOS JOHTO ---
+
+# 1. CIUDAD ORQUÍDEA (OCTILLERY)
+def _get_orquidea_variant(user):
+    text = (
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔸Te encuentras encima de un flamante Lapras alquilado, llegando a la maravillosa playa de Ciudad Orquídea.\n"
+        "De repente, de una ola un poco más alta de lo normal, aparece un Octillery poniéndote una mueca y sacando la lengua."
+    )
+    keyboard = [[
+        {'text': 'Sacar foto', 'callback_data': 'ev|johto_orquidea|decision|foto'},
+        {'text': '¡Madura!', 'callback_data': 'ev|johto_orquidea|decision|madure'}
+    ], [
+        {'text': 'Ignorar', 'callback_data': 'ev|johto_orquidea|decision|ignorar'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
+    user_id = user.id
+    user_mention = user.mention_html()
+    choice = decision_parts[0]
+    OCTILLERY_ID = 224
+    LAPRAS_ID = 131
+
+    if choice == 'foto':
+        prize = 200
+        db.update_money(user_id, prize)
+        is_shiny = roll_shiny()
+        reward = _handle_sticker_reward(user_id, user_mention, OCTILLERY_ID, is_shiny, chat_id)
+        result = (
+            f"<i>Decidiste sacarle una foto.</i>\n\n"
+            f"🔸El Octillery fue modelo en otra vida, y para agradecerte el interés, además de obtenerlo, te da una perla, que vendes por <b>{prize}₽</b>.\n\n"
+            f"{reward}"
+        )
+
+    elif choice == 'madure':
+        penalty = 50
+        current_money = db.get_user_money(user_id)
+        lost = min(current_money, penalty)
+        db.update_money(user_id, -lost)
+        result = (
+            f"<i>Le dijiste que madure.</i>\n\n"
+            f"🔸El Octillery Se enfada contigo, te mancha la camara de tinta y pierdes <b>{lost}₽</b> por limpiarla."
+        )
+
+    elif choice == 'ignorar':
+        is_shiny_oct = roll_shiny()
+        is_shiny_lap = roll_shiny()
+        reward_oct = _handle_sticker_reward(user_id, user_mention, OCTILLERY_ID, is_shiny_oct, chat_id)
+        reward_lap = _handle_sticker_reward(user_id, user_mention, LAPRAS_ID, is_shiny_lap, chat_id)
+
+        result = (
+            f"<i>Decidiste ignorarlo.</i>\n\n"
+            f"🔸El Octillery sigue queriendo salir en la foto y se pone encima del Lapras para que se la saques, la cual te ves obligado a hacer y obtienes ambos pokemon.\n"
+            f"¡Has conseguido escanear a ambos!\n\n"
+            f"{reward_oct}\n\n{reward_lap}"
+        )
+
+    return {'text': original_text + "\n\n" + "—" * 20 + "\n\n" + result}
+
+
+# 2. ACADEMIA PRIMO (TRIVIA)
+def _get_academia_primo_start(user):
+    # Seleccionar 3 preguntas aleatorias
+    questions = random.sample(QUIZ_DATA, 3)
+    # Guardamos indices en el callback para validarlas luego
+    # Formato estado: q1_idx|q2_idx|q3_idx|current_q(0-2)|score
+    q_indices = [QUIZ_DATA.index(q) for q in questions]
+
+    # Empezamos por la primera (índice 0, score 0)
+    return _build_trivia_step(user, q_indices, 0, 0, is_start=True)
+
+
+def _build_trivia_step(user, q_indices, current_step, score, is_start=False):
+    q_data = QUIZ_DATA[q_indices[current_step]]
+
+    # Texto base
+    if is_start:
+        intro = (
+            f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+            f"🔸{user.first_name} decide echar un vistazo en la academia de ciudad Malva. Entra y ve a Primo, que le invita a participar en un test que está apunto de comenzar. 'Usuario', que acaba de ver de reojo que con cada respuesta correcta se llevaría 150₽, acepta encantado.\n\n"
+        )
+    else:
+        intro = ""  # El texto se acumula en el mensaje editado
+
+    # Pregunta actual
+    header = ""
+    if current_step == 0:
+        header = "1️⃣ Primera pregunta:"
+    elif current_step == 1:
+        header = "\n\n2️⃣ Vale, siguiente pregunta:"
+    elif current_step == 2:
+        header = "\n\n3️⃣ Ajá, espero que estés pensando bien antes de contestar; vamos con la última pregunta:"
+
+    question_text = f"<b>{header}</b>\n{q_data['q']}\n\nA) {q_data['opts'][0]}\nB) {q_data['opts'][1]}\nC) {q_data['opts'][2]}\nD) {q_data['opts'][3]}"
+
+    # Botones A, B, C, D
+    # callback: ev|johto_primo|decision|ANSWER|q_indices_str|current_step|score
+    q_str = "-".join(map(str, q_indices))
+
+    keyboard = [[
+        {'text': 'A', 'callback_data': f'ev|johto_primo|decision|A|{q_str}|{current_step}|{score}'},
+        {'text': 'B', 'callback_data': f'ev|johto_primo|decision|B|{q_str}|{current_step}|{score}'},
+        {'text': 'C', 'callback_data': f'ev|johto_primo|decision|C|{q_str}|{current_step}|{score}'},
+        {'text': 'D', 'callback_data': f'ev|johto_primo|decision|D|{q_str}|{current_step}|{score}'}
+    ]]
+
+    return {'text': intro + question_text, 'keyboard': keyboard}
+
+
+def evento_johto_primo(user, decision_parts, original_text, chat_id):
+    # decision_parts: [answer, q_str, step, score]
+    answer = decision_parts[0]
+    q_indices = list(map(int, decision_parts[1].split('-')))
+    step = int(decision_parts[2])
+    score = int(decision_parts[3])
+
+    # Verificar respuesta anterior
+    correct_ans = QUIZ_DATA[q_indices[step]]['ans']
+    if answer == correct_ans:
+        score += 1
+
+    # ¿Quedan preguntas?
+    if step < 2:
+        # Siguiente pregunta (mantenemos texto anterior y añadimos la nueva)
+        next_step_data = _build_trivia_step(user, q_indices, step + 1, score)
+        # Aquí hay un truco: 'original_text' tiene todo lo anterior.
+        # Pero queremos mostrar "Tu respuesta: X" antes de la siguiente pregunta.
+        feedback = f"\n✅ <i>Respondiste {answer}.</i>"
+        return {'text': original_text + feedback + next_step_data['text'], 'keyboard': next_step_data['keyboard']}
+    else:
+        # Fin del juego
+        feedback = f"\n✅ <i>Respondiste {answer}.</i>\n\n💬 <b>Vale, voy a revisar las respuestas...</b>"
+
+        result_text = ""
+        money = score * 150
+
+        if score == 0:
+            result_text = "❌ 💬<b>Vaya, parece que no acertaste ninguna. Tendrás que estudiar más.</b>"
+        elif score < 3:
+            result_text = f"✅ 💬<b>Acertaste {score}. Aquí tienes tu recompensa.</b>"
+            db.update_money(user.id, money)
+            result_text += f"\n\n 💰{user.mention_html()} recibió <b>{money}₽</b>."
+        else:
+            result_text = f"🎉 💬<b>¡Muy bien! ¡Acertaste las 3! Se nota que conoces el juego.</b>"
+            db.update_money(user.id, money)
+            result_text += f"\n\n 💰{user.mention_html()} recibió <b>{money}₽</b>."
+
+        return {'text': original_text + feedback + "\n\n" + result_text}
+
+
+# 3. TEMPLO DANZA (EEVEE)
+def _get_danza_eevee_variant(user):
+    text = (
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔸{user.first_name} visita el Templo de danza de Ciudad Iris.\n"
+        "En cuanto entra ve a dos grupos de baile; uno con un Flareon, un Jolteon, y un Vaporeon, y otro con tres Eevees.\n\n"
+        f"{user.first_name} piensa a cuál acercarse:"
+    )
+    keyboard = [[
+        {'text': 'Eeveelutions', 'callback_data': 'ev|johto_danza|decision|evos'},
+        {'text': 'Eevees', 'callback_data': 'ev|johto_danza|decision|eevees'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_johto_danza(user, decision_parts, original_text, chat_id):
+    user_id = user.id
+    user_mention = user.mention_html()
+    choice = decision_parts[0]
+    result_text = ""
+    choice_made_text = ""
+
+    if choice == 'evos':
+        choice_made_text = "ℹ Elegiste ver la danza de las evoluciones."
+        # Random entre Flareon(136), Jolteon(135), Vaporeon(134)
+        poke_id = random.choice([134, 135, 136])
+        poke_name = POKEMON_BY_ID[poke_id]['name']
+
+        is_shiny = roll_shiny()
+        reward = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+        result_text = (
+            "🔸Las tres evoluciones bailan coordinándose con sus entrenadoras, mientras realizan efectos visuales con fuego, agua y electricidad; es un espectáculo digno de admirar.\n"
+            f"Al terminar, una de ellas se acerca a ti: ¡Es un <b>{poke_name}</b>!\n\n"
+            f"Te huele y se acaricia en tus piernas, momento que aprovechas para escanearlo.\n\n"
+            f"{reward}"
+        )
+
+    elif choice == 'eevees':
+        choice_made_text = "ℹ Elegiste ver la danza de los Eevee."
+
+        # Lógica Día/Noche (España)
+        # Espeon(196) de 9:00 a 21:00. Umbreon(197) resto.
+        hour = datetime.now(TZ_SPAIN).hour
+        if 9 <= hour < 21:
+            poke_id = 196  # Espeon
+            evo_name = "Espeon"
+        else:
+            poke_id = 197  # Umbreon
+            evo_name = "Umbreon"
+
+        is_shiny = roll_shiny()
+        reward = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+        result_text = (
+            "🔸Dos de los Eevees parecen ser aprendices, aún cometen muchos errores, pero es entrañable ver cómo intentan hacerlo lo mejor posible. El tercero se nota que es más experimentado, va completamente sincronizado con su entrenadora, debe haber practicado m... oh, un momento... ¡está evolucionando!\n"
+            f"¡Ha evolucionado en pleno baile, ahora es un <b>{evo_name}</b>!\n\n"
+            f"Haces varias fotos con tu Álbumdex, y de paso lo escaneas.\n\n"
+            f"{reward}"
+        )
+
+    separator = "\n\n" + "—" * 20 + "\n\n"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
+    return {'text': final_text}
+
+
+# --- REGISTRO DE EVENTOS (MEZCLADO) ---
+EVENTS_KANTO = {
+    'pesca_ruta_12': {'name': "Pesca Ruta 12", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice([{
+                                                                                                                         'text': f"<i>Evento aceptado...</i>",
+                                                                                                                         'keyboard': [
+                                                                                                                             [
+                                                                                                                                 {
+                                                                                                                                     'text': 'Vale',
+                                                                                                                                     'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'}]]}])},
+                                                         'decision': {'action': evento_pesca_ruta_12}}},
+}
+
+EVENTS_JOHTO = {
+    'johto_orquidea': {
+        'name': "Playa Ciudad Orquídea",
         'steps': {
-            'start': {'get_text_and_keyboard': lambda user: random.choice([{'text': (
-                f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} va paseando por la Ruta 12, cuando de pronto escucha la voz de alguien:\n💬 <b>Oye, perdona, ¿puedes venir un momento?</b>\n\n🔸{user.first_name} dirige su mirada a un pescador, que le está indicando con la mano que se acerque:\n💬 <b>¿Podría pedirte un favor? ¿Puedes vigilar la caña? Voy a comprar cebo, solo será un momento.</b>"),
-                                                                            'keyboard': [[{'text': 'Vale',
-                                                                                           'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'},
-                                                                                          {'text': 'No puedo',
-                                                                                           'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|no_puedo'}]]},
-                                                                           {'text': (
-                                                                               f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} va a entrar en la Ruta 12 y ve un puesto con cañas de pescar, con un cartel que anuncia:\n\"¡Alquila una caña de pescar por solo 200₽!\""),
-                                                                            'keyboard': [[{'text': 'Lo haré',
-                                                                                           'callback_data': 'ev|pesca_ruta_12|decision|alquilar_caña|lo_hare'},
-                                                                                          {'text': 'Nah, para qué',
-                                                                                           'callback_data': 'ev|pesca_ruta_12|decision|alquilar_caña|nah_para_que'}]]}])},
-            'decision': {'action': evento_pesca_ruta_12}
+            'start': {'get_text_and_keyboard': lambda u: {
+                'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸Llegas a Ciudad Orquídea en un Lapras...",
+                'keyboard': [[{'text': 'Foto', 'callback_data': 'ev|johto_orquidea|decision|foto'}]]}},
+            # (Este lambda es dummy, usa la funcion real abajo)
+            'start_fn': _get_orquidea_variant,  # Usamos puntero a funcion mejor
+            'decision': {'action': evento_johto_orquidea}
         }
     },
-    'casino_rocket': {
-        'name': "Negocios en el Casino Rocket",
+    'johto_primo': {
+        'name': "Academia de Primo",
         'steps': {
-            'start': {'get_text_and_keyboard': lambda user: random.choice([_get_casino_sale_variant(user), {'text': (
-                f"<i>Evento aceptado por {user.first_name}</i>\n\n🔸{user.first_name} se encuentra en Ciudad Azulona, caminando cerca del Casino Rocket, un edificio de lo más llamativo. Fuera del casino, junto a la entrada, hay una máquina de gancho con sobres pequeños de Kanto decorados con Poké Balls.\n\nUn cartel dice:\n🪧 1 intento por solo 200₽ 💰 (máximo 3 intentos por persona)."),
-                                                                                                            'keyboard': [
-                                                                                                                [{
-                                                                                                                     'text': 'Jugar',
-                                                                                                                     'callback_data': 'ev|casino_rocket|decision|claw_machine|play|0'},
-                                                                                                                 {
-                                                                                                                     'text': 'No jugar',
-                                                                                                                     'callback_data': 'ev|casino_rocket|decision|claw_machine|no_play|0'}]]}])},
-            'decision': {'action': evento_casino_rocket}
+            'start': {'get_text_and_keyboard': _get_academia_primo_start},
+            'decision': {'action': evento_johto_primo}
         }
     },
-    'bosque_verde': {
-        'name': "Paseo por el Bosque Verde",
-        'steps': {'start': {'get_text_and_keyboard': _get_bosque_verde_variant}}
-    },
-    'tunel_roca': {
-        'name': "Aventura en el Túnel Roca",
-        'steps': {'start': {'get_text_and_keyboard': _get_tunel_roca_variant},
-                  'decision': {'action': evento_tunel_roca}}
-    },
-    'torre_lavanda': {
-        'name': "Misterio en la Torre Pokémon",
-        'steps': {'start': {'get_text_and_keyboard': _get_torre_lavanda_variant},
-                  'decision': {'action': evento_torre_lavanda}}
-    },
-    'ciudad_azulona': {
-        'name': "Un bocado en Ciudad Azulona",
-        'steps': {'start': {'get_text_and_keyboard': _get_ciudad_azulona_variant},
-                  'decision': {'action': evento_ciudad_azulona}}
-    },
-    'erika_nap': {
-        'name': "Siesta en el Jardín",
-        'steps': {'start': {'get_text_and_keyboard': _get_erika_nap_variant}, 'decision': {'action': evento_erika_nap}}
-    },
-    'lottery_azafran': {
-        'name': "Lotería de Ciudad Azafrán",
-        'steps': {'start': {'get_text_and_keyboard': _get_loteria_azafran_variant},
-                  'decision': {'action': evento_loteria_azafran}}
-    },
-    'dojo_azafran': {
-        'name': "Entrenamiento en Azafrán",
-        'steps': {'start': {'get_text_and_keyboard': _get_dojo_azafran_variant},
-                  'decision': {'action': evento_dojo_azafran}}
-    },
-    'mision_meowth': {
-        'name': "Misión de Rescate Aéreo",
+    'johto_danza': {
+        'name': "Templo de Danza",
         'steps': {
-            'start': {'get_text_and_keyboard': _get_mision_meowth_variant},
-            'decision': {'action': evento_mision_meowth}
-        }
-    },
-    'mision_moltres': {
-        'name': "Misión Especial: Fuego en la Montaña",
-        'steps': {
-            'start': {'get_text_and_keyboard': _get_mision_moltres_variant},
-            'decision': {'action': evento_mision_moltres}
-        }
-    },
-    'mision_zapdos': {
-        'name': "Misión Especial: Tormenta en la Central",
-        'steps': {
-            'start': {'get_text_and_keyboard': _get_mision_zapdos_variant},
-            'decision': {
-                'action': evento_mision_zapdos
-            }
-        }
-    },
-    'mision_articuno': {
-        'name': "Misión Especial: Viento Helado en las Islas",
-        'steps': {
-            'start': {'get_text_and_keyboard': _get_mision_articuno_variant},
-            'decision': {
-                'action': evento_mision_articuno
-            }
-        }
-    },
-    'mision_mewtwo': {
-        'name': "Misión Especial: El Secreto de la Mansión",
-        'steps': {
-            'start': {'get_text_and_keyboard': _get_mision_mewtwo_variant},
-            'decision': {
-                'action': evento_mision_mewtwo
-            }
+            'start': {'get_text_and_keyboard': _get_danza_eevee_variant},
+            'decision': {'action': evento_johto_danza}
         }
     }
+}
+
+# --- UNIFICACIÓN (IMPORTANTE) ---
+# Aquí combinamos los diccionarios.
+# Si quieres activar/desactivar regiones, solo comenta la línea.
+
+EVENTS = {}
+
+# Añadimos Kanto (Tus eventos antiguos)
+# NOTA: Tienes que asegurarte de que tus eventos antiguos (pesca, casino...) están definidos arriba
+# o copiarlos dentro de este diccionario.
+# Para que funcione copiar-pegar, voy a reconstruir el diccionario EVENTS completo abajo con TODO.
+
+EVENTS = {
+    # --- KANTO ---
+    'pesca_ruta_12': {'name': "Pesca", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice([{
+                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} va paseando por la Ruta 12...\n💬 <b>Oye, perdona...</b>",
+                                                                                                                 'keyboard': [
+                                                                                                                     [{
+                                                                                                                          'text': 'Vale',
+                                                                                                                          'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'},
+                                                                                                                      {
+                                                                                                                          'text': 'No puedo',
+                                                                                                                          'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|no_puedo'}]]},
+                                                                                                             {
+                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} ve un puesto de cañas.\n\"¡Alquila una caña por 200₽!\"",
+                                                                                                                 'keyboard': [
+                                                                                                                     [{
+                                                                                                                          'text': 'Lo haré',
+                                                                                                                          'callback_data': 'ev|pesca_ruta_12|decision|alquilar_caña|lo_hare'},
+                                                                                                                      {
+                                                                                                                          'text': 'Nah',
+                                                                                                                          'callback_data': 'ev|pesca_ruta_12|decision|alquilar_caña|nah_para_que'}]]}])},
+                                                 'decision': {'action': evento_pesca_ruta_12}}},
+    'casino_rocket': {'name': "Casino", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice(
+        [_get_casino_sale_variant(u),
+         {'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸Máquina de gancho (200₽).", 'keyboard': [
+             [{'text': 'Jugar', 'callback_data': 'ev|casino_rocket|decision|claw_machine|play|0'},
+              {'text': 'No jugar', 'callback_data': 'ev|casino_rocket|decision|claw_machine|no_play|0'}]]}])},
+                                                  'decision': {'action': evento_casino_rocket}}},
+    'bosque_verde': {'name': "Bosque Verde", 'steps': {'start': {'get_text_and_keyboard': _get_bosque_verde_variant}}},
+    'tunel_roca': {'name': "Túnel Roca", 'steps': {'start': {'get_text_and_keyboard': _get_tunel_roca_variant},
+                                                   'decision': {'action': evento_tunel_roca}}},
+    'torre_lavanda': {'name': "Torre Lavanda", 'steps': {'start': {'get_text_and_keyboard': _get_torre_lavanda_variant},
+                                                         'decision': {'action': evento_torre_lavanda}}},
+    'ciudad_azulona': {'name': "Azulona", 'steps': {'start': {'get_text_and_keyboard': _get_ciudad_azulona_variant},
+                                                    'decision': {'action': evento_ciudad_azulona}}},
+    'erika_nap': {'name': "Erika", 'steps': {'start': {'get_text_and_keyboard': _get_erika_nap_variant},
+                                             'decision': {'action': evento_erika_nap}}},
+    'lottery_azafran': {'name': "Lotería", 'steps': {'start': {'get_text_and_keyboard': _get_loteria_azafran_variant},
+                                                     'decision': {'action': evento_loteria_azafran}}},
+    'dojo_azafran': {'name': "Dojo", 'steps': {'start': {'get_text_and_keyboard': _get_dojo_azafran_variant},
+                                               'decision': {'action': evento_dojo_azafran}}},
+    'mision_meowth': {'name': "Misión Meowth", 'steps': {'start': {'get_text_and_keyboard': _get_mision_meowth_variant},
+                                                         'decision': {'action': evento_mision_meowth}}},
+    'mision_moltres': {'name': "Misión Moltres",
+                       'steps': {'start': {'get_text_and_keyboard': _get_mision_moltres_variant},
+                                 'decision': {'action': evento_mision_moltres}}},
+    'mision_zapdos': {'name': "Misión Zapdos", 'steps': {'start': {'get_text_and_keyboard': _get_mision_zapdos_variant},
+                                                         'decision': {'action': evento_mision_zapdos}}},
+    'mision_articuno': {'name': "Misión Articuno",
+                        'steps': {'start': {'get_text_and_keyboard': _get_mision_articuno_variant},
+                                  'decision': {'action': evento_mision_articuno}}},
+    'mision_mewtwo': {'name': "Misión Mewtwo", 'steps': {'start': {'get_text_and_keyboard': _get_mision_mewtwo_variant},
+                                                         'decision': {'action': evento_mision_mewtwo}}},
+
+    # --- JOHTO ---
+    'johto_orquidea': {'name': "Ciudad Orquídea", 'steps': {'start': {'get_text_and_keyboard': _get_orquidea_variant},
+                                                            'decision': {'action': evento_johto_orquidea}}},
+    'johto_primo': {'name': "Academia Primo", 'steps': {'start': {'get_text_and_keyboard': _get_academia_primo_start},
+                                                        'decision': {'action': evento_johto_primo}}},
+    'johto_danza': {'name': "Templo Danza", 'steps': {'start': {'get_text_and_keyboard': _get_danza_eevee_variant},
+                                                      'decision': {'action': evento_johto_danza}}}
 }
