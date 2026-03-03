@@ -1249,7 +1249,11 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
     event_id = random.choice(available_events)
 
-    text = "¡Un evento especial ha aparecido!"
+    if event_id.startswith("doble_"):
+        text = "👥 <b>¡Ha aparecido un Evento Doble!</b>\n"
+    else:
+        text = "👤 <b>¡Un Evento ha aparecido!</b>\n"
+
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
 
@@ -1724,40 +1728,67 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-
     message = cast(Message, query.message)
-    if not message:
-        await query.answer()
-        return
+    if not message: return await query.answer()
 
     message_id = message.message_id
     context.chat_data.setdefault('active_events', {})
     event_info = context.chat_data['active_events'].get(message_id)
 
-    if not event_info or event_info.get('claimed_by'):
-        await query.answer("Este evento ya ha sido aceptado por otra persona.", show_alert=True)
+    if not event_info:
+        await query.answer("Este evento ya no está disponible.", show_alert=True)
         return
 
-    event_info['claimed_by'] = user.id
+    # --- LÓGICA EVENTO DOBLE ---
     event_id = event_info['event_id']
-    await query.answer("¡Has aceptado el evento!")
+    is_double = event_id.startswith("doble_")  # Convención: eventos dobles empiezan por "doble_"
 
+    # Lista de participantes
+    if 'participants' not in event_info:
+        event_info['participants'] = []
+
+    participants = event_info['participants']
+
+    # Verificar si ya se unió
+    if any(p['id'] == user.id for p in participants):
+        await query.answer("¡Ya te has unido al evento!", show_alert=True)
+        return
+
+    # Añadir participante
+    participants.append({'id': user.id, 'name': user.first_name, 'mention': user.mention_html()})
+
+    # Registrar en grupo
     if message.chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, message.chat.id)
 
+    # CASO 1: Falta gente
+    if is_double and len(participants) < 2:
+        await query.answer("¡Te has unido! Esperando a otro jugador...")
+        # Actualizar mensaje
+        text = f"👥 <b>Evento Doble</b>\n\n✅ <b>{user.first_name}</b> se ha unido.\n⏳ Esperando a 1 persona más..."
+        await message.edit_text(text, reply_markup=message.reply_markup, parse_mode='HTML')
+        return
+
+    # CASO 2: Ya estamos todos (o es evento simple)
+    await query.answer("¡El evento comienza!")
+    # Borrar mensaje de espera
     await message.delete()
 
     event_data = EVENTS[event_id]
     step_data = event_data['steps']['start']
 
-    result = step_data['get_text_and_keyboard'](user)
+    # Pasamos la lista de participantes a la función de inicio
+    result = step_data['get_text_and_keyboard'](participants)
     text = result['text']
 
     keyboard_rows = []
     if 'keyboard' in result and result['keyboard']:
         for row in result['keyboard']:
+            # Añadimos los IDs de los participantes al callback para validar luego
+            # Formato: ev|ID|step|decision|USER1|USER2...
+            users_str = "_".join([str(p['id']) for p in participants])
             keyboard_rows.append([
-                InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}_{user.id}")
+                InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{users_str}")
                 for button in row
             ])
 
@@ -2125,7 +2156,7 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     base_header = (
         "🎟️ *Tómbola Diaria* 🎟️\n\n"
-        "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
+        "¡Prueba suerte una vez al día!\n Estos son los premios, dependiendo de la bola que saques:\n"
         "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
     )
 
@@ -2437,11 +2468,8 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
                 user_id = owner_id
             else:
-                # Fallback antiguo (no debería pasar con el código nuevo)
                 user_id = query.from_user.id
-            # ----------------------------------
 
-            # REINICIAR TEMPORIZADOR AL PULSAR
             refresh_deletion_timer(context, query.message, 60)
 
         else:
@@ -2452,13 +2480,14 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Viene de comando de texto /mochila
         user_id = update.effective_user.id
 
-    db.get_or_create_user(user_id, "")  # Aseguramos usuario (nombre vacío para no hacer query extra si no hace falta)
+    db.get_or_create_user(user_id, "")
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user_id, update.effective_chat.id)
 
     items = db.get_user_inventory(user_id)
     text = ""
     keyboard_buttons = []
+    has_items = False
 
     # --- BOTONES DE NAVEGACIÓN (CON ID DE DUEÑO) ---
     nav_row = []
@@ -2467,11 +2496,9 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if mode != "special": nav_row.append(InlineKeyboardButton("🪶 Otros", callback_data=f"inv_mode_special_{user_id}"))
     keyboard_buttons.append(nav_row)
 
-    has_items = False
-
     # --- MODO HUEVOS ---
     if mode == "eggs":
-        text = "🎒 **Mochila - Huevos**\n\n"
+        text = "🎒 <b>Mochila - Huevos</b>\n\n"
         egg = db.get_user_egg(user_id)
 
         if egg:
@@ -2485,18 +2512,19 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard_buttons.append([InlineKeyboardButton("Examinar Huevo", callback_data=f"egg_check_{user_id}")])
             has_items = True
         else:
-            text += "_No tienes ningún huevo._"
+            text += "<i>No tienes ningún huevo.</i>"
             has_items = True
 
             # --- MODO SOBRES ---
     elif mode == "packs":
-        text = "🎒 **Mochila - Sobres**\n\n"
+        text = "🎒 <b>Mochila - Sobres</b>\n\n"
         for item in items:
             item_id = item['item_id']
             qty = item['quantity']
             if item_id in PACK_CONFIG:
                 raw_name = ITEM_NAMES.get(item_id, 'Objeto')
                 item_name = f"{raw_name} 🎴"
+                # CORRECCIÓN: Usar user_id en lugar de user.id
                 keyboard_buttons.append(
                     [InlineKeyboardButton(f"Abrir {raw_name}", callback_data=f"openpack_{item_id}_{user_id}")])
                 text += f"🔸️ {item_name} x{qty}\n"
@@ -2504,7 +2532,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- MODO ESPECIALES ---
     else:
-        text = "🎒 **Mochila - Objetos Especiales**\n\n"
+        text = "🎒 <b>Mochila - Objetos Especiales</b>\n\n"
         for item in items:
             item_id = item['item_id']
             qty = item['quantity']
@@ -2514,8 +2542,10 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     data = SPECIAL_ITEMS_DATA[item_id]
                     item_name = f"{data['name']} {data['emoji']}"
+
+                # CORRECCIÓN: Usar user_id en lugar de user.id
                 row = [
-                    InlineKeyboardButton("🔍 Ver",
+                    InlineKeyboardButton("👀 Ver",
                                          callback_data=f"view{'ticket' if 'ticket' in item_id else 'special'}_{item_id}_{user_id}"),
                     InlineKeyboardButton("📢 Mostrar", callback_data=f"showspecial_{item_id}_{user_id}")
                 ]
@@ -2524,15 +2554,15 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 has_items = True
 
     if not has_items and mode != "eggs":
-        text += "_Bolsillo vacío._"
+        text += "<i>Bolsillo vacío.</i>"
 
     markup = InlineKeyboardMarkup(keyboard_buttons)
 
-    # ENVÍO O EDICIÓN
+    # ENVÍO O EDICIÓN (TODO EN HTML)
     if query and query.data.startswith("inv_mode_"):
         await query.answer()
         try:
-            await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+            await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
         except BadRequest:
             pass
     else:
@@ -2542,7 +2572,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text=text,
             reply_markup=markup,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             disable_notification=True
         )
         schedule_message_deletion(context, sent_message, 60)
