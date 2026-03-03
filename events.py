@@ -1105,7 +1105,7 @@ def _get_orquidea_variant(user):
     text = (
         f"<i>Evento aceptado por {user.first_name}</i>\n\n"
         f"🔸Te encuentras encima de un flamante Lapras alquilado, llegando a la maravillosa playa de Ciudad Orquídea.\n"
-        "De repente, de una ola un poco más alta de lo normal, aparece un Octillery poniéndote una mueca y sacando la lengua."
+        "De repente, de una ola un poco más alta de lo normal, aparece un <b>Octillery</b> poniéndote una mueca y sacando la lengua."
     )
     keyboard = [[
         {'text': 'Sacar foto', 'callback_data': 'ev|johto_orquidea|decision|foto'},
@@ -1130,7 +1130,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
         reward = _handle_sticker_reward(user_id, user_mention, OCTILLERY_ID, is_shiny, chat_id)
         result = (
             f"<i>Decidiste sacarle una foto.</i>\n\n"
-            f"🔸El Octillery fue modelo en otra vida, y para agradecerte el interés, además de obtenerlo, te da una perla, que vendes por <b>{prize}₽</b>.\n\n"
+            f"🔸El <b>Octillery</b> fue modelo en otra vida, y para agradecerte el interés, además de obtenerlo, te da una perla, que vendes por <b>{prize}₽</b>.\n\n"
             f"{reward}"
         )
 
@@ -1141,7 +1141,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
         db.update_money(user_id, -lost)
         result = (
             f"<i>Le dijiste que madure.</i>\n\n"
-            f"🔸El Octillery Se enfada contigo, te mancha la camara de tinta y pierdes <b>{lost}₽</b> por limpiarla."
+            f"🔸El <b>Octillery</b> Se enfada contigo, te mancha la camara de tinta y pierdes <b>{lost}₽</b> por limpiarla."
         )
 
     elif choice == 'ignorar':
@@ -1152,7 +1152,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
 
         result = (
             f"<i>Decidiste ignorarlo.</i>\n\n"
-            f"🔸El Octillery sigue queriendo salir en la foto y se pone encima del Lapras para que se la saques, la cual te ves obligado a hacer y obtienes ambos pokemon.\n"
+            f"🔸El <b>Octillery</b> sigue queriendo salir en la foto y se pone encima del Lapras para que se la saques, la cual te ves obligado a hacer y obtienes ambos pokemon.\n"
             f"¡Has conseguido escanear a ambos!\n\n"
             f"{reward_oct}\n\n{reward_lap}"
         )
@@ -1179,7 +1179,7 @@ def _build_trivia_step(user, q_indices, current_step, score, is_start=False):
     if is_start:
         intro = (
             f"<i>Evento aceptado por {user.first_name}</i>\n\n"
-            f"🔸{user.first_name} decide echar un vistazo en la academia de ciudad Malva. Entra y ve a Primo, que le invita a participar en un test que está apunto de comenzar. 'Usuario', que acaba de ver de reojo que con cada respuesta correcta se llevaría 150₽, acepta encantado.\n\n"
+            f"🔸{user.first_name} decide echar un vistazo en la academia de ciudad Malva. Entra y ve a Primo, que le invita a participar en un test que está apunto de comenzar. {user.first_name}, que acaba de ver de reojo que con cada respuesta correcta se llevaría 150₽, acepta encantado.\n\n"
         )
     else:
         intro = ""  # El texto se acumula en el mensaje editado
@@ -1316,6 +1316,433 @@ def evento_johto_danza(user, decision_parts, original_text, chat_id):
     return {'text': final_text}
 
 
+# 4. CIUDAD OLIVO (FARO Y COSTA)
+def _get_faro_olivo_variant(user):
+    text = (
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔸{user.first_name} llega al Faro de Olivo, de Ciudad Olivo, y elige entre entrar al faro, o echar un vistazo a la costa.\n"
+    )
+    keyboard = [[
+        {'text': 'Faro', 'callback_data': 'ev|johto_olivo|decision|faro'},
+        {'text': 'Costa', 'callback_data': 'ev|johto_olivo|decision|costa'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_johto_olivo(user, decision_parts, original_text, chat_id):
+    user_id = user.id
+    user_mention = user.mention_html()
+    choice = decision_parts[0]
+
+    hour = datetime.now(TZ_SPAIN).hour
+    is_day = 9 <= hour < 21
+
+    result_text = ""
+    choice_made_text = ""
+
+    # IDs de Pokémon
+    # Faro Día: Skarmory(227), Forretress(205), Flaaffy(180)
+    FARO_DAY_POOL = [227, 205, 180]
+    # Faro Noche: Ampharos(181)
+    FARO_NIGHT_ID = 181
+    # Costa Día: Corsola(222), Qwilfish(211), Remoraid(223), Mantine(226)
+    COSTA_DAY_POOL = [222, 211, 223, 226]
+    # Costa Noche: Kingdra(230), Marill(183), Azumarill(184), Chinchou(170), Lanturn(171)
+    COSTA_NIGHT_POOL = [230, 183, 184, 170, 171]
+
+    if choice == 'faro':
+        choice_made_text = "ℹ Elegiste entrar en el faro."
+
+        if is_day:
+            poke_id = random.choice(FARO_DAY_POOL)
+            poke_name = POKEMON_BY_ID[poke_id]['name']
+            is_shiny = roll_shiny()
+            reward = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+            result_text = (
+                f"🔸{user.first_name} después de estar un rato subiendo escaleras, consigue llegar a la cima, y ve al abuelo de la líder Yasmina, quien le dice que no puede pasar, ya que Ampharos está ocupado haciendo su trabajo. Antes de irse, {user.first_name} se da cuenta de que al señor le acompaña un <b>{poke_name}</b>. Le pregunta si puede echarle una foto a su Pokémon, y el abuelo afirma con la cabeza.\n\n"
+                f"{reward}"
+            )
+        else:
+            is_shiny = roll_shiny()
+            reward = _handle_sticker_reward(user_id, user_mention, FARO_NIGHT_ID, is_shiny, chat_id)
+
+            result_text = (
+                f"🔸{user.first_name} después de estar un rato subiendo escaleras, consigue llegar a la cima, y ve a Ampharos iluminando toda la sala. Brilla tanto, que apenas puede mantener su vista en él. Saca su Álbumdex y decide escanearlo.\n\n"
+                f"{reward}"
+            )
+
+    elif choice == 'costa':
+        choice_made_text = "ℹ Elegiste asomarse a la costa."
+
+        if is_day:
+            poke_id = random.choice(COSTA_DAY_POOL)
+            poke_name = POKEMON_BY_ID[poke_id]['name']
+            is_shiny = roll_shiny()
+            reward = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+            result_text = (
+                f"🔸{user.first_name} observa el brillo del sol reflejado en las olas. Se relaja escuchando el agua entre las rocas. Puede ver, a lo lejos, un <b>{poke_name}</b>, y saca el Álbumdex para escanearlo.\n\n"
+                f"{reward}"
+            )
+        else:
+            poke_id = random.choice(COSTA_NIGHT_POOL)
+            poke_name = POKEMON_BY_ID[poke_id]['name']
+            is_shiny = roll_shiny()
+            reward = _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+            result_text = (
+                f"🔸{user.first_name} se relaja escuchando el romper de las olas, mientras observa cómo la luna evita que la oscuridad del mar se fusione con la del cielo nocturno. De pronto, el sonido de un chapoteo cercano rompe su calma, y a duras penas logra ver que se trata de un <b>{poke_name}</b>, y pone la linterna del Álbumdex para escanearlo.\n\n"
+                f"{reward}"
+            )
+
+    separator = "\n\n" + "—" * 20 + "\n\n"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
+    return {'text': final_text}
+
+
+# 5. GRANJA MU-MU (EVENTO DOBLE)
+def _get_mumu_start(participants):
+    u1 = participants[0]
+    u2 = participants[1]
+
+    # --- CAMBIO 3: Menciones reales ---
+    text = (
+        f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
+        f"🔸Ambos coinciden en la Ruta 39, junto a la Granja Mu-mu. Deciden entrar.\n"
+        "A un lado, hay un grupo de Miltank, y al otro, una serie de diversos Pokémon.\n\n"
+        "<b>Cada uno debe elegir dónde ir:</b>"
+    )
+
+    keyboard = [[
+        {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|vote|miltank'},
+        {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|vote|otros'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_doble_mumu(user, decision_parts, original_text, chat_id):
+    step_type = decision_parts[0]
+
+    users_str = decision_parts[-1]
+    u1_id, u2_id = map(int, users_str.split('_'))
+
+    if step_type == 'vote':
+        vote = decision_parts[1]
+
+        is_u1 = (user.id == u1_id)
+        is_u2 = (user.id == u2_id)
+
+        if not is_u1 and not is_u2:
+            return {'text': original_text}
+
+        # Marcador invisible ahora GUARDA LA ELECCIÓN (ej: ✅ 123456=miltank)
+        # pero en el texto visible SOLO muestra que ya votó
+        voted_marker = f"✅ {user.id}="
+        if voted_marker in original_text:
+            return {'text': original_text}  # --- CAMBIO 2: Ya no puede votar más ---
+
+        # --- CAMBIO 1: Voto Secreto (Actualizamos el texto ocultando la elección) ---
+        new_text = original_text + f"\n\nℹ️<b>{user.first_name}</b> ya ha decidido qué hacer. <span style='display:none'>{voted_marker}{vote}</span>"
+
+        # Comprobar si ambos han votado ya
+        if f"✅ {u1_id}=" in new_text and f"✅ {u2_id}=" in new_text:
+            import re
+
+            # Buscar los votos ocultos en el HTML (Formato: ✅ 12345=opcion)
+            match1 = re.search(fr"✅ {u1_id}=(\w+)", new_text)
+            match2 = re.search(fr"✅ {u2_id}=(\w+)", new_text)
+
+            # (El fallback es por seguridad, no debería fallar)
+            c1 = match1.group(1).lower() if match1 else vote
+            c2 = match2.group(1).lower() if match2 else vote
+
+            # Para la resolución, necesitamos saber los nombres (como no están guardados, los extraemos del ID o genéricos)
+            # Para no hacer peticiones a la API desde aquí, usamos la variable user para el que acaba de pulsar (el último),
+            # y "Tu compañero" para el otro (o podríamos reconstruir la mención, pero esto es más seguro).
+            name1 = user.first_name if is_u1 else "Jugador 1"
+            name2 = user.first_name if is_u2 else "Jugador 2"
+
+            return _resolver_mumu(u1_id, name1, c1, u2_id, name2, c2, chat_id)
+
+        else:
+            # Aún falta uno por votar. Mantenemos teclado.
+            keyboard = [[
+                {'text': 'Miltank', 'callback_data': f'ev|doble_mumu|vote|miltank'},
+                {'text': 'Otros Pokémon', 'callback_data': f'ev|doble_mumu|vote|otros'}
+            ]]
+            return {'text': new_text, 'keyboard': keyboard}
+
+
+def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
+    # (El resto de esta función sigue exactamente igual que antes)
+    POOL_OTROS = [16, 19, 234, 128, 143, 190, 161, 162, 165, 166, 187, 188, 192]
+    POOL_MILTANK_SOLO = [241, 203, 217, 190]
+
+    text = ""
+
+    # CASO 1: AMBOS MILTANK
+    if c1 == 'miltank' and c2 == 'miltank':
+        text += f"<i>Ambos eligieron ir a ver los Miltank.</i>\n\n"
+        text += "La familia de la granja les pide ayuda para vender Leche Mu-mu.\n\n"
+
+        outcome = random.choice(['bien', 'regular', 'mal'])
+
+        if outcome == 'bien':
+            prize = 500
+            text += "💬 <b>Parece que ha sido una buena elección pediros ayuda, ha ido todo muy bien, aquí tenéis:</b>\n\n"
+        elif outcome == 'regular':
+            prize = 350
+            text += "💬 <b>Ha ido muy bien, aunque podría haber ido mejor. Aun así, muchas gracias por todo, aquí tenéis:</b>\n\n"
+        else:
+            prize = 200
+            text += "💬 <b>Pues han ido muy bien las ventas. Aun así, os agradezco la ayuda, aquí tenéis:</b>\n\n"
+
+        db.update_money(uid1, prize)
+        db.update_money(uid2, prize)
+        text += f"👤 {name1} recibió <b>{prize}₽</b>\n👤 {name2} recibió <b>{prize}₽</b>"
+
+    # CASO 2: AMBOS OTROS
+    elif c1 == 'otros' and c2 == 'otros':
+        text += f"<i>Ambos eligieron ir a ver a otros Pokémon.</i>\n\n"
+        text += "Sacan su Álbumdex para escanear lo que ven cerca.\n\n"
+
+        p1a, p1b = random.sample(POOL_OTROS, 2)
+        r1a = _handle_sticker_reward(uid1, name1, p1a, roll_shiny(), chat_id)
+        r1b = _handle_sticker_reward(uid1, name1, p1b, roll_shiny(), chat_id)
+
+        p2a, p2b = random.sample(POOL_OTROS, 2)
+        r2a = _handle_sticker_reward(uid2, name2, p2a, roll_shiny(), chat_id)
+        r2b = _handle_sticker_reward(uid2, name2, p2b, roll_shiny(), chat_id)
+
+        text += f"{r1a}\n{r1b}\n\n{r2a}\n{r2b}"
+
+    # CASO 3: MIXTO
+    else:
+        text += f"<i>Uno fue a los Miltank y el otro a ver a otros Pokémon.</i>\n\n"
+
+        def resolver_individual(uid, name, choice):
+            res_text = ""
+            if choice == 'miltank':
+                if random.random() < 0.5:
+                    res_text += f"🔸{name} ve una manada de Miltank.\n"
+                    r = _handle_sticker_reward(uid, name, 241, roll_shiny(), chat_id)
+                else:
+                    p_id = random.choice(POOL_MILTANK_SOLO)
+                    res_text += f"🔸{name} ve a Blanca con su <b>{POKEMON_BY_ID[p_id]['name']}</b>.\n"
+                    r = _handle_sticker_reward(uid, name, p_id, roll_shiny(), chat_id)
+                res_text += r
+            else:
+                p_id = random.choice(POOL_OTROS)
+                res_text += f"🔸{name} escanea un <b>{POKEMON_BY_ID[p_id]['name']}</b>.\n"
+                res_text += _handle_sticker_reward(uid, name, p_id, roll_shiny(), chat_id)
+            return res_text
+
+        text += resolver_individual(uid1, name1, c1) + "\n\n"
+        text += resolver_individual(uid2, name2, c2)
+
+    return {'text': text}
+
+
+# 6. ZONA SAFARI (EVENTO DOBLE)
+def _get_safari_start(participants):
+    u1, u2 = participants[0], participants[1]
+
+    # Determinar Día o Noche
+    hour = datetime.now(TZ_SPAIN).hour
+    is_day = 9 <= hour < 21
+
+    pool = [161, 194, 195, 162, 179, 234, 203, 187, 188, 191, 189] if is_day else [202, 200, 235, 198, 228, 229]
+    poke_id = random.choice(pool)
+    poke_name = POKEMON_BY_ID[poke_id]['name']
+
+    # Preparamos los datos ocultos. Limpiamos las barras | de los nombres por seguridad.
+    n1, n2 = u1['name'].replace('|', ''), u2['name'].replace('|', '')
+    hidden_data = f"<span style='display:none'>DATA|{u1['id']}|{u1['mention']}|{n1}|{u2['id']}|{u2['mention']}|{n2}|{poke_id}</span>"
+
+    text = (
+        f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
+        f"🔸Ambos se encuentran en la Zona Safari de la Ruta 48 y deciden cooperar para escanear un Pokémon: "
+        f"acaban de ver un <b>{poke_name}</b> salvaje y piensan en cómo actuar:\n\n"
+        f"<b>Cada uno debe elegir una acción:</b>"
+        f"{hidden_data}"
+    )
+
+    keyboard = [[
+        {'text': 'Escanear', 'callback_data': 'ev|johto_safari|vote|escanear'},
+        {'text': 'Cebo', 'callback_data': 'ev|johto_safari|vote|cebo'},
+        {'text': 'Acercarse', 'callback_data': 'ev|johto_safari|vote|acercar'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_johto_safari(user, decision_parts, original_text, chat_id):
+    step_type = decision_parts[0]
+    users_str = decision_parts[-1]
+    u1_id, u2_id = map(int, users_str.split('_'))
+
+    if step_type == 'vote':
+        vote = decision_parts[1]
+
+        is_u1 = (user.id == u1_id)
+        is_u2 = (user.id == u2_id)
+
+        if not is_u1 and not is_u2:
+            return {'text': original_text}
+
+        voted_marker = f"✅ {user.id}="
+        if voted_marker in original_text:
+            return {'text': original_text}  # Ya votó
+
+        import re
+        # Extraer datos ocultos
+        data_match = re.search(r"DATA\|(\d+)\|([^|]+)\|([^|]+)\|(\d+)\|([^|]+)\|([^|]+)\|(\d+)", original_text)
+        if not data_match: return {'text': "Error interno leyendo los datos del evento."}
+
+        d_u1_id, d_u1_ment, d_u1_name, d_u2_id, d_u2_ment, d_u2_name, poke_id = data_match.groups()
+        poke_id = int(poke_id)
+
+        # Saber a quién estamos esperando
+        other_mention = d_u2_ment if is_u1 else d_u1_ment
+
+        # Quitar el mensaje de "esperando" si ya existía (por si acaso, aunque aquí solo se añade 1 vez)
+        clean_text = re.sub(r"\n\n<i>.+ ha elegido una acción, esperando a .+</i>", "", original_text)
+
+        wait_msg = f"\n\n<i>{user.first_name} ha elegido una acción, esperando a {other_mention}.</i>"
+        new_text = clean_text + wait_msg + f"<span style='display:none'>{voted_marker}{vote}</span>"
+
+        # Comprobar si ambos han votado ya
+        if f"✅ {u1_id}=" in new_text and f"✅ {u2_id}=" in new_text:
+            m1 = re.search(fr"✅ {u1_id}=(\w+)", new_text)
+            m2 = re.search(fr"✅ {u2_id}=(\w+)", new_text)
+
+            c1 = m1.group(1).lower() if m1 else vote
+            c2 = m2.group(1).lower() if m2 else vote
+
+            return _resolver_safari(u1_id, d_u1_name, c1, u2_id, d_u2_name, c2, poke_id, chat_id)
+
+        else:
+            keyboard = [[
+                {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear'},
+                {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo'},
+                {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar'}
+            ]]
+            return {'text': new_text, 'keyboard': keyboard}
+
+
+def _resolver_safari(u1_id, n1, c1, u2_id, n2, c2, poke_id, chat_id):
+    text = ""
+    poke1_data = POKEMON_BY_ID[poke_id]
+    pk1_name = poke1_data['name']
+
+    results = []  # Para el bloque de "Resultados:"
+    rewards = []  # Para las frases finales de stickers
+
+    # Función auxiliar para calcular si lo atrapa y dar el premio
+    def attempt_catch(uid, name, pid, chance):
+        p_name = POKEMON_BY_ID[pid]['name']
+        if chance == 100 or (chance > 0 and random.random() < (chance / 100.0)):
+            # ¡Atrapado!
+            is_shiny = roll_shiny()
+            rw = _handle_sticker_reward(uid, name, pid, is_shiny, chat_id)
+            rewards.append(rw)
+            results.append(f"👤 {name}: {p_name} ✅")
+        else:
+            # Falló
+            results.append(f"👤 {name}: {p_name} ❌")
+
+    hour = datetime.now(TZ_SPAIN).hour
+    is_day = 9 <= hour < 21
+    pool = [161, 194, 195, 162, 179, 234, 203, 187, 188, 191, 189] if is_day else [202, 200, 235, 198, 228, 229]
+
+    # --- RESOLUCIÓN DE CASOS ---
+
+    # CASO 1: CEBO + CEBO
+    if c1 == 'cebo' and c2 == 'cebo':
+        # Pokémon 2 (Que no sea el mismo que el 1)
+        pool2 = [p for p in pool if p != poke_id]
+        poke2_id = random.choice(pool2)
+        pk2_name = POKEMON_BY_ID[poke2_id]['name']
+
+        culprit = random.choice([n1, n2])
+        text += (
+            f"ℹ️<i>Ambos eligieron usar Cebo.</i>\n\n"
+            f"Ambos eligen usar cebo, y usan tanto que el <b>{pk1_name}</b> rápidamente se acerca a ver qué es. "
+            f"Además, también se acerca un <b>{pk2_name}</b>. Ambos sacan rápidamente el Álbumdex para escanearlos, "
+            f"pero {culprit} hace ruido y los ahuyenta. Los dos miran su dispositivo, a ver si han sido capaces de escanear a alguno.\n\n"
+        )
+        attempt_catch(u1_id, n1, poke_id, 50)
+        attempt_catch(u1_id, n1, poke2_id, 50)
+        attempt_catch(u2_id, n2, poke_id, 50)
+        attempt_catch(u2_id, n2, poke2_id, 50)
+
+    # CASO 2: ESCANEAR + ESCANEAR
+    elif c1 == 'escanear' and c2 == 'escanear':
+        text += (
+            f"ℹ️<i>Ambos eligieron Escanear.</i>\n\n"
+            f"Ambos se miran desafiantes, y comienzan a hacer fotos, intentando escanear al <b>{pk1_name}</b>. "
+            f"Al notar tanto ruido y movimiento, el Pokémon huye del lugar. Ambos miran su Álbumdex esperando haberlo registrado.\n\n"
+        )
+        attempt_catch(u1_id, n1, poke_id, 50)
+        attempt_catch(u2_id, n2, poke_id, 50)
+
+    # CASO 3: CEBO + ESCANEAR
+    elif (c1 == 'cebo' and c2 == 'escanear') or (c1 == 'escanear' and c2 == 'cebo'):
+        cebo_id, cebo_n = (u1_id, n1) if c1 == 'cebo' else (u2_id, n2)
+        scan_id, scan_n = (u1_id, n1) if c1 == 'escanear' else (u2_id, n2)
+
+        text += (
+            f"ℹ️<i>{cebo_n} eligió usar Cebo y {scan_n} eligió Escanear.</i>\n\n"
+            f"Optan por una estrategia simple: {cebo_n} usa el cebo para distraer al <b>{pk1_name}</b>, mientras {scan_n} lo escanea y registra en su Álbumdex. "
+            f"El Pokémon ve a {cebo_n}, se asusta y huye. {cebo_n} saca rápidamente su dispositivo y dispara varias fotos intentando escanear al Pokémon.\n\n"
+        )
+        attempt_catch(scan_id, scan_n, poke_id, 100)  # 100%
+        attempt_catch(cebo_id, cebo_n, poke_id, 50)  # 50%
+
+    # CASO 4: ACERCARSE + ACERCARSE
+    elif c1 == 'acercar' and c2 == 'acercar':
+        text += (
+            f"ℹ️<i>Ambos eligieron Acercarse.</i>\n\n"
+            f"Es tanto el alboroto que están haciendo por intentar acercarse uno antes que el otro, que el <b>{pk1_name}</b> se percata de ellos y escapa.\n\n"
+        )
+        results.append("❌ El Pokémon escapó.")
+
+    # CASO 5: ACERCARSE + ESCANEAR
+    elif (c1 == 'acercar' and c2 == 'escanear') or (c1 == 'escanear' and c2 == 'acercar'):
+        acer_id, acer_n = (u1_id, n1) if c1 == 'acercar' else (u2_id, n2)
+        scan_id, scan_n = (u1_id, n1) if c1 == 'escanear' else (u2_id, n2)
+
+        text += (
+            f"ℹ️<i>{acer_n} eligió Acercarse y {scan_n} eligió Escanear.</i>\n\n"
+            f"{acer_n} decide acercarse mientras {scan_n} saca su Álbumdex para escanearlo. Una vez cerca, {acer_n} escanea al Pokémon, "
+            f"sin dejar a {scan_n} hacerlo, ya que está delante y no le permite ver.\n\nEl <b>{pk1_name}</b> se percata de ellos y huye.\n\n"
+        )
+        attempt_catch(acer_id, acer_n, poke_id, 100)
+        attempt_catch(scan_id, scan_n, poke_id, 0)
+
+    # CASO 6: ACERCARSE + CEBO
+    elif (c1 == 'acercar' and c2 == 'cebo') or (c1 == 'cebo' and c2 == 'acercar'):
+        acer_id, acer_n = (u1_id, n1) if c1 == 'acercar' else (u2_id, n2)
+        cebo_id, cebo_n = (u1_id, n1) if c1 == 'cebo' else (u2_id, n2)
+
+        text += (
+            f"ℹ️<i>{acer_n} eligió Acercarse y {cebo_n} eligió usar Cebo.</i>\n\n"
+            f"{acer_n} decide acercarse. {cebo_n} cree que es mejor usar cebo para atraerlo. El Pokémon se acerca rápidamente a donde está {cebo_n}, "
+            f"atraído por el cebo, así que aprovecha para escanearlo. {acer_n} viene por detrás del <b>{pk1_name}</b>, pero al sacar su Álbumdex, "
+            f"el Pokémon se da cuenta y se da a la fuga.\n\n"
+        )
+        attempt_catch(cebo_id, cebo_n, poke_id, 100)
+        attempt_catch(acer_id, acer_n, poke_id, 0)
+
+    # Construir texto final
+    text += "<b>Resultados:</b>\n" + "\n".join(results)
+
+    if rewards:
+        text += "\n\n" + "\n\n".join(rewards)
+
+    return {'text': text}
+
+
 # --- REGISTRO DE EVENTOS (MEZCLADO) ---
 EVENTS_KANTO = {
     'pesca_ruta_12': {'name': "Pesca Ruta 12", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice([{
@@ -1328,15 +1755,13 @@ EVENTS_KANTO = {
                                                          'decision': {'action': evento_pesca_ruta_12}}},
 }
 
+# --- REGISTRO DE EVENTOS JOHTO ---
+
 EVENTS_JOHTO = {
     'johto_orquidea': {
         'name': "Playa Ciudad Orquídea",
         'steps': {
-            'start': {'get_text_and_keyboard': lambda u: {
-                'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸Llegas a Ciudad Orquídea en un Lapras...",
-                'keyboard': [[{'text': 'Foto', 'callback_data': 'ev|johto_orquidea|decision|foto'}]]}},
-            # (Este lambda es dummy, usa la funcion real abajo)
-            'start_fn': _get_orquidea_variant,  # Usamos puntero a funcion mejor
+            'start': {'get_text_and_keyboard': _get_orquidea_variant},
             'decision': {'action': evento_johto_orquidea}
         }
     },
@@ -1352,6 +1777,20 @@ EVENTS_JOHTO = {
         'steps': {
             'start': {'get_text_and_keyboard': _get_danza_eevee_variant},
             'decision': {'action': evento_johto_danza}
+        }
+    },
+    'doble_mumu': {
+        'name': "Granja Mu-mu (Doble)",
+        'steps': {
+            'start': {'get_text_and_keyboard': _get_mumu_start},
+            'decision': {'action': evento_doble_mumu}
+        }
+    },
+    'doble_safari': {
+        'name': "Safari (Doble)",
+        'steps': {
+            'start': {'get_text_and_keyboard': _get_safari_start},
+            'decision': {'action': evento_johto_safari}
         }
     }
 }
@@ -1426,5 +1865,24 @@ EVENTS = {
     'johto_primo': {'name': "Academia Primo", 'steps': {'start': {'get_text_and_keyboard': _get_academia_primo_start},
                                                         'decision': {'action': evento_johto_primo}}},
     'johto_danza': {'name': "Templo Danza", 'steps': {'start': {'get_text_and_keyboard': _get_danza_eevee_variant},
-                                                      'decision': {'action': evento_johto_danza}}}
+                                                      'decision': {'action': evento_johto_danza}}},
+    'doble_mumu': {'name': "Granja Mu-mu", 'steps': {'start': {'get_text_and_keyboard': _get_mumu_start},
+                                                     'decision': {'action': evento_doble_mumu}}},
+    'doble_safari': {'name': "Zona Safari", 'steps': {'start': {'get_text_and_keyboard': _get_safari_start},
+                                                      'decision': {'action': evento_johto_safari}}}
 }
+
+# --- EXPORTAR CLAVES PARA FILTROS REGIONALES ---
+# Definimos manualmente qué claves pertenecen a Kanto y cuáles a Johto
+# para que el filtro de /eventoregion funcione correctamente.
+
+KANTO_EVENT_KEYS = [
+    'pesca_ruta_12', 'casino_rocket', 'bosque_verde', 'tunel_roca',
+    'torre_lavanda', 'ciudad_azulona', 'erika_nap', 'lottery_azafran',
+    'dojo_azafran', 'mision_meowth', 'mision_moltres', 'mision_zapdos',
+    'mision_articuno', 'mision_mewtwo'
+]
+
+JOHTO_EVENT_KEYS = [
+    'johto_orquidea', 'johto_primo', 'johto_danza', 'doble_mumu', 'doble_safari'
+]
