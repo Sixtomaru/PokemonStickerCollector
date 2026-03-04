@@ -1129,7 +1129,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
         is_shiny = roll_shiny()
         reward = _handle_sticker_reward(user_id, user_mention, OCTILLERY_ID, is_shiny, chat_id)
         result = (
-            f"<i>Decidiste sacarle una foto.</i>\n\n"
+            f"<i>ℹ Decidiste sacarle una foto.</i>\n\n"
             f"🔸El <b>Octillery</b> fue modelo en otra vida, y para agradecerte el interés, además de obtenerlo, te da una perla, que vendes por <b>{prize}₽</b>.\n\n"
             f"{reward}"
         )
@@ -1140,7 +1140,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
         lost = min(current_money, penalty)
         db.update_money(user_id, -lost)
         result = (
-            f"<i>Le dijiste que madure.</i>\n\n"
+            f"<i>ℹ Le dijiste que madure.</i>\n\n"
             f"🔸El <b>Octillery</b> Se enfada contigo, te mancha la camara de tinta y pierdes <b>{lost}₽</b> por limpiarla."
         )
 
@@ -1151,7 +1151,7 @@ def evento_johto_orquidea(user, decision_parts, original_text, chat_id):
         reward_lap = _handle_sticker_reward(user_id, user_mention, LAPRAS_ID, is_shiny_lap, chat_id)
 
         result = (
-            f"<i>Decidiste ignorarlo.</i>\n\n"
+            f"<i>ℹ Decidiste ignorarlo.</i>\n\n"
             f"🔸El <b>Octillery</b> sigue queriendo salir en la foto y se pone encima del Lapras para que se la saques, la cual te ves obligado a hacer y obtienes ambos pokemon.\n"
             f"¡Has conseguido escanear a ambos!\n\n"
             f"{reward_oct}\n\n{reward_lap}"
@@ -1179,7 +1179,7 @@ def _build_trivia_step(user, q_indices, current_step, score, is_start=False):
     if is_start:
         intro = (
             f"<i>Evento aceptado por {user.first_name}</i>\n\n"
-            f"🔸{user.first_name} decide echar un vistazo en la academia de ciudad Malva. Entra y ve a Primo, que le invita a participar en un test que está apunto de comenzar. {user.first_name}, que acaba de ver de reojo que con cada respuesta correcta se llevaría 150₽, acepta encantado.\n\n"
+            f"🔸{user.first_name} decide echar un vistazo en la academia de ciudad Malva. Entra y ve a Primo, que le invita a participar en un test que está apunto de comenzar. {user.first_name}, que acaba de ver de reojo que con cada respuesta correcta se llevaría <b>150₽</b>, acepta encantado.\n\n"
         )
     else:
         intro = ""  # El texto se acumula en el mensaje editado
@@ -1187,11 +1187,11 @@ def _build_trivia_step(user, q_indices, current_step, score, is_start=False):
     # Pregunta actual
     header = ""
     if current_step == 0:
-        header = "1️⃣ Primera pregunta:"
+        header = "1️⃣ <b>Primera pregunta:</b>"
     elif current_step == 1:
-        header = "\n\n2️⃣ Vale, siguiente pregunta:"
+        header = "\n\n2️⃣ <b>Vale, siguiente pregunta:</b>"
     elif current_step == 2:
-        header = "\n\n3️⃣ Ajá, espero que estés pensando bien antes de contestar; vamos con la última pregunta:"
+        header = "\n\n3️⃣ <b>Ajá, espero que estés pensando bien antes de contestar; vamos con la última pregunta:</b>"
 
     question_text = f"<b>{header}</b>\n{q_data['q']}\n\nA) {q_data['opts'][0]}\nB) {q_data['opts'][1]}\nC) {q_data['opts'][2]}\nD) {q_data['opts'][3]}"
 
@@ -1227,11 +1227,11 @@ def evento_johto_primo(user, decision_parts, original_text, chat_id):
         next_step_data = _build_trivia_step(user, q_indices, step + 1, score)
         # Aquí hay un truco: 'original_text' tiene todo lo anterior.
         # Pero queremos mostrar "Tu respuesta: X" antes de la siguiente pregunta.
-        feedback = f"\n✅ <i>Respondiste {answer}.</i>"
+        feedback = f"\n🔸<i>Respondiste {answer}.</i>"
         return {'text': original_text + feedback + next_step_data['text'], 'keyboard': next_step_data['keyboard']}
     else:
         # Fin del juego
-        feedback = f"\n✅ <i>Respondiste {answer}.</i>\n\n💬 <b>Vale, voy a revisar las respuestas...</b>"
+        feedback = f"\n🔸<i>Respondiste {answer}.</i>\n\n💬 <b>Vale, voy a revisar las respuestas...</b>"
 
         result_text = ""
         money = score * 150
