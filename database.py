@@ -93,6 +93,12 @@ def init_db():
             is_shiny INTEGER -- Si será shiny
         )''')
 
+    # Tabla de Eventos Regionales Programados
+    cursor.execute('''CREATE TABLE IF NOT EXISTS scheduled_events (
+            event_date TEXT PRIMARY KEY,
+            region TEXT
+        )''')
+
     # --- MIGRACIONES MANUALES (A prueba de fallos) ---
     # Intentamos añadir las columnas una a una. Si ya existen, el error se ignora.
     migraciones = [
@@ -768,6 +774,37 @@ def remove_user_egg(user_id):
 def get_ready_eggs(current_timestamp):
     """Devuelve todos los huevos que ya han cumplido su tiempo."""
     return query_db("SELECT user_id, pokemon_id, is_shiny FROM incubator WHERE hatch_time <= ?", (current_timestamp,), dict_cursor=True)
+
+# --- CALENDARIO DE EVENTOS REGIONALES ---
+
+def add_scheduled_event(date_str, region):
+    """Guarda un evento para una fecha específica (YYYY-MM-DD)."""
+    if DATABASE_URL:
+        query_db("INSERT INTO scheduled_events (event_date, region) VALUES (%s, %s) ON CONFLICT (event_date) DO UPDATE SET region = EXCLUDED.region", (date_str, region))
+    else:
+        query_db("INSERT OR REPLACE INTO scheduled_events (event_date, region) VALUES (?, ?)", (date_str, region))
+
+def get_scheduled_event(date_str):
+    """Comprueba si hay un evento hoy."""
+    res = query_db("SELECT region FROM scheduled_events WHERE event_date = ?", (date_str,), one=True)
+    return res[0] if res else None
+
+def clean_old_scheduled_events(date_str):
+    """Borra eventos pasados para limpiar la BD."""
+    query_db("DELETE FROM scheduled_events WHERE event_date < ?", (date_str,))
+
+def set_codes_board_msg(chat_id, message_id):
+    """Guarda la ID del mensaje del tablón fijo de códigos de un grupo."""
+    if DATABASE_URL:
+        query_db("INSERT INTO system_flags (flag_name, value) VALUES (%s, %s) ON CONFLICT (flag_name) DO UPDATE SET value = EXCLUDED.value", (f"codes_board_{chat_id}", message_id))
+    else:
+        query_db("INSERT OR REPLACE INTO system_flags (flag_name, value) VALUES (?, ?)", (f"codes_board_{chat_id}", message_id))
+
+def get_codes_board_msg(chat_id):
+    """Obtiene la ID del mensaje del tablón fijo de códigos."""
+    res = query_db("SELECT value FROM system_flags WHERE flag_name = ?", (f"codes_board_{chat_id}",), one=True)
+    return res[0] if res else None
+
 
 # Iniciar la DB
 init_db()
