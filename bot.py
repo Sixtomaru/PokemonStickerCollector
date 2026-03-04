@@ -5,7 +5,7 @@ import time  # <--- Este es el módulo time original (necesario para time.time)
 import asyncio
 import re
 # --- CORRECCIÓN IMPORTS: Renombramos time a dt_time para evitar conflicto ---
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
 import pytz
 import math
 from typing import cast
@@ -31,7 +31,8 @@ import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
 from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
-from events import EVENTS
+from events import EVENTS, KANTO_EVENT_KEYS, JOHTO_EVENT_KEYS
+
 
 # --- CONFIGURACIÓN DEL SERVIDOR WEB ---
 app = Flask('')
@@ -1197,6 +1198,52 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("¡Uy! No encuentro la imagen de ese sticker.", show_alert=True)
 
 
+async def refresh_codes_board(bot: Bot, chat_id: int):
+    """Actualiza el mensaje fijo de códigos (si existe)."""
+    board_msg_id = db.get_codes_board_msg(chat_id)
+    if not board_msg_id: return
+
+    # Limpieza automática antes de mostrar
+    db.delete_expired_codes()
+    all_codes = db.get_all_friend_codes()
+
+    regions = {'Europa': [], 'América': [], 'Asia': []}
+    current_time = time.time()
+
+    for row in all_codes:
+        r = row['region']
+        if r not in regions: r = 'Europa'
+        days_left = int((row['expiry_timestamp'] - current_time) / 86400)
+        line = f"▪🔹️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
+        regions[r].append(line)
+
+    text = (
+        "📌 **TABLÓN DE CÓDIGOS DE AMIGO** 📌\n"
+        "Lista actualizada de códigos de amigo de Pokémon Shuffle (cada código se eliminará en 1 mes, si no se renueva antes manualmente en este mensaje):\n\n"
+    )
+    text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
+    text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
+    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n"
+
+    "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+
+
+    # --- CAMBIO: Solo botón Renovar ---
+    # El botón añadir lo dejamos solo para el comando temporal /codigos
+    keyboard = [
+        [InlineKeyboardButton("🔄 Renovar código", callback_data="codes_menu_renew")]
+    ]
+    # ----------------------------------
+
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=board_msg_id, text=text,
+                                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except BadRequest as e:
+        if "Message to edit not found" in str(e):
+            # Si alguien borró el mensaje a mano, limpiamos la base de datos
+            db.query_db("DELETE FROM system_flags WHERE flag_name = ?", (f"codes_board_{chat_id}",))
+        # Si da "Message is not modified", no hacemos nada (ya está actualizado)
+
 def choose_random_pokemon():
     chosen_category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
     chosen_pokemon = random.choice(POKEMON_BY_CATEGORY[chosen_category])
@@ -1220,12 +1267,15 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
                 pass
 
     is_qualified = await is_group_qualified(chat_id, context)
+    johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
+
+    # --- CHEQUEO DE EVENTO REGIONAL DIARIO ---
+    today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
+    active_regional_event = db.get_scheduled_event(today_str)
+    # ----------------------------------------
 
     available_events = []
     legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
-
-    # Comprobar si Johto está desbloqueado en este grupo
-    johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
 
     for ev_id in EVENTS.keys():
         # Filtro de grupo cualificado para legendarios Kanto
@@ -1236,11 +1286,17 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
         if ev_id in legendary_missions and db.is_event_completed(chat_id, ev_id):
             continue
 
-        # --- FILTRO JOHTO ---
-        # Si el evento empieza por "johto_" y el grupo NO lo ha desbloqueado, lo saltamos
-        if ev_id.startswith('johto_') and not johto_unlocked:
+        # --- FILTRO EVENTO ESPECIAL DE FIN DE SEMANA ---
+        if active_regional_event == 'Kanto' and ev_id not in KANTO_EVENT_KEYS:
             continue
-        # --------------------
+        if active_regional_event == 'Johto' and ev_id not in JOHTO_EVENT_KEYS:
+            continue
+
+        # --- FILTRO NORMAL (Si no hay evento especial) ---
+        if not active_regional_event:
+            # Si el evento es de Johto, el grupo DEBE haberlo desbloqueado
+            if ev_id in JOHTO_EVENT_KEYS and not johto_unlocked:
+                continue
 
         available_events.append(ev_id)
 
@@ -1249,10 +1305,11 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
     event_id = random.choice(available_events)
 
+    # Texto especial si es un evento doble
     if event_id.startswith("doble_"):
-        text = "👥 <b>¡Ha aparecido un Evento Doble!</b>\n"
+        text = "👥 <b>¡Ha aparecido un Evento Doble!</b>"
     else:
-        text = "👤 <b>¡Un Evento ha aparecido!</b>\n"
+        text = "👤 <b>¡Un Evento ha aparecido!</b>"
 
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
@@ -1297,13 +1354,18 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                                 pass
 
             # --- SELECCIÓN DE REGIÓN INTELIGENTE ---
-            available_regions = ['Kanto']
+                        today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
+                        active_regional_event = db.get_scheduled_event(today_str)
 
-            # Si el grupo completó el 75% de Kanto, puede salir Johto
-            if db.is_event_completed(chat_id, 'amelia_johto_unlock'):
-                available_regions.append('Johto')
-
-            chosen_region = random.choice(available_regions)
+                        if active_regional_event:
+                            # Si hay evento, forzamos la región
+                            chosen_region = active_regional_event
+                        else:
+                            # Flujo normal
+                            available_regions = ['Kanto']
+                            if db.is_event_completed(chat_id, 'amelia_johto_unlock'):
+                                available_regions.append('Johto')
+                            chosen_region = random.choice(available_regions)
 
             # Elegimos categoría
             category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
@@ -1591,6 +1653,46 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_message_deletion(context, msg, 30)
 
 
+async def admin_regional_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Programa un evento regional para el finde."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    args = context.args
+    if len(args) < 2:
+        return await update.message.reply_text("Uso: `/eventoregion <Kanto/Johto> <sabado/domingo/finde>`",
+                                               parse_mode='Markdown', disable_notification=True)
+
+    region = args[0].capitalize()
+    if region not in ['Kanto', 'Johto']:
+        return await update.message.reply_text("❌ Región inválida. Usa Kanto o Johto.", disable_notification=True)
+
+    day_arg = args[1].lower()
+    today = datetime.now(TZ_SPAIN).date()
+    dates_to_save = []
+
+    # Calcular fechas (0=Lunes, 5=Sábado, 6=Domingo)
+    if day_arg == 'sabado':
+        days_ahead = (5 - today.weekday()) % 7
+        dates_to_save.append(today + timedelta(days=days_ahead))
+    elif day_arg == 'domingo':
+        days_ahead = (6 - today.weekday()) % 7
+        dates_to_save.append(today + timedelta(days=days_ahead))
+    elif day_arg == 'finde':
+        d_sat = (5 - today.weekday()) % 7
+        d_sun = (6 - today.weekday()) % 7
+        dates_to_save.append(today + timedelta(days=d_sat))
+        dates_to_save.append(today + timedelta(days=d_sun))
+    else:
+        return await update.message.reply_text("❌ Día inválido. Usa sabado, domingo o finde.",
+                                               disable_notification=True)
+
+    for d in dates_to_save:
+        db.add_scheduled_event(d.strftime('%Y-%m-%d'), region)
+
+    fechas_str = ', '.join([d.strftime('%d/%m/%Y') for d in dates_to_save])
+    await update.message.reply_text(f"✅ Evento de **{region}** programado para: {fechas_str}", parse_mode='Markdown',
+                                    disable_notification=True)
+
 async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     message = cast(Message, query.message)
@@ -1741,51 +1843,50 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # --- LÓGICA EVENTO DOBLE ---
     event_id = event_info['event_id']
-    is_double = event_id.startswith("doble_")  # Convención: eventos dobles empiezan por "doble_"
+    is_double = event_id.startswith("doble_")
 
-    # Lista de participantes
     if 'participants' not in event_info:
         event_info['participants'] = []
 
     participants = event_info['participants']
 
-    # Verificar si ya se unió
     if any(p['id'] == user.id for p in participants):
         await query.answer("¡Ya te has unido al evento!", show_alert=True)
         return
 
-    # Añadir participante
     participants.append({'id': user.id, 'name': user.first_name, 'mention': user.mention_html()})
 
-    # Registrar en grupo
     if message.chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, message.chat.id)
 
-    # CASO 1: Falta gente
+    # CASO 1: Falta gente para evento doble
     if is_double and len(participants) < 2:
         await query.answer("¡Te has unido! Esperando a otro jugador...")
-        # Actualizar mensaje
         text = f"👥 <b>Evento Doble</b>\n\n✅ <b>{user.first_name}</b> se ha unido.\n⏳ Esperando a 1 persona más..."
         await message.edit_text(text, reply_markup=message.reply_markup, parse_mode='HTML')
         return
 
     # CASO 2: Ya estamos todos (o es evento simple)
     await query.answer("¡El evento comienza!")
-    # Borrar mensaje de espera
     await message.delete()
 
     event_data = EVENTS[event_id]
     step_data = event_data['steps']['start']
 
-    # Pasamos la lista de participantes a la función de inicio
-    result = step_data['get_text_and_keyboard'](participants)
+    # --- CORRECCIÓN DEL ERROR AQUÍ ---
+    # Si es doble pasamos la lista, si es normal pasamos el usuario para que no explote
+    if is_double:
+        result = step_data['get_text_and_keyboard'](participants)
+    else:
+        result = step_data['get_text_and_keyboard'](user)
+    # ---------------------------------
+
     text = result['text']
 
     keyboard_rows = []
     if 'keyboard' in result and result['keyboard']:
         for row in result['keyboard']:
             # Añadimos los IDs de los participantes al callback para validar luego
-            # Formato: ev|ID|step|decision|USER1|USER2...
             users_str = "_".join([str(p['id']) for p in participants])
             keyboard_rows.append([
                 InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{users_str}")
@@ -3665,6 +3766,8 @@ async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🗑️ El código `{code_to_delete}` ha sido eliminado correctamente.",
                 parse_mode='Markdown', disable_notification=True
             )
+            await refresh_codes_board(context.bot, update.effective_chat.id)
+
         else:
             msg = await update.message.reply_text(
                 "⛔ No puedes borrar un código que no es tuyo.",
@@ -3699,6 +3802,7 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if db.renew_friend_code(user_id):
             await query.answer("✅ ¡Código renovado por 30 días!", show_alert=True)
             await codigos_cmd(update, context)
+            await refresh_codes_board(context.bot, query.message.chat_id)
         else:
             await query.answer("❌ No se ha encontrado tu código de amigo, por favor, añádelo de nuevo a la lista.",
                                show_alert=True)
@@ -3759,6 +3863,7 @@ async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_
         schedule_message_deletion(context, update.message, 5)
         schedule_message_deletion(context, msg, 60)
 
+        await refresh_codes_board(context.bot, update.effective_chat.id)
 
 # --- NUEVOS COMANDOS DE NOTIFICACIÓN DE CÓDIGOS ---
 
@@ -3791,7 +3896,11 @@ async def notic_off_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- TAREA DIARIA DE REVISIÓN DE CADUCIDAD ---
 
 async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
-    """Revisa si hay códigos que caducan en 3 días y avisa."""
+    """Revisa si hay códigos que caducan en 3 días, avisa, y actualiza los tablones."""
+    # 1. Limpieza de caducados de la base de datos
+    db.delete_expired_codes()
+
+    # 2. Comprobación de avisos (3 días)
     all_codes = db.get_all_friend_codes()
     current_time = time.time()
 
@@ -3799,14 +3908,9 @@ async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
         expiry = row['expiry_timestamp']
         user_id = row['user_id']
 
-        # Calcular días restantes
         days_left = (expiry - current_time) / 86400
 
-        # Si le quedan entre 2.5 y 3.5 días, consideramos que son "3 días"
-        # (Esto evita que se envíe varias veces o que se salte por horas)
         if 2.0 < days_left <= 3.0:
-
-            # Verificar si el usuario quiere recibir la alerta
             if db.is_code_notification_enabled(user_id):
                 try:
                     await context.bot.send_message(
@@ -3819,11 +3923,20 @@ async def check_code_expiration_job(context: ContextTypes.DEFAULT_TYPE):
                         ),
                         parse_mode='Markdown'
                     )
-                    # Pequeña pausa anti-spam
                     await asyncio.sleep(0.1)
-                except Exception as e:
-                    # Si el usuario bloqueó al bot, fallará.
+                except Exception:
                     pass
+
+    # --- NUEVO: ACTUALIZAR TODOS LOS TABLONES FIJOS ---
+    active_groups = db.get_active_groups()
+    for chat_id in active_groups:
+        try:
+            # Esto forzará que el mensaje anclado re-calcule los días restantes
+            # y borre visualmente los que acaban de caducar hoy.
+            await refresh_codes_board(context.bot, chat_id)
+            await asyncio.sleep(0.1)  # Pausa anti-spam de Telegram
+        except Exception as e:
+            logger.error(f"Error actualizando tablón de códigos en {chat_id}: {e}")
 
 
 # --- SISTEMA DE INTERCAMBIOS ---
@@ -4200,6 +4313,25 @@ async def trade_timeout_job(context: ContextTypes.DEFAULT_TYPE):
     except BadRequest:
         pass  # Si ya no existe, no pasa nada
 
+
+async def regional_event_announcement_job(context: ContextTypes.DEFAULT_TYPE):
+    """Avisa a las 10:00 si hay un evento regional activo."""
+    today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
+
+    # Limpiar BD de días pasados
+    db.clean_old_scheduled_events(today_str)
+
+    active_regional_event = db.get_scheduled_event(today_str)
+
+    if active_regional_event:
+        text = f"📜 <b>Evento activo. Durante el día de hoy solo aparecerán Pokémon y Eventos de {active_regional_event}.</b>"
+        active_groups = db.get_active_groups()
+        for chat_id in active_groups:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+                await asyncio.sleep(0.1)
+            except:
+                pass
 
 async def trade_cancel_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el botón de Cancelar en el menú de selección de intercambio."""
@@ -4974,6 +5106,30 @@ def main():
         name="egg_hatching_check"
     )
 
+    # Aviso de Evento Regional (10:00 AM)
+    old_regev = application.job_queue.get_jobs_by_name("regional_event_announcement")
+    for job in old_regev: job.schedule_removal()
+
+    application.job_queue.run_daily(
+        regional_event_announcement_job,
+        time=dt_time(10, 0, tzinfo=TZ_SPAIN),
+        name="regional_event_announcement"
+    )
+
+    async def admin_setup_codes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Crea el mensaje fijo de códigos."""
+        if update.effective_user.id != ADMIN_USER_ID: return
+        chat_id = update.effective_chat.id
+
+        # Creamos un mensaje "dummy" que luego la función de refresh rellenará
+        msg = await update.message.reply_text("⏳ Generando tablón de códigos...", disable_notification=True)
+
+        # Guardamos la ID y lo rellenamos
+        db.set_codes_board_msg(chat_id, msg.message_id)
+        await refresh_codes_board(context.bot, chat_id)
+
+        await update.message.delete()
+
     # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
@@ -5032,6 +5188,8 @@ def main():
         CommandHandler("fixdb", admin_fix_johto_db),
         CommandHandler("guarderia", guarderia_cmd),
         CommandHandler("forceranking", admin_force_ranking),
+        CommandHandler("eventoregion", admin_regional_event),
+        CommandHandler("setupcodigos", admin_setup_codes),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
