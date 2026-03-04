@@ -746,9 +746,14 @@ def set_johto_completed_by_user(user_id):
 
 
 def get_user_unique_johto_count(user_id):
-    res = query_db(
-        "SELECT COUNT(DISTINCT pokemon_id) FROM collection WHERE user_id = ? AND pokemon_id >= 152 AND pokemon_id <= 251",
-        (user_id,), one=True)
+    # Excluimos IDs: 172, 173, 174, 175, 201, 236, 238, 239, 240
+    res = query_db("""
+        SELECT COUNT(DISTINCT pokemon_id) 
+        FROM collection 
+        WHERE user_id = ? 
+        AND pokemon_id >= 152 AND pokemon_id <= 251
+        AND pokemon_id NOT IN (172, 173, 174, 175, 201, 236, 238, 239, 240)
+    """, (user_id,), one=True)
     return res[0] if res else 0
 
 # --- SISTEMA DE GUARDERÍA (HUEVOS) ---
