@@ -2065,35 +2065,32 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         # Los datos vienen separados por la barra vertical '|'
-        # Ejemplo normal: ev|johto_orquidea|decision|foto|12345
-        # Ejemplo doble: ev|doble_mumu|vote|miltank|12345_98765
         parts = query.data.split('|')
 
         event_id = parts[1]
         step_id = parts[2]
 
         # Lo último SIEMPRE es el string de usuarios (owner_id_str)
+        # En eventos dobles será "ID1_ID2", en simples "ID1"
         owner_id_str = parts[-1]
 
-        # Lo del medio son las decisiones (puede haber 1 o varias)
+        # Lo del medio son las decisiones
         decision_parts = parts[3:-1]
 
         # Validar permisos
-        # Si es un evento doble, owner_id_str tendrá varios IDs separados por '_'
         if '_' in owner_id_str:
             valid_owners = [int(x) for x in owner_id_str.split('_')]
             if user.id not in valid_owners:
                 await query.answer("Solo las personas que iniciaron el evento pueden continuar.", show_alert=True)
                 return
         else:
-            # Evento simple
             owner_id = int(owner_id_str)
             if user.id != owner_id:
                 await query.answer("Solo la persona que inició el evento puede continuar.", show_alert=True)
                 return
 
     except (IndexError, ValueError) as e:
-        logger.warning(f"Error al procesar el callback_data del evento: {query.data} -> {e}")
+        logger.warning(f"Error callback evento: {query.data} -> {e}")
         await query.answer("Error en los datos del evento.", show_alert=True)
         return
 
@@ -2104,16 +2101,18 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not step_data: return
 
     if 'action' in step_data:
-        # Pasa todos los datos originales a la lógica (events.py)
-        # Le volvemos a añadir la parte de los usuarios a decision_parts porque algunos eventos
-        # (como el doble) leen esa última parte para saber quién es u1 y u2.
+        # --- CORRECCIÓN CLAVE ---
+        # Pasamos decision_parts + [owner_id_str] como una lista unificada
+        # Así 'evento_doble_mumu' recibirá: ['vote', 'miltank', '123_456']
         full_decision_parts = decision_parts + [owner_id_str]
 
-        result = step_data['action'](user, full_decision_parts, original_text=message.text, chat_id=message.chat_id)
+        result = step_data['action'](user, full_decision_parts, original_text=message.text_html,
+                                     chat_id=message.chat_id)
+        # Nota: usamos message.text_html para que las marcas ocultas <span...> se conserven al leer
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
-            logger.info(f"Evento {result['event_id']} marcado como completado para el chat {message.chat.id}")
+            logger.info(f"Evento {result['event_id']} completado en {message.chat.id}")
 
         final_text = result.get('text', '...')
         reply_markup = None
@@ -2121,20 +2120,27 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if 'keyboard' in result and result['keyboard']:
             keyboard_rows = []
             for row in result['keyboard']:
+                # Reconstruimos el callback manteniendo los IDs de usuario al final
                 keyboard_rows.append([
                     InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{owner_id_str}")
                     for button in row
                 ])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
-        await query.edit_message_text(
-            text=final_text,
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        # Editamos el mensaje
+        try:
+            await query.edit_message_text(
+                text=final_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        except BadRequest:
+            # Si el mensaje no cambió (porque pulsó dos veces o el evento lo ignoró)
+            pass
+
         await query.answer()
 
-        # CHEQUEO INMEDIATO DE DESBLOQUEO DE JOHTO
+        # CHEQUEO JOHTO
         if message.chat.type in ['group', 'supergroup']:
             await check_and_unlock_johto(message.chat.id, context)
 
