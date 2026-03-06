@@ -1745,6 +1745,65 @@ async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TY
         f"✅ Compensación enviada. {target_user.first_name} recibió un {prize_info['name']}.", disable_notification=True)
 
 
+async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza la aparición de un Evento de Historia en el grupo actual."""
+    if update.effective_user.id != ADMIN_USER_ID:
+        return
+
+    chat_id = update.effective_chat.id
+
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Este comando solo funciona en grupos.", disable_notification=True)
+        return
+
+    # Mismas validaciones que un spawn normal
+    is_qualified = await is_group_qualified(chat_id, context)
+    johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
+
+    available_events = []
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
+
+    for ev_id in EVENTS.keys():
+        if not is_qualified and ev_id in legendary_missions:
+            continue
+        if ev_id in legendary_missions and db.is_event_completed(chat_id, ev_id):
+            continue
+
+        # Filtro Johto
+        if ev_id.startswith('johto_') and not johto_unlocked:
+            continue
+
+        available_events.append(ev_id)
+
+    if not available_events:
+        await update.message.reply_text("❌ No hay eventos disponibles para este grupo ahora mismo.",
+                                        disable_notification=True)
+        return
+
+    event_id = random.choice(available_events)
+
+    if event_id.startswith("doble_"):
+        text = "👥 <b>¡Ha aparecido un Evento Doble!</b>\n"
+    else:
+        text = "¡Un Evento ha aparecido!"
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
+
+    # Usamos HTML igual que en el original
+    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='HTML')
+
+    context.chat_data.setdefault('active_events', {})
+    context.chat_data['active_events'][msg.message_id] = {
+        'event_id': event_id,
+        'claimed_by': None,
+        'timestamp': time.time()
+    }
+
+    # Borrar el comando del admin para que no ensucie
+    await update.message.delete()
+
+
 async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     message = cast(Message, query.message)
@@ -5350,6 +5409,7 @@ def main():
         CommandHandler("eventoregion", admin_regional_event),
         CommandHandler("setupcodigos", admin_setup_codes),
         CommandHandler("regalodelibird", admin_regalo_delibird),
+        CommandHandler("forceevento", force_event_command),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
