@@ -2055,42 +2055,21 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parts = query.data.split('|')
         event_id = parts[1]
         step_id = parts[2]
+        owner_id_str = parts[-1]
+        decision_parts = parts[3:-1]
 
-        # Intentamos obtener participantes de la memoria primero
-        # Buscamos el evento activo asociado a este mensaje
-        active_event = context.chat_data.get('active_events', {}).get(message.message_id)
-
-        owner_id_str = ""
-
-        if active_event and 'participants' in active_event:
-            # Si está en memoria, usamos los datos frescos
-            p_ids = [str(p['id']) for p in active_event['participants']]
-            owner_id_str = "_".join(p_ids)
-        else:
-            # Si no está en memoria (reinicio), usamos lo que viene en el botón (riesgo de corte)
-            owner_id_str = parts[-1]
-
-        # Validar Permisos
+        # Validar permisos
         if '_' in owner_id_str:
             valid_owners = [int(x) for x in owner_id_str.split('_')]
             if user.id not in valid_owners:
-                await query.answer("Solo las personas que iniciaron el evento pueden continuar.", show_alert=True)
+                await query.answer("Solo los participantes pueden elegir.", show_alert=True)
                 return
         else:
             if user.id != int(owner_id_str):
                 await query.answer("No puedes interactuar.", show_alert=True)
                 return
 
-        # Recuperar decisión
-        # Si venía del botón largo, parts es grande. Si venía de memoria, hay que tener cuidado.
-        # Lo seguro es coger todo lo que hay entre el step_id y el final
-        decision_parts = parts[3:]
-
-        # Si el último trozo parece una ID, lo quitamos para limpiar los datos que enviamos a la lógica
-        if decision_parts and (decision_parts[-1].isdigit() or '_' in decision_parts[-1]):
-            decision_parts.pop()
-
-    except (IndexError, ValueError) as e:
+    except (IndexError, ValueError):
         await query.answer("Error procesando evento.", show_alert=True)
         return
 
@@ -2100,34 +2079,44 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not step_data: return
 
     if 'action' in step_data:
-        # Pasamos owner_id_str al final para que la lógica sepa quiénes son
         full_decision = decision_parts + [owner_id_str]
 
-        # Importante: Pasar text_html para leer marcas ocultas
-        result = step_data['action'](user, full_decision, original_text=message.text_html, chat_id=message.chat_id)
+        # --- CAMBIO CRÍTICO: RECUPERAR ESTADO DE MEMORIA ---
+        # Buscamos la memoria de este evento específico
+        current_state = context.chat_data.get('active_events', {}).get(message.message_id, {})
+
+        try:
+            # Intentamos pasar 'game_state' (Para eventos dobles nuevos)
+            result = step_data['action'](
+                user, full_decision,
+                original_text=message.text_html,
+                chat_id=message.chat_id,
+                game_state=current_state
+            )
+        except TypeError:
+            # Si el evento es antiguo y no acepta 'game_state', lo llamamos como antes
+            result = step_data['action'](
+                user, full_decision,
+                original_text=message.text_html,
+                chat_id=message.chat_id
+            )
+        # ---------------------------------------------------
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
 
         final_text = result.get('text', '...')
 
-        # Reconstruir teclado
         reply_markup = None
         if 'keyboard' in result and result['keyboard']:
             keyboard_rows = []
             for row in result['keyboard']:
-                # Aquí reconstruimos el botón. IMPORTANTE:
-                # Si el ID string es muy largo, Telegram cortará el botón y fallará de nuevo.
-                # Como solución de emergencia, si es muy largo, no lo ponemos en el botón
-                # y confiamos en la memoria RAM para el siguiente paso.
-
                 base_data = row['callback_data']
+                # Protección contra callback demasiado largo
                 if len(base_data) + len(owner_id_str) < 60:
                     final_data = f"{base_data}|{owner_id_str}"
                 else:
-                    # Si no cabe, mandamos sin ID y rezamos para que la RAM no se borre
                     final_data = base_data
-
                 keyboard_rows.append([InlineKeyboardButton(row['text'], callback_data=final_data)])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
