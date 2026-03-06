@@ -711,29 +711,32 @@ def clear_delibird_schedule():
 
 
 def check_delibird_claimed_this_week(user_id):
-    """Devuelve True si ya reclamó en los últimos 7 días."""
-    from datetime import datetime, timedelta
+    """Devuelve True si ya reclamó un sobre esta semana del año."""
+    import datetime
+    import pytz
+
+    TZ_SPAIN = pytz.timezone('Europe/Madrid')
+    # Obtenemos el número de semana actual (ej: '2026-W42')
+    current_week = datetime.datetime.now(TZ_SPAIN).strftime('%Y-W%V')
+
     res = query_db("SELECT last_delibird_claim FROM users WHERE user_id = ?", (user_id,), one=True)
     if not res or not res[0]: return False
 
-    last_date_str = res[0]
-    try:
-        last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
-        # Si la fecha guardada es reciente (menos de 6 días para asegurar la semana)
-        if (datetime.now() - last_date).days < 6:
-            return True
-    except:
-        pass
-    return False
+    # Comparamos la semana guardada con la actual
+    last_week_str = res[0]
+    return last_week_str == current_week
 
 
 def set_delibird_claimed(user_id):
-    """Marca que ha reclamado hoy."""
-    from datetime import datetime
-    today = datetime.now().strftime('%Y-%m-%d')
-    # Aseguramos que existe
+    """Marca la semana en la que ha reclamado."""
+    import datetime
+    import pytz
+
+    TZ_SPAIN = pytz.timezone('Europe/Madrid')
+    current_week = datetime.datetime.now(TZ_SPAIN).strftime('%Y-W%V')
+
     get_or_create_user(user_id, None)
-    query_db("UPDATE users SET last_delibird_claim = ? WHERE user_id = ?", (today, user_id))
+    query_db("UPDATE users SET last_delibird_claim = ? WHERE user_id = ?", (current_week, user_id))
 
 
 def is_johto_completed_by_user(user_id):
