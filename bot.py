@@ -29,7 +29,7 @@ from telegram.ext import filters, MessageHandler
 
 import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
-from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE
+from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE, ALL_POKEMON_PACKS
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 from events import EVENTS, KANTO_EVENT_KEYS, JOHTO_EVENT_KEYS
 
@@ -1220,18 +1220,18 @@ async def refresh_codes_board(bot: Bot, chat_id: int):
 
     text = (
         "📌 **TABLÓN DE CÓDIGOS DE AMIGO** 📌\n\n"
-        "Lista actualizada de códigos de amigo de Pokémon Shuffle (cada código se eliminará automáticamente en 30 días, si no se renueva antes manualmente en este mensaje):\n\n"
+        "🔄 Lista actualizada de códigos de amigo de Pokémon Shuffle (cada código se eliminará automáticamente en 30 días, si no se renueva antes manualmente en este mensaje):\n\n"
     )
     text += "🔶*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "🔶*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
     text += "🔶*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n"
-    text += "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+    text += "ℹ Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
 
 
     # --- CAMBIO: Solo botón Renovar ---
     # El botón añadir lo dejamos solo para el comando temporal /codigos
     keyboard = [
-        [InlineKeyboardButton("🔄 Renovar código", callback_data="codes_menu_renew")]
+        [InlineKeyboardButton("🔄 Renovar Código", callback_data="codes_menu_renew")]
     ]
     # ----------------------------------
 
@@ -1706,6 +1706,45 @@ async def admin_regional_event(update: Update, context: ContextTypes.DEFAULT_TYP
                                     disable_notification=True)
 
 
+async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Regala un sobre aleatorio de Delibird a un usuario."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+
+    # Obtener objetivo
+    target_user, _ = await _get_target_user_from_command(update, context)
+    if not target_user:
+        return await update.message.reply_text("Uso: Responde a un usuario o menciónalo: `/regalodelibird @usuario`",
+                                               disable_notification=True)
+
+    # 1. Seleccionar premio aleatorio (Como hace Delibird)
+    possible_packs = [k for k in SHOP_CONFIG.keys() if k.startswith('pack_elem_')]
+    prize_id = random.choice(possible_packs)
+    prize_info = SHOP_CONFIG[prize_id]
+
+    db.get_or_create_user(target_user.id, target_user.first_name)
+
+    # 2. Guardar en mochila
+    db.add_item_to_inventory(target_user.id, prize_id, 1)
+
+    # 3. Notificar (Opcional, lo enviaremos al buzón visual aunque vaya a la mochila para que se entere)
+    msg_texto = "¡Regalo de compensación del evento de Delibird! Guárdalo en tu mochila."
+    db.add_mail(target_user.id, 'inventory_item', prize_id, msg_texto)
+
+    # Intentamos avisarle por privado
+    try:
+        if db.is_user_notification_enabled(target_user.id):
+            await context.bot.send_message(
+                chat_id=target_user.id,
+                text=f"📬 **¡TIENES CORREO!**\n\nRevisa tu /buzon.",
+                parse_mode='Markdown'
+            )
+    except:
+        pass
+
+    await update.message.reply_text(
+        f"✅ Compensación enviada. {target_user.first_name} recibió un {prize_info['name']}.", disable_notification=True)
+
+
 async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     message = cast(Message, query.message)
@@ -1807,7 +1846,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.set_kanto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
-                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado Kanto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
         # Johto (91 excluyendo bebés y Unown)
         if not db.is_johto_completed_by_user(user.id):
@@ -1815,27 +1854,51 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.set_johto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
-                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado Johto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
-        # --- PREMIO RETO GRUPAL (Solo Kanto de momento) ---
-        is_qualified = await is_group_qualified(message.chat.id, context)
-        chat_id = message.chat.id
-        if message.chat.type in ['group', 'supergroup']:
-            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+                # --- PREMIOS RETOS GRUPALES ---
+                is_qualified = await is_group_qualified(message.chat.id, context)
+                chat_id = message.chat.id
 
-                if len(group_unique_ids) >= 151:
-                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
+                if message.chat.type in ['group', 'supergroup']:
+                    # 1. RETO KANTO (151)
+                    if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+                        group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
 
-                    if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
-                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto Completado")
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí! Cada jugador ha recibido 2000₽ en su buzón."
-                    else:
-                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de conseguir los 151 Pokémon de Kanto capturándolos aquí!"
+                        if len(group_unique_ids) >= 151:
+                            db.mark_event_completed(chat_id, 'kanto_group_challenge')
 
-        await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
+                            if is_qualified:
+                                group_users = db.get_users_in_group(chat_id)
+                                for uid in group_users:
+                                    db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                                    # --- NUEVO: PREMIO SOBRE BRILLANTE GRUPAL ---
+                                    db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+                            else:
+                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
+
+                    # 2. RETO JOHTO (91)
+                    # Excluimos bebés y unown para el conteo
+                    excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+
+                    if not db.is_event_completed(chat_id, 'johto_group_challenge'):
+                        raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+                        valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+
+                        if len(valid_johto_ids) >= 91:
+                            db.mark_event_completed(chat_id, 'johto_group_challenge')
+
+                            if is_qualified:
+                                group_users = db.get_users_in_group(chat_id)
+                                for uid in group_users:
+                                    db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
+                                    db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
+                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
+                            else:
+                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
+
+                await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
     else:
         await query.answer()
@@ -1942,20 +2005,36 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     try:
-        main_data, owner_id_str = query.data.rsplit('_', 1)
-        owner_id = int(owner_id_str)
+        # Los datos vienen separados por la barra vertical '|'
+        # Ejemplo normal: ev|johto_orquidea|decision|foto|12345
+        # Ejemplo doble: ev|doble_mumu|vote|miltank|12345_98765
+        parts = query.data.split('|')
 
-        if user.id != owner_id:
-            await query.answer("Solo la persona que inició el evento puede continuar.", show_alert=True)
-            return
-
-        parts = main_data.split('|')
         event_id = parts[1]
         step_id = parts[2]
-        decision_parts = parts[3:]
 
-    except (IndexError, ValueError):
-        logger.warning(f"Error al procesar el callback_data del evento: {query.data}")
+        # Lo último SIEMPRE es el string de usuarios (owner_id_str)
+        owner_id_str = parts[-1]
+
+        # Lo del medio son las decisiones (puede haber 1 o varias)
+        decision_parts = parts[3:-1]
+
+        # Validar permisos
+        # Si es un evento doble, owner_id_str tendrá varios IDs separados por '_'
+        if '_' in owner_id_str:
+            valid_owners = [int(x) for x in owner_id_str.split('_')]
+            if user.id not in valid_owners:
+                await query.answer("Solo las personas que iniciaron el evento pueden continuar.", show_alert=True)
+                return
+        else:
+            # Evento simple
+            owner_id = int(owner_id_str)
+            if user.id != owner_id:
+                await query.answer("Solo la persona que inició el evento puede continuar.", show_alert=True)
+                return
+
+    except (IndexError, ValueError) as e:
+        logger.warning(f"Error al procesar el callback_data del evento: {query.data} -> {e}")
         await query.answer("Error en los datos del evento.", show_alert=True)
         return
 
@@ -1966,8 +2045,12 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not step_data: return
 
     if 'action' in step_data:
-        # Pasamos el chat_id a la lógica del evento (events.py se encarga de guardar el sticker en la BD del grupo)
-        result = step_data['action'](user, decision_parts, original_text=message.text, chat_id=message.chat_id)
+        # Pasa todos los datos originales a la lógica (events.py)
+        # Le volvemos a añadir la parte de los usuarios a decision_parts porque algunos eventos
+        # (como el doble) leen esa última parte para saber quién es u1 y u2.
+        full_decision_parts = decision_parts + [owner_id_str]
+
+        result = step_data['action'](user, full_decision_parts, original_text=message.text, chat_id=message.chat_id)
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
@@ -1980,12 +2063,11 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             keyboard_rows = []
             for row in result['keyboard']:
                 keyboard_rows.append([
-                    InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}_{user.id}")
+                    InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{owner_id_str}")
                     for button in row
                 ])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
-        # 1. Editamos el mensaje original para mostrar el resultado del evento
         await query.edit_message_text(
             text=final_text,
             reply_markup=reply_markup,
@@ -1993,11 +2075,9 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await query.answer()
 
-        # --- 2. CHEQUEO INMEDIATO DE DESBLOQUEO DE JOHTO ---
-        # Si el evento era en un grupo, comprobamos si ha saltado el 75%
+        # CHEQUEO INMEDIATO DE DESBLOQUEO DE JOHTO
         if message.chat.type in ['group', 'supergroup']:
             await check_and_unlock_johto(message.chat.id, context)
-        # ---------------------------------------------------
 
 
 async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2870,7 +2950,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.chat_data['is_opening_pack'] = True
 
+        # Eliminar el mensaje del inventario
         await message.delete()
+
         db.remove_item_from_inventory(user.id, item_id, 1)
 
         opening_message = await context.bot.send_message(
@@ -2886,24 +2968,23 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_results = []
         message_ids_to_delete = [opening_message.message_id]
 
-        # --- LÓGICA DE GENERACIÓN (CORREGIDA CON ALL_POKEMON_SPAWNABLE) ---
+        # --- LÓGICA DE GENERACIÓN ---
 
         # 1. Sobre Brillante Kanto
         if item_id == 'pack_shiny_kanto':
-            kanto_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+            kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             p_data = random.choice(kanto_pool)
             pack_results.append({'data': p_data, 'is_shiny': True})
 
         # 2. Sobre Brillante Johto
         elif item_id == 'pack_shiny_johto':
-            # ¡OJO! Aquí antes salían bebés. Ahora ya no.
-            johto_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
+            johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
             p_data = random.choice(johto_pool)
             pack_results.append({'data': p_data, 'is_shiny': True})
 
         # 3. Sobre Especial Kanto
         elif item_id == 'pack_elem_especial':
-            kanto_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+            kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
                 is_shiny = random.random() < (SHINY_CHANCE * 2)
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
@@ -2915,71 +2996,75 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            # CORREGIDO: Usamos SPAWNABLE para que no salgan bebés (ej: Pichu en eléctrico)
-            type_pool = [p for p in ALL_POKEMON_SPAWNABLE if target_type in p.get('types', [])]
-            if not type_pool: type_pool = ALL_POKEMON_SPAWNABLE  # Fallback
-
+            type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] <= 151]
+            if not type_pool: type_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
                 p_data = random.choice(type_pool)
                 is_shiny = random.random() < SHINY_CHANCE
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 5. Sobres Mágicos y Normales
-        else:
+        # 5. Sobres Mágicos
+        elif is_magic:
             region_filter = pack_config.get('region_filter')
-
-            # CORREGIDO: Base pool segura
-            base_pool = ALL_POKEMON_SPAWNABLE
+            base_pool = ALL_POKEMON_PACKS
 
             if region_filter == 'Kanto':
-                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['id'] <= 151]
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
-                base_pool = [p for p in ALL_POKEMON_SPAWNABLE if 152 <= p['id'] <= 251]
+                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
 
-            # Lógica Mágica
-            if is_magic:
-                user_quantities = db.get_user_collection_quantities(user.id)
-                for _ in range(pack_size):
-                    s = random.random() < SHINY_CHANCE
-                    missing_pool = []
-                    one_qty_pool = []
-                    for p in base_pool:
-                        qty = user_quantities.get((p['id'], s), 0)
-                        if qty == 0:
-                            missing_pool.append(p)
-                        elif qty == 1:
-                            one_qty_pool.append(p)
+            user_quantities = db.get_user_collection_quantities(user.id)
 
-                    if missing_pool:
-                        p_data = random.choice(missing_pool)
-                    elif one_qty_pool:
-                        p_data = random.choice(one_qty_pool)
-                    else:
-                        # Fallback random
-                        pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-                        for p in base_pool: pool_by_cat[p['category']].append(p)
-                        cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-                        possible = pool_by_cat[cat]
-                        if not possible: possible = base_pool
-                        p_data = random.choice(possible)
+            for _ in range(pack_size):
+                s = random.random() < SHINY_CHANCE
+                missing_pool = []
+                one_qty_pool = []
 
-                    pack_results.append({'data': p_data, 'is_shiny': s})
-                    user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
+                for p in base_pool:
+                    qty = user_quantities.get((p['id'], s), 0)
+                    if qty == 0:
+                        missing_pool.append(p)
+                    elif qty == 1:
+                        one_qty_pool.append(p)
 
-            # Lógica Normal
-            else:
-                pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-                for p in base_pool: pool_by_cat[p['category']].append(p)
-                for _ in range(pack_size):
-                    is_shiny = random.random() < SHINY_CHANCE
+                if missing_pool:
+                    p_data = random.choice(missing_pool)
+                elif one_qty_pool:
+                    p_data = random.choice(one_qty_pool)
+                else:
+                    pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+                    for p in base_pool: pool_by_cat[p['category']].append(p)
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                     possible = pool_by_cat[cat]
                     if not possible: possible = base_pool
                     p_data = random.choice(possible)
-                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # --- PROCESAMIENTO ---
+                pack_results.append({'data': p_data, 'is_shiny': s})
+                user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
+
+        # 6. Sobres Normales
+        else:
+            region_filter = pack_config.get('region_filter')
+            base_pool = ALL_POKEMON_PACKS
+            if region_filter == 'Kanto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif region_filter == 'Johto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+
+            pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+            for p in base_pool: pool_by_cat[p['category']].append(p)
+
+            for _ in range(pack_size):
+                is_shiny = random.random() < SHINY_CHANCE
+                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                possible = pool_by_cat[cat]
+                if not possible: possible = base_pool
+                p_data = random.choice(possible)
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
+        # --- PROCESAMIENTO DE RESULTADOS ---
         summary_parts = []
+
         for result in pack_results:
             p, s = result['data'], result['is_shiny']
             rarity = get_rarity(p['category'], s)
@@ -2991,8 +3076,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
                     message_ids_to_delete.append(msg.message_id)
                 await asyncio.sleep(1.0)
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error enviando sticker {p['id']}: {e}")
 
             p_display = get_formatted_name(p, s)
             r_emoji = RARITY_VISUALS.get(rarity, '')
@@ -3015,19 +3100,56 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
+        # --- PREMIOS INDIVIDUALES ---
         if not db.is_kanto_completed_by_user(user.id):
             if db.get_user_unique_kanto_count(user.id) >= 151:
                 db.set_kanto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado Kanto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
         if not db.is_johto_completed_by_user(user.id):
             if db.get_user_unique_johto_count(user.id) >= 91:
                 db.set_johto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado Johto! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+        # --- PREMIOS RETOS GRUPALES ---
+        is_qualified = await is_group_qualified(message.chat.id, context)
+        chat_id = message.chat.id
+
+        if message.chat.type in ['group', 'supergroup']:
+            # 1. RETO KANTO (151)
+            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+                if len(group_unique_ids) >= 151:
+                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+                    else:
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
+
+            # 2. RETO JOHTO (91)
+            excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+            if not db.is_event_completed(chat_id, 'johto_group_challenge'):
+                raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+                valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+
+                if len(valid_johto_ids) >= 91:
+                    db.mark_event_completed(chat_id, 'johto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
+                    else:
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
@@ -3264,7 +3386,7 @@ async def darobjeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if db.is_user_notification_enabled(target_id):
             await context.bot.send_message(
                 chat_id=target_id,
-                text=f"📬 **¡TIENES CORREO!**\n\nEl admin te ha enviado: *{item_name}*\nNota: _{msg}_",
+                text=f"📬 **¡TIENES CORREO!**\n\nNota: _{msg}_",
                 parse_mode='Markdown'
             )
     except:
@@ -4468,27 +4590,28 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif region == 'johto':
         raw_group_ids = db.get_group_unique_johto_ids(chat_id)
-        # Excluir bebés y Unown
+        # Excluir bebés y Unown del conteo (Los Legendarios SÍ entran)
         excluded_ids = {172, 173, 174, 175, 201, 236, 238, 239, 240}
         group_ids = {pid for pid in raw_group_ids if pid not in excluded_ids}
 
-        # Filtramos ALL_POKEMON_SPAWNABLE (que ya no tiene bebés) para hacer el recuento total
-        for p in ALL_POKEMON_SPAWNABLE:
+        # --- CORRECCIÓN: USAR ALL_POKEMON PARA INCLUIR LEGENDARIOS ---
+        for p in ALL_POKEMON:
             if p['id'] < 152 or p['id'] > 251: continue
+            if p['id'] in excluded_ids: continue  # Saltamos los bebés aquí también
+
             rarity_totals[p['category']] += 1
             if p['id'] in group_ids:
                 rarity_counts[p['category']] += 1
             else:
                 missing_names.append(p['name'])
+        # --------------------------------------------------------------
 
         text = "🔹 **Johto:**\n\n"
 
-    # Construcción común del texto
     text += "_Rarezas:_\n"
     r_text = []
     for cat in ['C', 'B', 'A', 'S']:
         emoji = RARITY_VISUALS[cat]
-        # Evitar división por cero
         tot = rarity_totals[cat] if rarity_totals[cat] > 0 else 1
         r_text.append(f"{emoji} {rarity_counts[cat]}/{rarity_totals[cat]}")
     text += ", ".join(r_text) + "\n\n"
@@ -4681,7 +4804,6 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     state = DELIBIRD_STATE.get(chat_id)
 
     if not state:
-        # Intentamos reconstruir leyendo el mensaje del chat
         current_text = message.text_markdown
         if "DELIBIRD HA LLEGADO" in current_text:
             winners_list = []
@@ -4703,7 +4825,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # --- 2. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
     if db.check_delibird_claimed_this_week(user.id):
-        await query.answer("¡Ya has cogido un sobre esta semana! Deja algo para los demás.", show_alert=True)
+        await query.answer("¡Ya has cogido un sobre esta semana!", show_alert=True)
         return
     # -----------------------------------------------
 
@@ -4712,7 +4834,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     prize_id = random.choice(possible_packs)
     prize_info = SHOP_CONFIG[prize_id]
 
-    # Dar premio
+    # Dar premio (A LA MOCHILA)
     db.get_or_create_user(user.id, user.first_name)
     db.add_item_to_inventory(user.id, prize_id, 1)
 
@@ -4721,7 +4843,8 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # Actualizar lista visual
     safe_name = user.first_name.replace('*', '').replace('_', '')
-    list_line = f"- {safe_name} recibió {prize_info['name']} {prize_info['emoji']}"
+    pack_display_name = f"🎴{prize_info['emoji']} Sobre {prize_info.get('type_filter', 'Especial')} de Kanto"
+    list_line = f"- {safe_name} recibió {pack_display_name}."
     state['winners'].append(list_line)
 
     new_text = (
@@ -5226,6 +5349,7 @@ def main():
         CommandHandler("forceranking", admin_force_ranking),
         CommandHandler("eventoregion", admin_regional_event),
         CommandHandler("setupcodigos", admin_setup_codes),
+        CommandHandler("regalodelibird", admin_regalo_delibird),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
