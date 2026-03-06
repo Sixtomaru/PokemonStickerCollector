@@ -1871,7 +1871,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
 
-        # Formato HTML (Con o sin emoji si lo mantuviste en bot_utils)
+        # Formato HTML
         pokemon_display = get_formatted_name(pokemon_data, is_shiny)
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
         user_link = user.mention_html()
@@ -1891,13 +1891,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # --- RETO GRUPAL & DESBLOQUEO JOHTO ---
         if message.chat.type in ['group', 'supergroup']:
-            # Lo añadimos a la pokédex del grupo (para cualquier región)
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
-
-            # Comprobamos si el grupo ha llegado a 113 de Kanto para desbloquear Johto
             await check_and_unlock_johto(message.chat.id, context)
 
-        # --- PREMIOS INDIVIDUALES (Kanto y Johto) ---
+        # --- PREMIOS INDIVIDUALES ---
 
         # Kanto (151)
         if not db.is_kanto_completed_by_user(user.id):
@@ -1907,7 +1904,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
-        # Johto (91 excluyendo bebés y Unown)
+        # Johto (91)
         if not db.is_johto_completed_by_user(user.id):
             if db.get_user_unique_johto_count(user.id) >= 91:
                 db.set_johto_completed_by_user(user.id)
@@ -1915,53 +1912,46 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
-                # --- PREMIOS RETOS GRUPALES ---
-                is_qualified = await is_group_qualified(message.chat.id, context)
-                chat_id = message.chat.id
+        # --- PREMIOS RETOS GRUPALES (ESTO AHORA ESTÁ FUERA DE LOS IFs INDIVIDUALES) ---
+        is_qualified = await is_group_qualified(message.chat.id, context)
+        chat_id = message.chat.id
 
-                if message.chat.type in ['group', 'supergroup']:
-                    # 1. RETO KANTO (151)
-                    if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-                        group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+        if message.chat.type in ['group', 'supergroup']:
+            # 1. RETO KANTO (151)
+            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+                if len(group_unique_ids) >= 151:
+                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+                    else:
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
 
-                        if len(group_unique_ids) >= 151:
-                            db.mark_event_completed(chat_id, 'kanto_group_challenge')
+            # 2. RETO JOHTO (91)
+            excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+            if not db.is_event_completed(chat_id, 'johto_group_challenge'):
+                raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+                valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+                if len(valid_johto_ids) >= 91:
+                    db.mark_event_completed(chat_id, 'johto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
+                    else:
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
 
-                            if is_qualified:
-                                group_users = db.get_users_in_group(chat_id)
-                                for uid in group_users:
-                                    db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
-                                    # --- NUEVO: PREMIO SOBRE BRILLANTE GRUPAL ---
-                                    db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
-                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
-                            else:
-                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
-
-                    # 2. RETO JOHTO (91)
-                    # Excluimos bebés y unown para el conteo
-                    excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
-
-                    if not db.is_event_completed(chat_id, 'johto_group_challenge'):
-                        raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
-                        valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
-
-                        if len(valid_johto_ids) >= 91:
-                            db.mark_event_completed(chat_id, 'johto_group_challenge')
-
-                            if is_qualified:
-                                group_users = db.get_users_in_group(chat_id)
-                                for uid in group_users:
-                                    db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
-                                    db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
-                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
-                            else:
-                                message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
-
-                await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
+        await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
     else:
         await query.answer()
-        # Fallo al intentar capturar (Cámara movida)
+        # Fallo
         new_chance = min(100, current_chance + 5)
         db.update_user_capture_chance(user.id, new_chance)
 
@@ -2059,88 +2049,95 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     user = query.from_user
     message = cast(Message, query.message)
-    if not message:
-        await query.answer()
-        return
+    if not message: return await query.answer()
 
     try:
-        # Los datos vienen separados por la barra vertical '|'
         parts = query.data.split('|')
-
         event_id = parts[1]
         step_id = parts[2]
 
-        # Lo último SIEMPRE es el string de usuarios (owner_id_str)
-        # En eventos dobles será "ID1_ID2", en simples "ID1"
-        owner_id_str = parts[-1]
+        # Intentamos obtener participantes de la memoria primero
+        # Buscamos el evento activo asociado a este mensaje
+        active_event = context.chat_data.get('active_events', {}).get(message.message_id)
 
-        # Lo del medio son las decisiones
-        decision_parts = parts[3:-1]
+        owner_id_str = ""
 
-        # Validar permisos
+        if active_event and 'participants' in active_event:
+            # Si está en memoria, usamos los datos frescos
+            p_ids = [str(p['id']) for p in active_event['participants']]
+            owner_id_str = "_".join(p_ids)
+        else:
+            # Si no está en memoria (reinicio), usamos lo que viene en el botón (riesgo de corte)
+            owner_id_str = parts[-1]
+
+        # Validar Permisos
         if '_' in owner_id_str:
             valid_owners = [int(x) for x in owner_id_str.split('_')]
             if user.id not in valid_owners:
                 await query.answer("Solo las personas que iniciaron el evento pueden continuar.", show_alert=True)
                 return
         else:
-            owner_id = int(owner_id_str)
-            if user.id != owner_id:
-                await query.answer("Solo la persona que inició el evento puede continuar.", show_alert=True)
+            if user.id != int(owner_id_str):
+                await query.answer("No puedes interactuar.", show_alert=True)
                 return
 
+        # Recuperar decisión
+        # Si venía del botón largo, parts es grande. Si venía de memoria, hay que tener cuidado.
+        # Lo seguro es coger todo lo que hay entre el step_id y el final
+        decision_parts = parts[3:]
+
+        # Si el último trozo parece una ID, lo quitamos para limpiar los datos que enviamos a la lógica
+        if decision_parts and (decision_parts[-1].isdigit() or '_' in decision_parts[-1]):
+            decision_parts.pop()
+
     except (IndexError, ValueError) as e:
-        logger.warning(f"Error callback evento: {query.data} -> {e}")
-        await query.answer("Error en los datos del evento.", show_alert=True)
+        await query.answer("Error procesando evento.", show_alert=True)
         return
 
     event_data = EVENTS.get(event_id)
     if not event_data: return
-
     step_data = event_data['steps'].get(step_id)
     if not step_data: return
 
     if 'action' in step_data:
-        # --- CORRECCIÓN CLAVE ---
-        # Pasamos decision_parts + [owner_id_str] como una lista unificada
-        # Así 'evento_doble_mumu' recibirá: ['vote', 'miltank', '123_456']
-        full_decision_parts = decision_parts + [owner_id_str]
+        # Pasamos owner_id_str al final para que la lógica sepa quiénes son
+        full_decision = decision_parts + [owner_id_str]
 
-        result = step_data['action'](user, full_decision_parts, original_text=message.text_html,
-                                     chat_id=message.chat_id)
-        # Nota: usamos message.text_html para que las marcas ocultas <span...> se conserven al leer
+        # Importante: Pasar text_html para leer marcas ocultas
+        result = step_data['action'](user, full_decision, original_text=message.text_html, chat_id=message.chat_id)
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
-            logger.info(f"Evento {result['event_id']} completado en {message.chat.id}")
 
         final_text = result.get('text', '...')
-        reply_markup = None
 
+        # Reconstruir teclado
+        reply_markup = None
         if 'keyboard' in result and result['keyboard']:
             keyboard_rows = []
             for row in result['keyboard']:
-                # Reconstruimos el callback manteniendo los IDs de usuario al final
-                keyboard_rows.append([
-                    InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{owner_id_str}")
-                    for button in row
-                ])
+                # Aquí reconstruimos el botón. IMPORTANTE:
+                # Si el ID string es muy largo, Telegram cortará el botón y fallará de nuevo.
+                # Como solución de emergencia, si es muy largo, no lo ponemos en el botón
+                # y confiamos en la memoria RAM para el siguiente paso.
+
+                base_data = row['callback_data']
+                if len(base_data) + len(owner_id_str) < 60:
+                    final_data = f"{base_data}|{owner_id_str}"
+                else:
+                    # Si no cabe, mandamos sin ID y rezamos para que la RAM no se borre
+                    final_data = base_data
+
+                keyboard_rows.append([InlineKeyboardButton(row['text'], callback_data=final_data)])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
-        # Editamos el mensaje
         try:
-            await query.edit_message_text(
-                text=final_text,
-                reply_markup=reply_markup,
-                parse_mode='HTML'
-            )
+            await query.edit_message_text(text=final_text, reply_markup=reply_markup, parse_mode='HTML')
         except BadRequest:
-            # Si el mensaje no cambió (porque pulsó dos veces o el evento lo ignoró)
             pass
 
         await query.answer()
 
-        # CHEQUEO JOHTO
         if message.chat.type in ['group', 'supergroup']:
             await check_and_unlock_johto(message.chat.id, context)
 
