@@ -79,7 +79,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
         return (f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de "
                 f"{pokemon_display} {rarity_emoji}. Lo has registrado en tu Álbumdex.")
     elif status == 'DUPLICATE':
-        return (f"🔄 ¡Genial, {user_mention}! Conseguiste un sticker de "
+        return (f"♻ ¡Genial, {user_mention}! Conseguiste un sticker de "
                 f"{pokemon_display} {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo.")
     else: # MAX
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
