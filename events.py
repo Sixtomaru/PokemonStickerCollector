@@ -1403,17 +1403,13 @@ def evento_johto_olivo(user, decision_parts, original_text, chat_id):
 
 # 5. GRANJA MU-MU (EVENTO DOBLE)
 def _get_mumu_start(participants):
-    u1 = participants[0]
-    u2 = participants[1]
-
-    # --- CAMBIO 3: Menciones reales ---
+    u1, u2 = participants[0], participants[1]
     text = (
         f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
         f"🔸Ambos coinciden en la Ruta 39, junto a la Granja Mu-mu. Deciden entrar.\n"
         "A un lado, hay un grupo de Miltank, y al otro, una serie de diversos Pokémon.\n\n"
         "<b>Cada uno debe elegir dónde ir:</b>"
     )
-
     keyboard = [[
         {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|vote|miltank'},
         {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|vote|otros'}
@@ -1421,57 +1417,70 @@ def _get_mumu_start(participants):
     return {'text': text, 'keyboard': keyboard}
 
 
-def evento_doble_mumu(user, decision_parts, original_text, chat_id):
+def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=None):
     step_type = decision_parts[0]
-
     users_str = decision_parts[-1]
     u1_id, u2_id = map(int, users_str.split('_'))
+
+    # Inicializar memoria de votos si no existe
+    if game_state is not None:
+        if 'votes' not in game_state: game_state['votes'] = {}
+        votes = game_state['votes']
+    else:
+        votes = {}  # Fallback (no debería ocurrir con el nuevo bot.py)
 
     if step_type == 'vote':
         vote = decision_parts[1]
 
-        is_u1 = (user.id == u1_id)
-        is_u2 = (user.id == u2_id)
+        # Identificar usuario
+        if user.id != u1_id and user.id != u2_id: return {'text': original_text}
 
-        if not is_u1 and not is_u2:
-            return {'text': original_text}
+        # Guardar voto en memoria
+        if user.id in votes:
+            return {'text': original_text}  # Ya votó
 
-        # Marcador invisible ahora GUARDA LA ELECCIÓN (ej: ✅ 123456=miltank)
-        # pero en el texto visible SOLO muestra que ya votó
-        voted_marker = f"✅ {user.id}="
-        if voted_marker in original_text:
-            return {'text': original_text}  # --- CAMBIO 2: Ya no puede votar más ---
+        votes[user.id] = vote
 
-        # --- CAMBIO 1: Voto Secreto (Actualizamos el texto ocultando la elección) ---
-        new_text = original_text + f"\n\nℹ️<b>{user.first_name}</b> ya ha decidido qué hacer. <span style='display:none'>{voted_marker}{vote}</span>"
+        # Actualizar texto visual
+        # Limpiamos el texto original de mensajes de "esperando" anteriores
+        base_text = original_text.split("\n\n<i>")[0]
 
-        # Comprobar si ambos han votado ya
-        if f"✅ {u1_id}=" in new_text and f"✅ {u2_id}=" in new_text:
-            import re
+        # Comprobar si ambos han votado
+        if u1_id in votes and u2_id in votes:
+            # Ambos listos -> RESOLUCIÓN
+            # Necesitamos los nombres para el mensaje final.
+            # Como no los tenemos guardados aquí, usamos genéricos o el del user actual.
+            name1 = user.first_name if user.id == u1_id else "Jugador 1"
+            name2 = user.first_name if user.id == u2_id else "Jugador 2"
 
-            # Buscar los votos ocultos en el HTML (Formato: ✅ 12345=opcion)
-            match1 = re.search(fr"✅ {u1_id}=(\w+)", new_text)
-            match2 = re.search(fr"✅ {u2_id}=(\w+)", new_text)
+            return _resolver_mumu(u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], chat_id)
 
-            # (El fallback es por seguridad, no debería fallar)
-            c1 = match1.group(1).lower() if match1 else vote
-            c2 = match2.group(1).lower() if match2 else vote
-
-            # Para la resolución, necesitamos saber los nombres (como no están guardados, los extraemos del ID o genéricos)
-            # Para no hacer peticiones a la API desde aquí, usamos la variable user para el que acaba de pulsar (el último),
-            # y "Tu compañero" para el otro (o podríamos reconstruir la mención, pero esto es más seguro).
-            name1 = user.first_name if is_u1 else "Jugador 1"
-            name2 = user.first_name if is_u2 else "Jugador 2"
-
-            return _resolver_mumu(u1_id, name1, c1, u2_id, name2, c2, chat_id)
 
         else:
-            # Aún falta uno por votar. Mantenemos teclado.
+
+            # Falta uno -> MENSAJE DE ESPERA CON MENCIÓN
+
+            waiting_id = u2_id if user.id == u1_id else u1_id
+
+            # Construimos la mención HTML
+
+            mention_link = f'<a href="tg://user?id={waiting_id}">su compañero</a>'
+
+            wait_text = f"\n\n<i>{user.first_name} ha elegido, esperando a {mention_link}...</i>"
+
             keyboard = [[
-                {'text': 'Miltank', 'callback_data': f'ev|doble_mumu|vote|miltank'},
-                {'text': 'Otros Pokémon', 'callback_data': f'ev|doble_mumu|vote|otros'}
+
+                {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|vote|miltank'},
+
+                {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|vote|otros'}
+
             ]]
-            return {'text': new_text, 'keyboard': keyboard}
+
+            return {'text': base_text + wait_text, 'keyboard': keyboard}
+
+
+# (La función _resolver_mumu SE QUEDA IGUAL, NO HACE FALTA CAMBIARLA)
+# Asegúrate de mantener tu función _resolver_mumu que ya tenías debajo.
 
 
 def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
@@ -1548,86 +1557,74 @@ def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
 def _get_safari_start(participants):
     u1, u2 = participants[0], participants[1]
 
-    # Determinar Día o Noche
     hour = datetime.now(TZ_SPAIN).hour
     is_day = 9 <= hour < 21
-
     pool = [161, 194, 195, 162, 179, 234, 203, 187, 188, 191, 189] if is_day else [202, 200, 235, 198, 228, 229]
     poke_id = random.choice(pool)
     poke_name = POKEMON_BY_ID[poke_id]['name']
 
-    # Preparamos los datos ocultos. Limpiamos las barras | de los nombres por seguridad.
-    n1, n2 = u1['name'].replace('|', ''), u2['name'].replace('|', '')
-    hidden_data = f"<span style='display:none'>DATA|{u1['id']}|{u1['mention']}|{n1}|{u2['id']}|{u2['mention']}|{n2}|{poke_id}</span>"
+    # Guardamos el Pokémon que ha salido en el texto visible para no perderlo
+    # (O en game_state si pudiéramos iniciarlo aquí, pero start no recibe state).
+    # TRUCO: Lo codificamos en el callback data del botón "vote" para no perderlo
+    # ev|johto_safari|vote|ACCION|POKE_ID|USERS
 
     text = (
         f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
         f"🔸Ambos se encuentran en la Zona Safari de la Ruta 48 y deciden cooperar para escanear un Pokémon: "
         f"acaban de ver un <b>{poke_name}</b> salvaje y piensan en cómo actuar:\n\n"
         f"<b>Cada uno debe elegir una acción:</b>"
-        f"{hidden_data}"
     )
 
     keyboard = [[
-        {'text': 'Escanear', 'callback_data': 'ev|johto_safari|vote|escanear'},
-        {'text': 'Cebo', 'callback_data': 'ev|johto_safari|vote|cebo'},
-        {'text': 'Acercarse', 'callback_data': 'ev|johto_safari|vote|acercar'}
+        {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear|{poke_id}'},
+        {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo|{poke_id}'},
+        {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar|{poke_id}'}
     ]]
     return {'text': text, 'keyboard': keyboard}
 
 
-def evento_johto_safari(user, decision_parts, original_text, chat_id):
+def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state=None):
+    # parts: [vote, accion, poke_id, users]
     step_type = decision_parts[0]
+    action = decision_parts[1]
+    poke_id = int(decision_parts[2])
     users_str = decision_parts[-1]
     u1_id, u2_id = map(int, users_str.split('_'))
 
+    if game_state is not None:
+        if 'votes' not in game_state: game_state['votes'] = {}
+        votes = game_state['votes']
+    else:
+        votes = {}
+
     if step_type == 'vote':
-        vote = decision_parts[1]
+        if user.id != u1_id and user.id != u2_id: return {'text': original_text}
 
-        is_u1 = (user.id == u1_id)
-        is_u2 = (user.id == u2_id)
+        if user.id in votes: return {'text': original_text}
 
-        if not is_u1 and not is_u2:
-            return {'text': original_text}
+        votes[user.id] = action
 
-        voted_marker = f"✅ {user.id}="
-        if voted_marker in original_text:
-            return {'text': original_text}  # Ya votó
+        # Limpiar texto anterior
+        base_text = original_text.split("\n\n<i>")[0]
 
-        import re
-        # Extraer datos ocultos
-        data_match = re.search(r"DATA\|(\d+)\|([^|]+)\|([^|]+)\|(\d+)\|([^|]+)\|([^|]+)\|(\d+)", original_text)
-        if not data_match: return {'text': "Error interno leyendo los datos del evento."}
+        if u1_id in votes and u2_id in votes:
+            name1 = user.first_name if user.id == u1_id else "Jugador 1"
+            name2 = user.first_name if user.id == u2_id else "Jugador 2"
 
-        d_u1_id, d_u1_ment, d_u1_name, d_u2_id, d_u2_ment, d_u2_name, poke_id = data_match.groups()
-        poke_id = int(poke_id)
-
-        # Saber a quién estamos esperando
-        other_mention = d_u2_ment if is_u1 else d_u1_ment
-
-        # Quitar el mensaje de "esperando" si ya existía (por si acaso, aunque aquí solo se añade 1 vez)
-        clean_text = re.sub(r"\n\n<i>.+ ha elegido una acción, esperando a .+</i>", "", original_text)
-
-        wait_msg = f"\n\n<i>{user.first_name} ha elegido una acción, esperando a {other_mention}.</i>"
-        new_text = clean_text + wait_msg + f"<span style='display:none'>{voted_marker}{vote}</span>"
-
-        # Comprobar si ambos han votado ya
-        if f"✅ {u1_id}=" in new_text and f"✅ {u2_id}=" in new_text:
-            m1 = re.search(fr"✅ {u1_id}=(\w+)", new_text)
-            m2 = re.search(fr"✅ {u2_id}=(\w+)", new_text)
-
-            c1 = m1.group(1).lower() if m1 else vote
-            c2 = m2.group(1).lower() if m2 else vote
-
-            return _resolver_safari(u1_id, d_u1_name, c1, u2_id, d_u2_name, c2, poke_id, chat_id)
+            return _resolver_safari(u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], poke_id, chat_id)
 
         else:
+            waiting_id = u2_id if user.id == u1_id else u1_id
+            mention_link = f'<a href="tg://user?id={waiting_id}">su compañero</a>'
+
+            wait_text = f"\n\n<i>{user.first_name} ha elegido una acción, esperando a {mention_link}...</i>"
+
             keyboard = [[
-                {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear'},
-                {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo'},
-                {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar'}
+                {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear|{poke_id}'},
+                {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo|{poke_id}'},
+                {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar|{poke_id}'}
             ]]
-            return {'text': new_text, 'keyboard': keyboard}
+            return {'text': base_text + wait_text, 'keyboard': keyboard}
 
 
 def _resolver_safari(u1_id, n1, c1, u2_id, n2, c2, poke_id, chat_id):
