@@ -85,7 +85,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
         return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
-                f"{pokemon_display} {rarity_emoji}. Como ya lo tenías, se convierte en <b>{format_money(money_earned)}₽</b> 💰.")
+                f"{pokemon_display} {rarity_emoji}. Como ya lo tenías repetido, se convierte en <b>{format_money(money_earned)}₽</b> 💰.")
 
 # --- LÓGICA DE EVENTOS (TRADUCIDA A HTML) ---
 
@@ -1447,11 +1447,12 @@ def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=N
 
         # Comprobar si ambos han votado
         if u1_id in votes and u2_id in votes:
-            # Ambos listos -> RESOLUCIÓN
-            # Necesitamos los nombres para el mensaje final.
-            # Como no los tenemos guardados aquí, usamos genéricos o el del user actual.
-            name1 = user.first_name if user.id == u1_id else "Jugador 1"
-            name2 = user.first_name if user.id == u2_id else "Jugador 2"
+            # Extraer nombres reales de la memoria (game_state)
+            name1, name2 = "Jugador 1", "Jugador 2"
+            if game_state and 'participants' in game_state:
+                for p in game_state['participants']:
+                    if p['id'] == u1_id: name1 = p['name']
+                    if p['id'] == u2_id: name2 = p['name']
 
             return _resolver_mumu(u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], chat_id)
 
@@ -1481,9 +1482,12 @@ def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=N
 
 
 def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
-    # (El resto de esta función sigue exactamente igual que antes)
     POOL_OTROS = [16, 19, 234, 128, 143, 190, 161, 162, 165, 166, 187, 188, 192]
     POOL_MILTANK_SOLO = [241, 203, 217, 190]
+
+    # Creamos las menciones HTML para los premios
+    mention1 = f'<a href="tg://user?id={uid1}">{name1}</a>'
+    mention2 = f'<a href="tg://user?id={uid2}">{name2}</a>'
 
     text = ""
 
@@ -1491,6 +1495,7 @@ def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
     if c1 == 'miltank' and c2 == 'miltank':
         text += f"<i>Ambos eligieron ir a ver los Miltank.</i>\n\n"
         text += "La familia de la granja les pide ayuda para vender Leche Mu-mu.\n\n"
+        text += "Después de una jornada de trabajo, les dan las gracias:\n\n"
 
         outcome = random.choice(['bien', 'regular', 'mal'])
 
@@ -1506,46 +1511,49 @@ def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
 
         db.update_money(uid1, prize)
         db.update_money(uid2, prize)
-        text += f"👤 {name1} recibió <b>{prize}₽</b>\n👤 {name2} recibió <b>{prize}₽</b>"
+        text += f"👤 {mention1} recibió <b>{prize}₽</b>\n👤 {mention2} recibió <b>{prize}₽</b>"
 
     # CASO 2: AMBOS OTROS
     elif c1 == 'otros' and c2 == 'otros':
-        text += f"<i>Ambos eligieron ir a ver a otros Pokémon.</i>\n\n"
-        text += "Sacan su Álbumdex para escanear lo que ven cerca.\n\n"
-
+        # Seleccionamos los Pokémon ANTES del texto para poder nombrarlos
         p1a, p1b = random.sample(POOL_OTROS, 2)
-        r1a = _handle_sticker_reward(uid1, name1, p1a, roll_shiny(), chat_id)
-        r1b = _handle_sticker_reward(uid1, name1, p1b, roll_shiny(), chat_id)
-
         p2a, p2b = random.sample(POOL_OTROS, 2)
-        r2a = _handle_sticker_reward(uid2, name2, p2a, roll_shiny(), chat_id)
-        r2b = _handle_sticker_reward(uid2, name2, p2b, roll_shiny(), chat_id)
+
+        text += f"<i>Ambos eligieron ir a ver a otros Pokémon.</i>\n\n"
+        text += f"🔸{name1} y {name2} comienzan a observar, y cogen su Álbumdex para escanear a un <b>{POKEMON_BY_ID[p1a]['name']}</b> y un <b>{POKEMON_BY_ID[p2a]['name']}</b> que andaban cerca de ellos.\n\n"
+
+        r1a = _handle_sticker_reward(uid1, mention1, p1a, roll_shiny(), chat_id)
+        r1b = _handle_sticker_reward(uid1, mention1, p1b, roll_shiny(), chat_id)
+
+        r2a = _handle_sticker_reward(uid2, mention2, p2a, roll_shiny(), chat_id)
+        r2b = _handle_sticker_reward(uid2, mention2, p2b, roll_shiny(), chat_id)
 
         text += f"{r1a}\n{r1b}\n\n{r2a}\n{r2b}"
 
     # CASO 3: MIXTO
     else:
-        text += f"<i>Uno fue a los Miltank y el otro a ver a otros Pokémon.</i>\n\n"
+        # Detectamos quién eligió Miltank y quién eligió Otros
+        if c1 == 'miltank':
+            uid_m, name_m, mention_m = uid1, name1, mention1
+            uid_o, name_o, mention_o = uid2, name2, mention2
+        else:
+            uid_m, name_m, mention_m = uid2, name2, mention2
+            uid_o, name_o, mention_o = uid1, name1, mention1
 
-        def resolver_individual(uid, name, choice):
-            res_text = ""
-            if choice == 'miltank':
-                if random.random() < 0.5:
-                    res_text += f"🔸{name} ve una manada de Miltank.\n"
-                    r = _handle_sticker_reward(uid, name, 241, roll_shiny(), chat_id)
-                else:
-                    p_id = random.choice(POOL_MILTANK_SOLO)
-                    res_text += f"🔸{name} ve a Blanca con su <b>{POKEMON_BY_ID[p_id]['name']}</b>.\n"
-                    r = _handle_sticker_reward(uid, name, p_id, roll_shiny(), chat_id)
-                res_text += r
-            else:
-                p_id = random.choice(POOL_OTROS)
-                res_text += f"🔸{name} escanea un <b>{POKEMON_BY_ID[p_id]['name']}</b>.\n"
-                res_text += _handle_sticker_reward(uid, name, p_id, roll_shiny(), chat_id)
-            return res_text
+        text += f"<i>{name_m} eligió ir a ver Miltank y {name_o} ir a ver a otros Pokémon.</i>\n\n"
 
-        text += resolver_individual(uid1, name1, c1) + "\n\n"
-        text += resolver_individual(uid2, name2, c2)
+        p_id_o = random.choice(POOL_OTROS)
+
+        if random.random() < 0.5:
+            p_id_m = 241
+            text += f"🔸{name_m} ve una manada de Miltank. Mientras, {name_o} consigue escanear uno de los Pokémon que se encuentra cerca de él, es un <b>{POKEMON_BY_ID[p_id_o]['name']}</b>.\n\n"
+        else:
+            p_id_m = random.choice(POOL_MILTANK_SOLO)
+            text += f"🔸{name_m} ve a Blanca, la líder de gimnasio, que se encuentra con su <b>{POKEMON_BY_ID[p_id_m]['name']}</b>, y decide sacar unas fotos y escanear al Pokémon. Mientras, {name_o} consigue escanear uno de los Pokémon que se encuentra cerca de él, es un <b>{POKEMON_BY_ID[p_id_o]['name']}</b>.\n\n"
+
+        # Otorgamos los premios
+        text += _handle_sticker_reward(uid_m, mention_m, p_id_m, roll_shiny(), chat_id) + "\n\n"
+        text += _handle_sticker_reward(uid_o, mention_o, p_id_o, roll_shiny(), chat_id)
 
     return {'text': text}
 
@@ -1569,12 +1577,11 @@ def _get_safari_start(participants):
         f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
         f"🔸Ambos se encuentran en la Zona Safari de la Ruta 48 y deciden cooperar para escanear un Pokémon: "
         f"acaban de ver un <b>{poke_name}</b> salvaje y piensan en cómo actuar:\n\n"
-        f"<b>Cada uno debe elegir una acción:</b>"
     )
 
     keyboard = [[
         {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
-        {'text': 'Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
+        {'text': 'Usar Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
         {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
     ]]
     return {'text': text, 'keyboard': keyboard}
@@ -1605,8 +1612,11 @@ def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state
         base_text = original_text.split("\n\n<i>")[0]
 
         if u1_id in votes and u2_id in votes:
-            name1 = user.first_name if user.id == u1_id else "Jugador 1"
-            name2 = user.first_name if user.id == u2_id else "Jugador 2"
+            name1, name2 = "Jugador 1", "Jugador 2"
+            if game_state and 'participants' in game_state:
+                for p in game_state['participants']:
+                    if p['id'] == u1_id: name1 = p['name']
+                    if p['id'] == u2_id: name2 = p['name']
 
             return _resolver_safari(u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], poke_id, chat_id)
 
@@ -1618,7 +1628,7 @@ def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state
 
             keyboard = [[
                 {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
-                {'text': 'Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
+                {'text': 'Usar Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
                 {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
             ]]
             return {'text': base_text + wait_text, 'keyboard': keyboard}
@@ -1633,12 +1643,15 @@ def _resolver_safari(u1_id, n1, c1, u2_id, n2, c2, poke_id, chat_id):
     rewards = []  # Para las frases finales de stickers
 
     # Función auxiliar para calcular si lo atrapa y dar el premio
+    # Función auxiliar para calcular si lo atrapa y dar el premio
     def attempt_catch(uid, name, pid, chance):
         p_name = POKEMON_BY_ID[pid]['name']
         if chance == 100 or (chance > 0 and random.random() < (chance / 100.0)):
             # ¡Atrapado!
             is_shiny = roll_shiny()
-            rw = _handle_sticker_reward(uid, name, pid, is_shiny, chat_id)
+            # Creamos la mención HTML para que el nombre salga clickeable
+            mention = f'<a href="tg://user?id={uid}">{name}</a>'
+            rw = _handle_sticker_reward(uid, mention, pid, is_shiny, chat_id)
             rewards.append(rw)
             results.append(f"👤 {name}: {p_name} ✅")
         else:
