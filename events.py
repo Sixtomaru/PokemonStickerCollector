@@ -1422,32 +1422,34 @@ def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=N
     users_str = decision_parts[-1]
     u1_id, u2_id = map(int, users_str.split('_'))
 
-    # Inicializar memoria de votos si no existe
     if game_state is not None:
         if 'votes' not in game_state: game_state['votes'] = {}
         votes = game_state['votes']
     else:
-        votes = {}  # Fallback (no debería ocurrir con el nuevo bot.py)
+        votes = {}
 
     if step_type == 'vote':
         vote = decision_parts[1]
 
-        # Identificar usuario
-        if user.id != u1_id and user.id != u2_id: return {'text': original_text}
+        # 1. Recreamos el teclado para no perderlo nunca
+        keyboard = [[
+            {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|decision|vote|miltank'},
+            {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|decision|vote|otros'}
+        ]]
 
-        # Guardar voto en memoria
+        # 2. Si alguien que no es del evento pulsa, mantenemos los botones
+        if user.id != u1_id and user.id != u2_id:
+            return {'text': original_text, 'keyboard': keyboard}
+
+        # 3. Si ya habías votado, mantenemos los botones intactos
         if user.id in votes:
-            return {'text': original_text}  # Ya votó
+            return {'text': original_text, 'keyboard': keyboard}
 
+        # Registramos el voto
         votes[user.id] = vote
-
-        # Actualizar texto visual
-        # Limpiamos el texto original de mensajes de "esperando" anteriores
         base_text = original_text.split("\n\n<i>")[0]
 
-        # Comprobar si ambos han votado
         if u1_id in votes and u2_id in votes:
-            # Extraer nombres reales de la memoria (game_state)
             name1, name2 = "Jugador 1", "Jugador 2"
             if game_state and 'participants' in game_state:
                 for p in game_state['participants']:
@@ -1456,23 +1458,10 @@ def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=N
 
             return _resolver_mumu(u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], chat_id)
 
-
         else:
-
-            # Falta uno -> MENSAJE DE ESPERA CON MENCIÓN
-
             waiting_id = u2_id if user.id == u1_id else u1_id
-
-            # Construimos la mención HTML
-
             mention_link = f'<a href="tg://user?id={waiting_id}">su compañero</a>'
-
             wait_text = f"\n\n<i>{user.first_name} ha elegido, esperando a {mention_link}...</i>"
-
-            keyboard = [[
-                {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|decision|vote|miltank'},
-                {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|decision|vote|otros'}
-            ]]
 
             return {'text': base_text + wait_text, 'keyboard': keyboard}
 
@@ -1588,7 +1577,6 @@ def _get_safari_start(participants):
 
 
 def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state=None):
-    # parts: [vote, accion, poke_id, users]
     step_type = decision_parts[0]
     action = decision_parts[1]
     poke_id = int(decision_parts[2])
@@ -1602,13 +1590,23 @@ def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state
         votes = {}
 
     if step_type == 'vote':
-        if user.id != u1_id and user.id != u2_id: return {'text': original_text}
 
-        if user.id in votes: return {'text': original_text}
+        # 1. Recreamos el teclado con el poke_id correspondiente
+        keyboard = [[
+            {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
+            {'text': 'Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
+            {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
+        ]]
+
+        # 2. Seguridad: usuarios externos
+        if user.id != u1_id and user.id != u2_id:
+            return {'text': original_text, 'keyboard': keyboard}
+
+        # 3. Seguridad: si ya has votado
+        if user.id in votes:
+            return {'text': original_text, 'keyboard': keyboard}
 
         votes[user.id] = action
-
-        # Limpiar texto anterior
         base_text = original_text.split("\n\n<i>")[0]
 
         if u1_id in votes and u2_id in votes:
@@ -1623,14 +1621,8 @@ def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state
         else:
             waiting_id = u2_id if user.id == u1_id else u1_id
             mention_link = f'<a href="tg://user?id={waiting_id}">su compañero</a>'
-
             wait_text = f"\n\n<i>{user.first_name} ha elegido una acción, esperando a {mention_link}...</i>"
 
-            keyboard = [[
-                {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
-                {'text': 'Usar Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
-                {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
-            ]]
             return {'text': base_text + wait_text, 'keyboard': keyboard}
 
 
