@@ -1983,7 +1983,6 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("Este evento ya no está disponible.", show_alert=True)
         return
 
-    # --- LÓGICA EVENTO DOBLE ---
     event_id = event_info['event_id']
     is_double = event_id.startswith("doble_")
 
@@ -2004,31 +2003,31 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     # CASO 1: Falta gente para evento doble
     if is_double and len(participants) < 2:
         await query.answer("¡Te has unido! Esperando a otro jugador...")
-        text = f"👥 <b>Evento Doble</b>\n\n✅ <b>{user.first_name}</b> se ha unido.\n⏳ Esperando a 1 persona más..."
+        text = f"👥 <b>¡Un Evento Doble apareció!</b>\n\n✅ <b>{user.first_name}</b> se ha unido.\n⏳ Esperando a 1 persona más..."
         await message.edit_text(text, reply_markup=message.reply_markup, parse_mode='HTML')
         return
 
     # CASO 2: Ya estamos todos (o es evento simple)
     await query.answer("¡El evento comienza!")
-    await message.delete()
+
+    # --- CAMBIO IMPORTANTE: Inicializamos memoria de votos ---
+    if is_double:
+        event_info['votes'] = {}  # Creamos el diccionario vacío para guardar elecciones
+    # ---------------------------------------------------------
 
     event_data = EVENTS[event_id]
     step_data = event_data['steps']['start']
 
-    # --- CORRECCIÓN DEL ERROR AQUÍ ---
-    # Si es doble pasamos la lista, si es normal pasamos el usuario para que no explote
     if is_double:
         result = step_data['get_text_and_keyboard'](participants)
     else:
         result = step_data['get_text_and_keyboard'](user)
-    # ---------------------------------
 
     text = result['text']
-
     keyboard_rows = []
+
     if 'keyboard' in result and result['keyboard']:
         for row in result['keyboard']:
-            # Añadimos los IDs de los participantes al callback para validar luego
             users_str = "_".join([str(p['id']) for p in participants])
             keyboard_rows.append([
                 InlineKeyboardButton(button['text'], callback_data=f"{button['callback_data']}|{users_str}")
@@ -2037,8 +2036,9 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     reply_markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
 
-    await context.bot.send_message(
-        chat_id=message.chat_id,
+    # --- CAMBIO IMPORTANTE: EDITAMOS (NO BORRAMOS) ---
+    # Al editar, mantenemos el mismo message_id, así la memoria no se pierde.
+    await message.edit_text(
         text=text,
         reply_markup=reply_markup,
         parse_mode='HTML'
@@ -2878,7 +2878,7 @@ async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif hours_left > 6:
         text = "A veces se mueve, ¿qué saldrá de aquí?"
     else:
-        text = "Se oyen ruidos dentro, debe estar a punto de abrirse."
+        text = "Se oyen ruidos dentro, debe de estar a punto de abrirse."
 
     await query.answer(text, show_alert=True)
 
