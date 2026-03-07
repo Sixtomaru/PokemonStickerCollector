@@ -1225,7 +1225,7 @@ async def refresh_codes_board(bot: Bot, chat_id: int):
     text += "🔶*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "🔶*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
     text += "🔶*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n"
-    text += "ℹ Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+    text += "ℹ Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Si quieres que el bot te avise cuando tu código esté a punto de caducar, inicia el bot en su chat: @PokeStickerCollectorBot_ \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
 
 
     # --- CAMBIO: Solo botón Renovar ---
@@ -3959,7 +3959,7 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
-    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n _Si quieres que el bot te avise cuando tu código esté a punto de caducar, inicia el bot en su chat: @PokeStickerCollectorBot_ \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
 
 
     keyboard = [
@@ -5379,6 +5379,26 @@ def main():
 
         await update.message.delete()
 
+
+    async def menu_grupo_shuffle_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = "ℹ️ Menú:"
+
+        # Creamos la lista de botones URL (cada uno en su propia fila)
+        keyboard = [
+            [InlineKeyboardButton("🗓 Calendario de Eventos Especiales", url="https://t.me/pokemon_shuffle/136468")],
+            [InlineKeyboardButton("👥 Lista de Códigos Shuffle", url="https://t.me/pokemon_shuffle/376640")],
+            [InlineKeyboardButton("🏆 Retos de Grupo", url="https://t.me/pokemon_shuffle/172831")],
+            [InlineKeyboardButton("🗣 Off-Topic", url="https://t.me/joinchat/BJ0pDg7ntNfIFuVonHSTiQ")],
+            [InlineKeyboardButton("🔴 Pokémon Go", url="https://t.me/joinchat/Y4wR9kZnCX0zZTVk")],
+            [InlineKeyboardButton("🎴 Pokémon TCGP", url="https://t.me/+4iaXq14CXIsyOWM0")]
+        ]
+
+        # Enviamos el mensaje con el teclado
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            disable_notification=True
+        )
     # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
@@ -5441,6 +5461,7 @@ def main():
         CommandHandler("setupcodigos", admin_setup_codes),
         CommandHandler("regalodelibird", admin_regalo_delibird),
         CommandHandler("forceevento", force_event_command),
+        CommandHandler("menugruposhuffle", menu_grupo_shuffle_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
