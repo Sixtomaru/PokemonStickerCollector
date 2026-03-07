@@ -2110,9 +2110,13 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     event_data = EVENTS.get(event_id)
-    if not event_data: return
+    if not event_data:
+        await query.answer(f"Error: Evento {event_id} no encontrado.", show_alert=True)
+        return
     step_data = event_data['steps'].get(step_id)
-    if not step_data: return
+    if not step_data:
+        await query.answer(f"Error: Paso {step_id} no encontrado.", show_alert=True)
+        return
 
     if 'action' in step_data:
         full_decision = decision_parts + [owner_id_str]
