@@ -1496,7 +1496,7 @@ def _resolver_mumu(uid1, name1, c1, uid2, name2, c2, chat_id):
             text += "💬 <b>Ha ido muy bien, aunque podría haber ido mejor. Aun así, muchas gracias por todo, aquí tenéis:</b>\n\n"
         else:
             prize = 200
-            text += "💬 <b>Pues han ido muy bien las ventas. Aun así, os agradezco la ayuda, aquí tenéis:</b>\n\n"
+            text += "💬 <b>Pues no han ido muy bien las ventas. Aun así, os agradezco la ayuda, aquí tenéis:</b>\n\n"
 
         db.update_money(uid1, prize)
         db.update_money(uid2, prize)
@@ -1679,7 +1679,7 @@ def _resolver_safari(u1_id, n1, c1, u2_id, n2, c2, poke_id, chat_id):
     elif c1 == 'escanear' and c2 == 'escanear':
         text += (
             f"ℹ️<i>Ambos eligieron Escanear.</i>\n\n"
-            f"Ambos se miran desafiantes, y comienzan a hacer fotos, intentando escanear al <b>{pk1_name}</b>. "
+            f"Los dos se miran desafiantes, y comienzan a hacer fotos, intentando escanear al <b>{pk1_name}</b>. "
             f"Al notar tanto ruido y movimiento, el Pokémon huye del lugar. Ambos miran su Álbumdex esperando haberlo registrado.\n\n"
         )
         attempt_catch(u1_id, n1, poke_id, 50)
