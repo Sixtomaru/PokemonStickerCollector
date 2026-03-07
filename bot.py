@@ -4029,12 +4029,18 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     action = query.data
     chat_id = query.message.chat_id
 
-    # Comprobamos si el mensaje pulsado es el tablón FIJO o el temporal
+    # Recuperamos la ID guardada en la base de datos
     fixed_board_id = db.get_codes_board_msg(chat_id)
-    is_fixed_board = (fixed_board_id == query.message.message_id)
-    
-    # --- CAMBIO: Reiniciar a 600 segundos en cualquier interacción ---
-    if not is_fixed_board:
+
+    # --- COMPARACIÓN ROBUSTA (Convertimos a string para evitar errores de tipo) ---
+    # Comparamos si la ID guardada es igual a la ID del mensaje que se ha tocado
+    is_fixed_board = (str(fixed_board_id) == str(query.message.message_id))
+
+    if is_fixed_board:
+        # ¡ES EL FIJO! -> Red de seguridad: Cancelamos cualquier borrado pendiente
+        cancel_scheduled_deletion(context, chat_id, query.message.message_id)
+    else:
+        # NO ES EL FIJO -> Ponemos cuenta atrás de 10 minutos
         refresh_deletion_timer(context, query.message, 600)
 
     if action == "codes_menu_add":
@@ -4043,7 +4049,7 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n"
             "`Nick Región Código`\n\n"
             "• **Ejemplo:** `Sixtomaru Europa 6T4A2944`\n\n"
-            "_Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+            "_Si quieres que el bot te avise cuando tu código esté a punto de caducar, inicia el bot en su chat: @PokeStickerCollectorBot_ \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Atrás", callback_data="codes_menu_back")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -4052,8 +4058,14 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif action == "codes_menu_renew":
         if db.renew_friend_code(user_id):
             await query.answer("✅ ¡Código renovado por 30 días!", show_alert=True)
-            await codigos_cmd(update, context)
-            await refresh_codes_board(context.bot, query.message.chat_id)
+
+            # Si es el fijo, refrescamos el tablón visualmente.
+            # Si es temporal, volvemos al menú principal (que regenera el mensaje).
+            if is_fixed_board:
+                await refresh_codes_board(context.bot, chat_id)
+            else:
+                await codigos_cmd(update, context)
+                await refresh_codes_board(context.bot, chat_id)
         else:
             await query.answer("❌ No se ha encontrado tu código de amigo, por favor, añádelo de nuevo a la lista.",
                                show_alert=True)
@@ -5522,4 +5534,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
