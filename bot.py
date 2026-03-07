@@ -4027,9 +4027,15 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     user_id = query.from_user.id
     action = query.data
+    chat_id = query.message.chat_id
 
+    # Comprobamos si el mensaje pulsado es el tablón FIJO o el temporal
+    fixed_board_id = db.get_codes_board_msg(chat_id)
+    is_fixed_board = (fixed_board_id == query.message.message_id)
+    
     # --- CAMBIO: Reiniciar a 600 segundos en cualquier interacción ---
-    refresh_deletion_timer(context, query.message, 600)
+    if not is_fixed_board:
+        refresh_deletion_timer(context, query.message, 600)
 
     if action == "codes_menu_add":
         text = (
@@ -5516,4 +5522,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
