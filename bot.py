@@ -2148,16 +2148,22 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if 'keyboard' in result and result['keyboard']:
             keyboard_rows = []
             for row in result['keyboard']:
-                base_data = row['callback_data']
+                # Soporte inteligente: Si es una lista simple (1D) la envuelve, si es (2D) la deja igual
+                items = [row] if isinstance(row, dict) else row
 
-                # Intentamos pegar la ID solo si cabe. Si no cabe, no pasa nada,
-                # porque la próxima vez la leeremos de la memoria RAM (ver punto 1 arriba).
-                if len(base_data) + len(owner_id_str) < 60:
-                    final_data = f"{base_data}|{owner_id_str}"
-                else:
-                    final_data = base_data
+                button_row = []
+                for button in items:
+                    base_data = button['callback_data']
 
-                keyboard_rows.append([InlineKeyboardButton(row['text'], callback_data=final_data)])
+                    # Intentamos pegar la ID solo si cabe
+                    if len(base_data) + len(owner_id_str) < 60:
+                        final_data = f"{base_data}|{owner_id_str}"
+                    else:
+                        final_data = base_data
+
+                    button_row.append(InlineKeyboardButton(button['text'], callback_data=final_data))
+
+                keyboard_rows.append(button_row)
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
         try:
