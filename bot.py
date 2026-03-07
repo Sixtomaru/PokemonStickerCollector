@@ -2066,22 +2066,15 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             p_ids = [str(p['id']) for p in active_event['participants']]
             owner_id_str = "_".join(p_ids)
 
-            # Los datos de decisión son todo lo que hay después del step_id
-            # Como leemos de memoria, no necesitamos limpiar la ID del final del botón
-            # porque asumimos que el botón puede venir "limpio" o "sucio", pero nosotros usamos la ID de memoria.
-
-            # Pero cuidado: si el botón SÍ tenía la ID pegada, hay que quitarla de decision_parts
             raw_decision = parts[3:]
+
+            # Si la ID del usuario se pegó al final del botón, la quitamos.
             if raw_decision and raw_decision[-1] == owner_id_str:
                 decision_parts = raw_decision[:-1]
-            # Si el botón tenía una ID parcial o cortada, es difícil saberlo,
-            # pero asumimos que si la memoria está bien, confiamos en ella.
             else:
-                # Si el último trozo tiene pinta de ser IDs (números y guiones), lo quitamos por si acaso
-                if raw_decision and (raw_decision[-1].replace('_', '').isdigit()):
-                    decision_parts = raw_decision[:-1]
-                else:
-                    decision_parts = raw_decision
+                # Si no coincide exactamente, significa que la ID no se pegó por límite de caracteres.
+                # ¡NO BORRAMOS NADA! Porque lo último es el ID del Pokémon.
+                decision_parts = raw_decision
 
         else:
             # 2. Si no está en memoria (Reinicio), leemos del botón (Fallback)
