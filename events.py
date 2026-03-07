@@ -1411,8 +1411,8 @@ def _get_mumu_start(participants):
         "<b>Cada uno debe elegir dónde ir:</b>"
     )
     keyboard = [[
-        {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|vote|miltank'},
-        {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|vote|otros'}
+        {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|decision|vote|miltank'},
+        {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|decision|vote|otros'}
     ]]
     return {'text': text, 'keyboard': keyboard}
 
@@ -1469,11 +1469,8 @@ def evento_doble_mumu(user, decision_parts, original_text, chat_id, game_state=N
             wait_text = f"\n\n<i>{user.first_name} ha elegido, esperando a {mention_link}...</i>"
 
             keyboard = [[
-
-                {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|vote|miltank'},
-
-                {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|vote|otros'}
-
+                {'text': 'Miltank', 'callback_data': 'ev|doble_mumu|decision|vote|miltank'},
+                {'text': 'Otros Pokémon', 'callback_data': 'ev|doble_mumu|decision|vote|otros'}
             ]]
 
             return {'text': base_text + wait_text, 'keyboard': keyboard}
@@ -1576,9 +1573,9 @@ def _get_safari_start(participants):
     )
 
     keyboard = [[
-        {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear|{poke_id}'},
-        {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo|{poke_id}'},
-        {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar|{poke_id}'}
+        {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
+        {'text': 'Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
+        {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
     ]]
     return {'text': text, 'keyboard': keyboard}
 
@@ -1620,9 +1617,9 @@ def evento_johto_safari(user, decision_parts, original_text, chat_id, game_state
             wait_text = f"\n\n<i>{user.first_name} ha elegido una acción, esperando a {mention_link}...</i>"
 
             keyboard = [[
-                {'text': 'Escanear', 'callback_data': f'ev|johto_safari|vote|escanear|{poke_id}'},
-                {'text': 'Cebo', 'callback_data': f'ev|johto_safari|vote|cebo|{poke_id}'},
-                {'text': 'Acercarse', 'callback_data': f'ev|johto_safari|vote|acercar|{poke_id}'}
+                {'text': 'Escanear', 'callback_data': f'ev|doble_safari|decision|vote|escanear|{poke_id}'},
+                {'text': 'Cebo', 'callback_data': f'ev|doble_safari|decision|vote|cebo|{poke_id}'},
+                {'text': 'Acercarse', 'callback_data': f'ev|doble_safari|decision|vote|acercar|{poke_id}'}
             ]]
             return {'text': base_text + wait_text, 'keyboard': keyboard}
 
