@@ -2055,10 +2055,45 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parts = query.data.split('|')
         event_id = parts[1]
         step_id = parts[2]
-        owner_id_str = parts[-1]
-        decision_parts = parts[3:-1]
+
+        # --- LÓGICA DE RECUPERACIÓN DE PARTICIPANTES ---
+        # 1. Intentamos leer de la memoria del chat (Más seguro)
+        active_event = context.chat_data.get('active_events', {}).get(message.message_id)
+        owner_id_str = ""
+
+        if active_event and 'participants' in active_event:
+            # Si el evento está activo en memoria, cogemos los IDs de ahí
+            p_ids = [str(p['id']) for p in active_event['participants']]
+            owner_id_str = "_".join(p_ids)
+
+            # Los datos de decisión son todo lo que hay después del step_id
+            # Como leemos de memoria, no necesitamos limpiar la ID del final del botón
+            # porque asumimos que el botón puede venir "limpio" o "sucio", pero nosotros usamos la ID de memoria.
+
+            # Pero cuidado: si el botón SÍ tenía la ID pegada, hay que quitarla de decision_parts
+            raw_decision = parts[3:]
+            if raw_decision and raw_decision[-1] == owner_id_str:
+                decision_parts = raw_decision[:-1]
+            # Si el botón tenía una ID parcial o cortada, es difícil saberlo,
+            # pero asumimos que si la memoria está bien, confiamos en ella.
+            else:
+                # Si el último trozo tiene pinta de ser IDs (números y guiones), lo quitamos por si acaso
+                if raw_decision and (raw_decision[-1].replace('_', '').isdigit()):
+                    decision_parts = raw_decision[:-1]
+                else:
+                    decision_parts = raw_decision
+
+        else:
+            # 2. Si no está en memoria (Reinicio), leemos del botón (Fallback)
+            owner_id_str = parts[-1]
+            decision_parts = parts[3:-1]
+        # ------------------------------------------------
 
         # Validar permisos
+        if not owner_id_str:
+            await query.answer("Este evento ha caducado.", show_alert=True)
+            return
+
         if '_' in owner_id_str:
             valid_owners = [int(x) for x in owner_id_str.split('_')]
             if user.id not in valid_owners:
@@ -2069,7 +2104,8 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await query.answer("No puedes interactuar.", show_alert=True)
                 return
 
-    except (IndexError, ValueError):
+    except (IndexError, ValueError) as e:
+        logger.warning(f"Error procesando evento: {e}")
         await query.answer("Error procesando evento.", show_alert=True)
         return
 
@@ -2081,12 +2117,10 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if 'action' in step_data:
         full_decision = decision_parts + [owner_id_str]
 
-        # --- CAMBIO CRÍTICO: RECUPERAR ESTADO DE MEMORIA ---
-        # Buscamos la memoria de este evento específico
-        current_state = context.chat_data.get('active_events', {}).get(message.message_id, {})
+        # Recuperar estado (si existe)
+        current_state = active_event if active_event else {}
 
         try:
-            # Intentamos pasar 'game_state' (Para eventos dobles nuevos)
             result = step_data['action'](
                 user, full_decision,
                 original_text=message.text_html,
@@ -2094,13 +2128,12 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 game_state=current_state
             )
         except TypeError:
-            # Si el evento es antiguo y no acepta 'game_state', lo llamamos como antes
+            # Compatibilidad con eventos antiguos
             result = step_data['action'](
                 user, full_decision,
                 original_text=message.text_html,
                 chat_id=message.chat_id
             )
-        # ---------------------------------------------------
 
         if result.get('event_completed') and result.get('event_id'):
             db.mark_event_completed(message.chat.id, result['event_id'])
@@ -2112,11 +2145,14 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             keyboard_rows = []
             for row in result['keyboard']:
                 base_data = row['callback_data']
-                # Protección contra callback demasiado largo
+
+                # Intentamos pegar la ID solo si cabe. Si no cabe, no pasa nada,
+                # porque la próxima vez la leeremos de la memoria RAM (ver punto 1 arriba).
                 if len(base_data) + len(owner_id_str) < 60:
                     final_data = f"{base_data}|{owner_id_str}"
                 else:
                     final_data = base_data
+
                 keyboard_rows.append([InlineKeyboardButton(row['text'], callback_data=final_data)])
             reply_markup = InlineKeyboardMarkup(keyboard_rows)
 
