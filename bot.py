@@ -3650,13 +3650,25 @@ async def send_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_force_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_USER_ID: return
 
-    # Borramos programación futura si la hay
+    # 1. Borramos la programación persistente (Base de Datos)
     db.clear_delibird_schedule()
 
-    # Lanzamos
+    # 2. BUSCAMOS Y ELIMINAMOS LA CUENTA ATRÁS EN RAM (El "Zombie")
+    # Buscamos trabajos con los nombres que usamos al programarlos
+    posibles_jobs = ["delibird_weekly_event", "delibird_restored_event", "delibird_recovered_event"]
+
+    jobs_killed = 0
+    for name in posibles_jobs:
+        current_jobs = context.job_queue.get_jobs_by_name(name)
+        for job in current_jobs:
+            job.schedule_removal()
+            jobs_killed += 1
+
+    # 3. Lanzamos el evento manualmente
     await trigger_delibird_event(context)
 
-    await update.message.reply_text("✅ Evento Delibird forzado manualmente.", disable_notification=True)
+    msg_extra = f" (Se cancelaron {jobs_killed} programaciones pendientes)" if jobs_killed > 0 else ""
+    await update.message.reply_text(f"✅ Evento Delibird forzado manualmente.{msg_extra}", disable_notification=True)
     await update.message.delete()
 
 async def send_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5534,4 +5546,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
