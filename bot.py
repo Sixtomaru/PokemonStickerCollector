@@ -5404,7 +5404,7 @@ def main():
         # Creamos la lista de botones URL (cada uno en su propia fila)
         keyboard = [
             [InlineKeyboardButton("🗓 Calendario de Eventos Especiales", url="https://t.me/pokemon_shuffle/136468")],
-            [InlineKeyboardButton("👥 Lista de Códigos Shuffle", url="https://t.me/pokemon_shuffle/376662")],
+            [InlineKeyboardButton("👥 Lista de Códigos Shuffle", url="https://t.me/pokemon_shuffle/376680")],
             [InlineKeyboardButton("🏆 Retos de Grupo", url="https://t.me/pokemon_shuffle/172831")],
             [InlineKeyboardButton("🗣 Off-Topic", url="https://t.me/joinchat/BJ0pDg7ntNfIFuVonHSTiQ")],
             [InlineKeyboardButton("🔴 Pokémon Go", url="https://t.me/joinchat/Y4wR9kZnCX0zZTVk")],
@@ -5534,3 +5534,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
