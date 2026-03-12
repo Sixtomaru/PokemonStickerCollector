@@ -337,7 +337,8 @@ def update_last_daily_claim(user_id, date_str):
 
 
 def get_all_user_stickers(user_id):
-    rows = query_db("SELECT pokemon_id, is_shiny FROM collection WHERE user_id = ?", (user_id,))
+    # Solo devolvemos los que tengan cantidad 1 o más (ignora los fantasmas de qty=0)
+    rows = query_db("SELECT pokemon_id, is_shiny FROM collection WHERE user_id = ? AND quantity >= 1", (user_id,))
     return set(rows)
 
 
@@ -500,14 +501,8 @@ def is_user_notification_enabled(user_id):
     # Si es 1 o None (por defecto), es True. Si es 0, es False.
     return res[0] != 0 if res else True
 
+
 def add_sticker_smart(user_id, pokemon_id, is_shiny):
-    """
-    Lógica inteligente de captura:
-    - Si no lo tiene: Lo añade (qty=1). Retorna 'NEW'.
-    - Si tiene 1: Lo sube a 2. Retorna 'DUPLICATE'.
-    - Si tiene 2: No hace nada (se debe vender fuera). Retorna 'MAX'.
-    """
-    # Verificamos estado actual
     res = query_db("SELECT quantity FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
                    (user_id, pokemon_id, 1 if is_shiny else 0), one=True)
 
@@ -517,7 +512,14 @@ def add_sticker_smart(user_id, pokemon_id, is_shiny):
         return 'NEW'
 
     qty = res[0]
-    if qty == 1:
+
+    if qty <= 0:
+        # Reparación de "Pokémon Fantasma" (Bug antiguo de intercambios)
+        query_db("UPDATE collection SET quantity = 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
+                 (user_id, pokemon_id, 1 if is_shiny else 0))
+        return 'NEW'
+
+    elif qty == 1:
         # Tiene 1, subimos a 2
         query_db("UPDATE collection SET quantity = 2 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
                  (user_id, pokemon_id, 1 if is_shiny else 0))
