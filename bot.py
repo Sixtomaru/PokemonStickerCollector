@@ -4289,35 +4289,94 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 4. Iniciar flujo
-    # Cogemos la ID del mensaje de comando original si existe (y si no es desde el panel)
+    # Llamamos al nuevo menú de selección de región
     cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
-
-    # Llamamos a la función pasándole el nuevo parámetro cmd_msg_id
-    await show_trade_menu_target_duplicates(update, context, target_user.id, sender.id, page=0, cmd_msg_id=cmd_msg_id)
+    await show_trade_region_menu(update, context, target_user.id, sender.id, cmd_msg_id=cmd_msg_id)
 
 
-async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id, page=0, cmd_msg_id=""):
+async def show_trade_region_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id,
+                                 cmd_msg_id=""):
+    text = "♻️ Elige la región del Pokémon que quieres recibir:"
+
+    keyboard = [
+        [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_reg_{target_id}_{sender_id}_kanto_{cmd_msg_id}")],
+        [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_reg_{target_id}_{sender_id}_johto_{cmd_msg_id}")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
+    ]
+
+    if update.callback_query:
+        refresh_deletion_timer(context, update.callback_query.message, 120)
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard),
+                                                      parse_mode='Markdown')
+    else:
+        msg = await context.bot.send_message(update.effective_chat.id, text,
+                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                             disable_notification=True)
+        schedule_message_deletion(context, msg, 120)
+
+
+async def trade_reg_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    parts = query.data.split('_')
+    # Formato: trade_reg_TGT_SND_REGION_MSGID
+    target_id, sender_id, region = int(parts[2]), int(parts[3]), parts[4]
+    cmd_msg_id = parts[5] if len(parts) > 5 else ""
+
+    if query.from_user.id != sender_id:
+        return await query.answer("No es tu menú.", show_alert=True)
+
+    await show_trade_menu_target_duplicates(update, context, target_id, sender_id, region, 0, cmd_msg_id)
+
+
+async def trade_back_reg_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    parts = query.data.split('_')
+    target_id, sender_id = int(parts[3]), int(parts[4])
+    cmd_msg_id = parts[5] if len(parts) > 5 else ""
+
+    if query.from_user.id != sender_id:
+        return await query.answer("No es tu menú.", show_alert=True)
+
+    await show_trade_region_menu(update, context, target_id, sender_id, cmd_msg_id)
+
+
+async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id, region, page=0, cmd_msg_id=""):
     # Obtener repetidos del TARGET
     duplicates = db.get_user_duplicates(target_id)
 
-    if not duplicates:
-        text = "❌ El otro usuario no tiene stickers repetidos para cambiar."
-        if update.callback_query:
-            await update.callback_query.answer(text, show_alert=True)
-        else:
-            msg = await context.bot.send_message(update.effective_chat.id, text, disable_notification=True)
-            schedule_message_deletion(context, msg, 60)
-        return
+    # 1. Filtro por Región
+    filtered_dupes = []
+    for pid, shiny in duplicates:
+        if region == 'kanto' and 1 <= pid <= 151:
+            filtered_dupes.append((pid, shiny))
+        elif region == 'johto' and 152 <= pid <= 251:
+            filtered_dupes.append((pid, shiny))
 
-    # Paginación
-    ITEMS_PER_PAGE = 20
-    total_pages = math.ceil(len(duplicates) / ITEMS_PER_PAGE)
-    start = page * ITEMS_PER_PAGE
-    end = start + ITEMS_PER_PAGE
-    current_list = duplicates[start:end]
+    if not filtered_dupes:
+        text = f"❌ El otro usuario no tiene stickers repetidos de {region.capitalize()} para cambiar."
+        keyboard = [[InlineKeyboardButton("⬅️ Volver a regiones", callback_data=f"trade_back_reg_{target_id}_{sender_id}_{cmd_msg_id}")]]
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
 
     # Obtener colección del SENDER para marcar los NEW
     sender_collection = db.get_all_user_stickers(sender_id)
+
+    # 2. Ordenación Inteligente: Primero los NUEVOS (True = 0, False = 1 en Python), luego Alfabético
+    def sort_key(item):
+        pid, shiny = item
+        is_new = (pid, shiny) not in sender_collection
+        name = POKEMON_BY_ID[pid]['name']
+        return (not is_new, name)  # "not is_new" fuerza a que los True vayan primero
+
+    filtered_dupes.sort(key=sort_key)
+
+    # 3. Paginación
+    ITEMS_PER_PAGE = 20
+    total_pages = math.ceil(len(filtered_dupes) / ITEMS_PER_PAGE)
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_list = filtered_dupes[start:end]
 
     keyboard = []
     row = []
@@ -4325,13 +4384,11 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
         p_data = POKEMON_BY_ID[poke_id]
         rarity = get_rarity(p_data['category'], is_shiny)
 
-        # Marca NEW si sender no lo tiene
         is_new = (poke_id, is_shiny) not in sender_collection
         new_mark = "🆕" if is_new else ""
         shiny_mark = "✨" if is_shiny else ""
 
         btn_text = f"{p_data['name']}{shiny_mark} {RARITY_VISUALS.get(rarity, '')} {new_mark}"
-        # Pasamos el cmd_msg_id en el callback
         cb_data = f"trade_step2_{target_id}_{sender_id}_{poke_id}_{int(is_shiny)}_{cmd_msg_id}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
@@ -4343,26 +4400,21 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
     # Botones navegación
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("⬅️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page - 1}_{cmd_msg_id}"))
-    if end < len(duplicates):
-        nav_row.append(InlineKeyboardButton("➡️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{page + 1}_{cmd_msg_id}"))
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region}_{page - 1}_{cmd_msg_id}"))
+    if end < len(filtered_dupes):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
-    # --- BOTÓN DE CANCELAR ACTUALIZADO ---
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")])
-    # -------------------------------------
+    keyboard.append([InlineKeyboardButton("⬅️ Volver a regiones", callback_data=f"trade_back_reg_{target_id}_{sender_id}_{cmd_msg_id}")])
 
     target_name = (await context.bot.get_chat(target_id)).first_name
-    text = f"♻ **Repetidos de {target_name}:**\nSelecciona qué quieres recibir."
+    text = f"♻ **Repetidos de {target_name} ({region.capitalize()}):**\nSelecciona qué quieres recibir."
 
     if update.callback_query:
-        refresh_deletion_timer(context, update.callback_query.message, 120)  # 2 min
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard),
-                                                      parse_mode='Markdown')
+        refresh_deletion_timer(context, update.callback_query.message, 120)
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        msg = await context.bot.send_message(update.effective_chat.id, text,
-                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                             disable_notification=True)
+        msg = await context.bot.send_message(update.effective_chat.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_notification=True)
         schedule_message_deletion(context, msg, 120)
 
 
@@ -4371,16 +4423,13 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     parts = query.data.split('_')
     target_id, sender_id = int(parts[2]), int(parts[3])
     wanted_pid, wanted_shiny = int(parts[4]), bool(int(parts[5]))
+    cmd_msg_id = parts[6] if len(parts) > 6 else ""
 
-    # --- CORRECCIÓN: SOLO EL SENDER PUEDE ELEGIR ---
     if query.from_user.id != sender_id:
-        await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
-        return
-    # -----------------------------------------------
+        return await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
 
     wanted_data = POKEMON_BY_ID[wanted_pid]
     wanted_rarity = get_rarity(wanted_data['category'], wanted_shiny)
-
     my_duplicates = db.get_user_duplicates(sender_id)
 
     valid_duplicates = []
@@ -4390,17 +4439,24 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if r == wanted_rarity:
             valid_duplicates.append((pid, shiny))
 
-    if not valid_duplicates:
-        await query.answer(f"❌ No tienes repetidos de rareza {wanted_rarity} para ofrecer.", show_alert=True)
-        return
-
     target_collection = db.get_all_user_stickers(target_id)
+
+    # ORDENAR OFERTA: (is_useful -> True primero, luego alfabético)
+    def sort_key_offer(item):
+        pid, shiny = item
+        is_useful = (pid, shiny) not in target_collection
+        name = POKEMON_BY_ID[pid]['name']
+        return (not is_useful, name)
+
+    valid_duplicates.sort(key=sort_key_offer)
+
+    if not valid_duplicates:
+        return await query.answer(f"❌ No tienes repetidos de rareza {wanted_rarity} para ofrecer.", show_alert=True)
 
     keyboard = []
     row = []
     for pid, shiny in valid_duplicates:
         p_data = POKEMON_BY_ID[pid]
-
         is_useful = (pid, shiny) not in target_collection
         useful_mark = "🤝" if is_useful else ""
         shiny_mark = "✨" if shiny else ""
@@ -4414,7 +4470,9 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             row = []
     if row: keyboard.append(row)
 
-    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_nav_target_{target_id}_{sender_id}_0")])
+    # Deducimos la región de la que veníamos para que el botón "Volver" no se pierda
+    region_of_wanted = 'kanto' if wanted_pid <= 151 else 'johto'
+    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region_of_wanted}_0_{cmd_msg_id}")])
 
     text = (f"♻ **Tu Oferta ({wanted_rarity}):**\n"
             f"Elegiste: {wanted_data['name']}\n"
@@ -4755,15 +4813,14 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def trade_nav_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
-    # trade_nav_target_TGT_SND_PAGE_MSGID
-    target_id, sender_id, page = int(parts[3]), int(parts[4]), int(parts[5])
-    cmd_msg_id = parts[6] if len(parts) > 6 else ""
+    # Formato: trade_nav_target_TGT_SND_REGION_PAGE_MSGID
+    target_id, sender_id, region, page = int(parts[3]), int(parts[4]), parts[5], int(parts[6])
+    cmd_msg_id = parts[7] if len(parts) > 7 else ""
 
     if query.from_user.id != sender_id:
-        await query.answer("No es tu menú.", show_alert=True)
-        return
+        return await query.answer("No es tu menú.", show_alert=True)
 
-    await show_trade_menu_target_duplicates(update, context, target_id, sender_id, page, cmd_msg_id)
+    await show_trade_menu_target_duplicates(update, context, target_id, sender_id, region, page, cmd_msg_id)
 
 async def clemailbox_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
@@ -5307,7 +5364,7 @@ async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         "🎟️ *Tómbola Diaria* 🎟️\n\n"
-        "Prueba suerte una vez al día para ganar premios. Dependiendo de la bola que saques, esto es lo que te puede tocar:\n"
+        "¡Prueba suerte una vez al día!\nEstos son los premios, dependiendo de la bola que saques:\n"
         "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
     )
     keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
@@ -5526,6 +5583,8 @@ def main():
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
         CallbackQueryHandler(trade_cancel_menu_handler, pattern="^trade_cancel_"),
+        CallbackQueryHandler(trade_reg_handler, pattern="^trade_reg_"),
+        CallbackQueryHandler(trade_back_reg_handler, pattern="^trade_back_reg_"),
         CallbackQueryHandler(ranking_navigation_handler, pattern="^rank_nav_"),
         CallbackQueryHandler(inventory_cmd, pattern="^inv_mode_"),
         CallbackQueryHandler(delibird_claim_handler, pattern="^delibird_"),
