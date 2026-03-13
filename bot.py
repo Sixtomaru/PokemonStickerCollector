@@ -5005,11 +5005,36 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
             show_alert=True)
         return
 
-    # --- 1. RECUPERACIÓN DE ESTADO (SI SE REINICIÓ) ---
+    # --- 1. DEFENSA CONTRA MENSAJES ZOMBIES ---
+    # Comprobamos la edad real del mensaje en Telegram
+    msg_timestamp = message.date.timestamp()
+    current_timestamp = time.time()
+
+    if (current_timestamp - msg_timestamp) > 86400:  # 86400s = 24 horas
+        await query.answer("Delibird ya se fue a descansar...", show_alert=True)
+
+        # Rescatamos la lista de ganadores para cerrar el mensaje de forma bonita
+        winners_list = []
+        current_text = message.text_markdown if message.text_markdown else message.text
+        if "Resultados:" in current_text:
+            parts = current_text.split("Resultados:\n")
+            if len(parts) > 1:
+                raw_lines = parts[1].split("\n")
+                winners_list = [line for line in raw_lines if line.strip()]
+
+        final_text = "🐧💤 **Delibird se fue a descansar**\n\nResultados del reparto:\n" + "\n".join(winners_list)
+        try:
+            await query.edit_message_text(text=final_text, parse_mode='Markdown')
+        except:
+            pass
+        return
+    # ------------------------------------------
+
+    # --- 2. RECUPERACIÓN DE ESTADO EN RAM (SI SE REINICIÓ RECIENTEMENTE) ---
     state = DELIBIRD_STATE.get(chat_id)
 
     if not state:
-        current_text = message.text_markdown
+        current_text = message.text_markdown if message.text_markdown else message.text
         if "DELIBIRD HA LLEGADO" in current_text:
             winners_list = []
             if "Resultados:" in current_text:
@@ -5028,7 +5053,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
             await query.answer("Delibird ya se ha ido...", show_alert=True)
             return
 
-    # --- 2. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
+    # --- 3. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
     if db.check_delibird_claimed_this_week(user.id):
         await query.answer("¡Ya has cogido un sobre esta semana!", show_alert=True)
         return
@@ -5064,7 +5089,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     except:
         pass
 
-    await query.answer(f"¡Has conseguido un {prize_info['name']}!\nGuárdalo en tu mochila.", show_alert=True)
+    await query.answer(f"¡Has conseguido un {prize_info['name']}!\nLo guardas en tu mochila.", show_alert=True)
 
 # COMANDO DE TEST
 async def admin_test_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
