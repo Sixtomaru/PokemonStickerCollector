@@ -1707,7 +1707,7 @@ async def admin_regional_event(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Regala un sobre aleatorio de Delibird a un usuario."""
+    """Regala un sobre aleatorio de Delibird a un usuario directo a la mochila."""
     if update.effective_user.id != ADMIN_USER_ID: return
 
     # Obtener objetivo
@@ -1723,26 +1723,14 @@ async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TY
 
     db.get_or_create_user(target_user.id, target_user.first_name)
 
-    # 2. Guardar en mochila
+    # 2. Guardar DIRECTAMENTE en mochila
     db.add_item_to_inventory(target_user.id, prize_id, 1)
 
-    # 3. Notificar (Opcional, lo enviaremos al buzón visual aunque vaya a la mochila para que se entere)
-    msg_texto = "¡Regalo de compensación del evento de Delibird! Guárdalo en tu mochila."
-    db.add_mail(target_user.id, 'inventory_item', prize_id, msg_texto)
-
-    # Intentamos avisarle por privado
-    try:
-        if db.is_user_notification_enabled(target_user.id):
-            await context.bot.send_message(
-                chat_id=target_user.id,
-                text=f"📬 **¡TIENES CORREO!**\n\nRevisa tu /buzon.",
-                parse_mode='Markdown'
-            )
-    except:
-        pass
-
+    # 3. Mensaje público en el grupo
     await update.message.reply_text(
-        f"✅ Compensación enviada. {target_user.first_name} recibió un {prize_info['name']}.", disable_notification=True)
+        f"✅ {target_user.first_name} ha recibido un sobre de Delibird ({prize_info['name']}), se ha guardado en su /mochila.",
+        disable_notification=True
+    )
 
 
 async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
