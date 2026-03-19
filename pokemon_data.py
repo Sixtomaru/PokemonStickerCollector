@@ -264,26 +264,37 @@ POKEMON_JOHTO = [
     {"id": 251, "name": "Celebi", "category": "S", "types": ["Psíquico", "Planta"]},
 ]
 
+# --- POKÉMON UNOWN (Generación automática de las 28 formas) ---
+UNOWN_LETTERS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ["!", "?"]
+POKEMON_UNOWN = []
+for i, letter in enumerate(UNOWN_LETTERS):
+    POKEMON_UNOWN.append({
+        "id": 20101 + i,
+        "name": f"Unown ({letter})",
+        "category": "C",
+        "types": ["Psíquico"]
+    })
+
+UNOWN_IDS = [p['id'] for p in POKEMON_UNOWN]
+
 POKEMON_REGIONS = {
     "Kanto": POKEMON_KANTO,
     "Johto": POKEMON_JOHTO,
+    "Unown": POKEMON_UNOWN
 }
 
 ALL_POKEMON = [p for region_list in POKEMON_REGIONS.values() for p in region_list]
 POKEMON_BY_ID = {p['id']: p for p in ALL_POKEMON}
 
 # --- LISTAS NEGRAS (EXCLUSIONES) ---
-# Bebés (No salen en sobres/salvajes, se crían)
 BABY_IDS = [172, 173, 174, 175, 236, 238, 239, 240]
-# Unown (Evento especial)
-UNOWN_ID = [201]
-# Legendarios Johto (Saldrán por evento salvaje)
+UNOWN_BASE_ID = [201]
 LEGENDARY_JOHTO_IDS = [243, 244, 245, 249, 250, 251]
 
-# 1. POOL PARA SOBRES (Permite Legendarios)
-EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_ID)
+# Excluimos a los Bebés, al Unown 201 genérico y a las 28 formas Unown de los sobres normales
+EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS)
 ALL_POKEMON_PACKS = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_FROM_PACKS]
 
-# 2. POOL PARA SALVAJES (Bloquea Legendarios de Johto temporalmente)
-EXCLUDED_FROM_WILD = set(BABY_IDS + UNOWN_ID + LEGENDARY_JOHTO_IDS)
+# Excluimos de salvajes
+EXCLUDED_FROM_WILD = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + LEGENDARY_JOHTO_IDS)
 ALL_POKEMON_SPAWNABLE = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_FROM_WILD]
