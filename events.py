@@ -1741,15 +1741,301 @@ def _resolver_safari(base_text, u1_id, n1, c1, u2_id, n2, c2, poke_id, chat_id):
     return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text}
 
 
+# 7. PUEBLO PRIMAVERA (EVENTO DOBLE)
+def _get_primavera_start(participants):
+    u1, u2 = participants[0], participants[1]
+
+    # Elegir inicial al azar: Chikorita(152), Cyndaquil(155), Totodile(158)
+    missing_id = random.choice([152, 155, 158])
+    poke_name = POKEMON_BY_ID[missing_id]['name']
+
+    text = (
+        f"<i>Evento doble aceptado por {u1['mention']} y {u2['mention']}</i>\n\n"
+        f"🔸{u1['name']} y {u2['name']} andan cerca del laboratorio del profesor Elm, en Pueblo Primavera. "
+        f"Amelia les llama y cuenta que el profesor está buscando a uno de los iniciales, por si se pueden acercar a ayudar. Ambos aceptan y entran al lugar.\n"
+        f"Al entrar, Elm les cuenta que hace bastante rato que no ve al <b>{poke_name}</b> que tenía preparado para la elección del próximo entrenador Pokémon.\n"
+        f"Ambos miran alrededor y ven la puerta del jardín medio abierta, también que se movió una maceta en la zona de plantas decorativas del laboratorio, y escuchan un sonido que viene de la zona de incubadoras.\n"
+        f"Piensan qué hacer:"
+    )
+
+    keyboard = [[
+        {'text': 'Jardín', 'callback_data': f'ev|doble_primavera|decision|vote|jardin|{missing_id}'},
+        {'text': 'Maceta', 'callback_data': f'ev|doble_primavera|decision|vote|maceta|{missing_id}'},
+        {'text': 'Incubadoras', 'callback_data': f'ev|doble_primavera|decision|vote|incubadora|{missing_id}'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_doble_primavera(user, decision_parts, original_text, chat_id, game_state=None):
+    step_type = decision_parts[0]
+    action = decision_parts[1]
+    missing_id = int(decision_parts[2])
+    users_str = decision_parts[-1]
+    u1_id, u2_id = map(int, users_str.split('_'))
+
+    if game_state is not None:
+        if 'votes' not in game_state: game_state['votes'] = {}
+        votes = game_state['votes']
+    else:
+        votes = {}
+
+    if step_type == 'vote':
+        keyboard = [[
+            {'text': 'Jardín', 'callback_data': f'ev|doble_primavera|decision|vote|jardin|{missing_id}'},
+            {'text': 'Maceta', 'callback_data': f'ev|doble_primavera|decision|vote|maceta|{missing_id}'},
+            {'text': 'Incubadoras', 'callback_data': f'ev|doble_primavera|decision|vote|incubadora|{missing_id}'}
+        ]]
+
+        if user.id != u1_id and user.id != u2_id:
+            return {'text': original_text, 'keyboard': keyboard}
+
+        if user.id in votes:
+            return {'text': original_text, 'keyboard': keyboard}
+
+        votes[user.id] = action
+        base_text = original_text.split("\n\n<i>")[0]
+
+        if u1_id in votes and u2_id in votes:
+            name1, name2 = "Jugador 1", "Jugador 2"
+            if game_state and 'participants' in game_state:
+                for p in game_state['participants']:
+                    if p['id'] == u1_id: name1 = p['name']
+                    if p['id'] == u2_id: name2 = p['name']
+
+            return _resolver_primavera(base_text, u1_id, name1, votes[u1_id], u2_id, name2, votes[u2_id], missing_id,
+                                       chat_id)
+
+        else:
+            waiting_id = u2_id if user.id == u1_id else u1_id
+            mention_link = f'<a href="tg://user?id={waiting_id}">su compañero</a>'
+            wait_text = f"\n\n<i>{user.first_name} ha elegido, esperando a {mention_link}...</i>"
+
+            return {'text': base_text + wait_text, 'keyboard': keyboard}
+
+
+def _resolver_primavera(base_text, u1_id, n1, c1, u2_id, n2, c2, missing_id, chat_id):
+    m1 = f'<a href="tg://user?id={u1_id}">{n1}</a>'
+    m2 = f'<a href="tg://user?id={u2_id}">{n2}</a>'
+
+    hour = datetime.now(TZ_SPAIN).hour
+    is_day = 9 <= hour < 21
+
+    cb_id = random.choice([113, 242])  # Chansey o Blissey
+    cb_name = f"<b>{POKEMON_BY_ID[cb_id]['name']}</b>"
+
+    # Lanzamos dados shiny globales para el evento
+    s_miss = roll_shiny()
+    s_aipom = roll_shiny()
+    s_sunflora = roll_shiny()
+    s_cb = roll_shiny()
+
+    text = ""
+    r1, r2 = "", ""
+
+    def reward(uid, mention, pid, is_shiny):
+        return _handle_sticker_reward(uid, mention, pid, is_shiny, chat_id)
+
+    # Agrupamos las combinaciones (J=jardin, M=maceta, I=incubadora)
+    comb_set = {c1, c2}
+    if c1 == c2:
+        combo = c1 * 2
+    elif comb_set == {'jardin', 'maceta'}:
+        combo = 'jm'
+        uj, nj, mj = (u1_id, n1, m1) if c1 == 'jardin' else (u2_id, n2, m2)
+        um, nm, mm = (u1_id, n1, m1) if c1 == 'maceta' else (u2_id, n2, m2)
+    elif comb_set == {'jardin', 'incubadora'}:
+        combo = 'ji'
+        uj, nj, mj = (u1_id, n1, m1) if c1 == 'jardin' else (u2_id, n2, m2)
+        ui, ni, mi = (u1_id, n1, m1) if c1 == 'incubadora' else (u2_id, n2, m2)
+    elif comb_set == {'maceta', 'incubadora'}:
+        combo = 'mi'
+        um, nm, mm = (u1_id, n1, m1) if c1 == 'maceta' else (u2_id, n2, m2)
+        ui, ni, mi = (u1_id, n1, m1) if c1 == 'incubadora' else (u2_id, n2, m2)
+
+    # --- LÓGICA CYNDAQUIL (155) ---
+    if missing_id == 155:
+        if combo == 'jardinjardin':
+            if is_day:
+                text = f"<i>Ambos eligen ir al jardín</i>\nEncuentran a Cyndaquil pegado a una de las rocas que rodean el estanque del jardín, el calor del sol ha calentado la roca y se ha quedado dormido encima de ella. Ambos escanean al Pokémon, antes de llevarlo con Elm.\nAmelia recompensa con <b>300₽</b> a ambos por encontrarlo."
+                db.update_money(u1_id, 300);
+                db.update_money(u2_id, 300)
+                r1, r2 = reward(u1_id, m1, 155, s_miss), reward(u2_id, m2, 155, s_miss)
+            else:
+                text = f"En la oscuridad de la noche, escuchan un árbol moverse, y con esfuerzo logran ver que un Aipom está entre sus ramas, pero ni rastro de Cyndaquil. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+                r1, r2 = reward(u1_id, m1, 190, s_aipom), reward(u2_id, m2, 190, s_aipom)
+        elif combo == 'macetamaceta':
+            text = f"<i>Ambos eligen ir a investigar la maceta</i>\nLlegan y ven un Sunflora moviendo las hojas, lo que les hace pensar que ha sido esa la causa del tambaleo. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(u1_id, m1, 192, s_sunflora), reward(u2_id, m2, 192, s_sunflora)
+        elif combo == 'incubadoraincubadora':
+            if is_day:
+                text = f"Van hacia la zona de incubadoras y ven un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+                r1, r2 = reward(u1_id, m1, cb_id, s_cb), reward(u2_id, m2, cb_id, s_cb)
+            else:
+                text = f"Van hacia la zona de incubadoras y ven que una de ellas está media abierta, se acercan y encuentran a Cyndaquil metido en ella. Piensan que estaría huyendo del frío, ahí parece que se encuentra muy a gusto.\nAmbos escanean al Pokémon, antes de llevarlo con Elm.\nAmelia recompensa con <b>300₽</b> a ambos por encontrarlo."
+                db.update_money(u1_id, 300);
+                db.update_money(u2_id, 300)
+                r1, r2 = reward(u1_id, m1, 155, s_miss), reward(u2_id, m2, 155, s_miss)
+        elif combo == 'jm':
+            if is_day:
+                text = f"<i>{mj} eligió ir al jardín, y {mm} a investigar la maceta</i>\n{mj} encuentra a Cyndaquil pegado a una de las rocas que rodean el estanque del jardín, el calor del sol ha calentado la roca y se ha quedado dormido encima de ella. Escanea al Pokémon, antes de llevarlo con Elm.\n{mm} llega y ve un Sunflora moviendo las hojas, lo que le hace pensar que ha sido esa la causa del tambaleo. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+                db.update_money(uj, 300)
+                r1, r2 = reward(uj, mj, 155, s_miss), reward(um, mm, 192, s_sunflora)
+            else:
+                text = f"<i>{mj} eligió ir al jardín, y {mm} a investigar la maceta</i>\n{mj} encuentra un Aipom en un árbol del jardín, pero ni rastro de Cyndaquil. Escanea al Pokémon.\n{mm} llega y ve un Sunflora moviendo las hojas, lo que le hace pensar que ha sido esa la causa del tambaleo. Escanea al Pokémon mientras escucha al profesor Elm diciéndoles que ya lo ha encontrado."
+                r1, r2 = reward(uj, mj, 190, s_aipom), reward(um, mm, 192, s_sunflora)
+        elif combo == 'ji':
+            if is_day:
+                text = f"<i>{mj} eligió ir al jardín, y {mi} a investigar el ruido</i>\n{mj} encuentra a Cyndaquil pegado a una de las rocas que rodean el estanque del jardín, el calor del sol ha calentado la roca y se ha quedado dormido encima de ella. Escanea al Pokémon, antes de llevarlo con Elm.\n{mi} va hacia la zona de incubadoras y ve un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+                db.update_money(uj, 300)
+                r1, r2 = reward(uj, mj, 155, s_miss), reward(ui, mi, cb_id, s_cb)
+            else:
+                text = f"<i>{mj} eligió ir al jardín, y {mi} a investigar el ruido</i>\n{mj} encuentra un Aipom en un árbol del jardín, pero ni rastro de Cyndaquil. Escanea al Pokémon.\n{mi} va hacia la zona de incubadoras y ve que una de ellas está media abierta, se acerca y encuentra a Cyndaquil metido en ella. Piensa que estaría huyendo del frío, ahí parece que se encuentra muy a gusto.\nEscanea al Pokémon, antes de llevarlo con Elm.\n\nAmelia recompensa con <b>300₽</b> a {mi} por encontrarlo."
+                db.update_money(ui, 300)
+                r1, r2 = reward(uj, mj, 190, s_aipom), reward(ui, mi, 155, s_miss)
+        elif combo == 'mi':
+            text = f"<i>{mm} eligió investigar la maceta, y {mi} la zona de incubadoras</i>\n{mm} llega y ve un Sunflora moviendo las hojas. Escanea al Pokémon.\n{mi} va a las incubadoras y ve un {cb_name} cuidando los huevos. Escanea al Pokémon.\nAmbos escuchan por el Álbumdex al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(um, mm, 192, s_sunflora), reward(ui, mi, cb_id, s_cb)
+
+    # --- LÓGICA TOTODILE (158) ---
+    elif missing_id == 158:
+        if combo == 'jardinjardin':
+            text = f"<i>Ambos eligen ir al jardín</i>\nDespués de estar un rato buscando, ven que está flotando en el agua, parece estar dormido, aunque tiene un ojo abierto y otro cerrado. Aprovechan para escanearlo, antes de avisar a Elm.\nAmelia recompensa con <b>300₽</b> a ambos por encontrarlo."
+            db.update_money(u1_id, 300);
+            db.update_money(u2_id, 300)
+            r1, r2 = reward(u1_id, m1, 158, s_miss), reward(u2_id, m2, 158, s_miss)
+        elif combo == 'macetamaceta':
+            text = f"<i>Ambos eligen ir a investigar la maceta</i>\nLlegan y ven un Sunflora moviendo las hojas, lo que les hace pensar que ha sido esa la causa del tambaleo. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(u1_id, m1, 192, s_sunflora), reward(u2_id, m2, 192, s_sunflora)
+        elif combo == 'incubadoraincubadora':
+            text = f"<i>Ambos eligen ir a investigar el ruido</i>\nVan hacia la zona de incubadoras y ven un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(u1_id, m1, cb_id, s_cb), reward(u2_id, m2, cb_id, s_cb)
+        elif combo == 'jm':
+            text = f"<i>{mj} eligió ir al jardín, y {mm} a investigar la maceta</i>\n{mj}, después de estar un rato buscando, ve que está flotando en el agua, parece estar dormido, aunque tiene un ojo abierto y otro cerrado. Aprovecha para escanearlo, antes de avisar a Elm.\n{mm} llega y ve un Sunflora moviendo las hojas, lo que le hace pensar que ha sido esa la causa del tambaleo. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+            db.update_money(uj, 300)
+            r1, r2 = reward(uj, mj, 158, s_miss), reward(um, mm, 192, s_sunflora)
+        elif combo == 'ji':
+            text = f"<i>{mj} eligió ir al jardín, y {mi} a investigar el ruido</i>\n{mj}, después de estar un rato buscando, ve que está flotando en el agua, parece estar dormido, aunque tiene un ojo abierto y otro cerrado. Aprovecha para escanearlo, antes de avisar a Elm.\n{mi} va hacia la zona de incubadoras y ve un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+            db.update_money(uj, 300)
+            r1, r2 = reward(uj, mj, 158, s_miss), reward(ui, mi, cb_id, s_cb)
+        elif combo == 'mi':
+            text = f"<i>{mm} eligió investigar la maceta, y {mi} a investigar el ruido</i>\n{mm} llega y ve un Sunflora moviendo las hojas. Escanea al Pokémon.\n{mi} va a las incubadoras y ve un {cb_name} cuidando los huevos. Escanea al Pokémon.\nAmbos escuchan por el Álbumdex al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(um, mm, 192, s_sunflora), reward(ui, mi, cb_id, s_cb)
+
+    # --- LÓGICA CHIKORITA (152) ---
+    elif missing_id == 152:
+        if combo == 'jardinjardin':
+            if is_day:
+                text = f"<i>Ambos eligen ir al jardín</i>\nEncuentran a Chikorita entre plantas, tomando el sol en un rincón del jardín. Ambos escanean al Pokémon, antes de llevarlo con Elm.\nAmelia recompensa con <b>300₽</b> a ambos por encontrarlo."
+                db.update_money(u1_id, 300);
+                db.update_money(u2_id, 300)
+                r1, r2 = reward(u1_id, m1, 152, s_miss), reward(u2_id, m2, 152, s_miss)
+            else:
+                text = f"En la oscuridad de la noche, escuchan un árbol moverse, y con esfuerzo logran ver que un Aipom está entre sus ramas, pero ni rastro de Chikorita. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+                r1, r2 = reward(u1_id, m1, 190, s_aipom), reward(u2_id, m2, 190, s_aipom)
+        elif combo == 'macetamaceta':
+            if is_day:
+                text = f"<i>Ambos eligen ir a investigar la maceta</i>\nLlegan y ven un Sunflora moviendo las hojas, lo que les hace pensar que ha sido esa la causa del tambaleo. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+                r1, r2 = reward(u1_id, m1, 192, s_sunflora), reward(u2_id, m2, 192, s_sunflora)
+            else:
+                text = f"<i>Ambos eligen ir a investigar la maceta</i>\nSe acercan y ven, escondido entre las plantas, a Chikorita durmiendo. Parece que ahí se siente seguro. Aprovechan para escanearlo y avisan a Elm.\nAmelia recompensa con <b>300₽</b> a ambos por encontrarlo."
+                db.update_money(u1_id, 300);
+                db.update_money(u2_id, 300)
+                r1, r2 = reward(u1_id, m1, 152, s_miss), reward(u2_id, m2, 152, s_miss)
+        elif combo == 'incubadoraincubadora':
+            text = f"Van hacia la zona de incubadoras y ven un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanean al Pokémon mientras escuchan al profesor Elm diciéndoles que ya lo ha encontrado."
+            r1, r2 = reward(u1_id, m1, cb_id, s_cb), reward(u2_id, m2, cb_id, s_cb)
+        elif combo == 'jm':
+            if is_day:
+                text = f"<i>{mj} eligió ir al jardín, y {mm} a investigar la maceta</i>\n{mj} encuentra a Chikorita entre plantas, tomando el sol en un rincón del jardín. Escanea al Pokémon, antes de llevarlo con Elm.\n{mm} observa las macetas y ve un Sunflora moviendo las hojas, lo que le hace pensar que ha sido esa la causa del tambaleo. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+                db.update_money(uj, 300)
+                r1, r2 = reward(uj, mj, 152, s_miss), reward(um, mm, 192, s_sunflora)
+            else:
+                text = f"<i>{mj} eligió ir al jardín, y {mm} a investigar la maceta</i>\n{mj} entre la oscuridad de la noche, a duras penas logra ver un Aipom en un árbol del jardín, pero ni rastro de Chikorita. Escanea al Pokémon.\n{mm} se acerca a la maceta y ve, escondido entre las plantas, a Chikorita durmiendo. Parece que ahí se siente seguro. Aprovecha para escanearlo y avisa a Elm.\nAmelia recompensa con <b>300₽</b> a {mm} por encontrarlo."
+                db.update_money(um, 300)
+                r1, r2 = reward(uj, mj, 190, s_aipom), reward(um, mm, 152, s_miss)
+        elif combo == 'ji':
+            if is_day:
+                text = f"<i>{mj} eligió ir al jardín, y {mi} a investigar el ruido</i>\n{mj} encuentra a Chikorita entre plantas, tomando el sol en un rincón del jardín. Escanea al Pokémon, antes de llevarlo con Elm.\n{mi} va hacia la zona de incubadoras y ve un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo.\nAmelia recompensa con <b>300₽</b> a {mj} por encontrarlo."
+                db.update_money(uj, 300)
+                r1, r2 = reward(uj, mj, 152, s_miss), reward(ui, mi, cb_id, s_cb)
+            else:
+                text = f"<i>{mj} eligió ir al jardín, y {mi} a investigar el ruido</i>\n{mj} entre la oscuridad de la noche, a duras penas logra ver un Aipom en un árbol del jardín, pero ni rastro de Chikorita. Escanea al Pokémon.\n{mi} va hacia la zona de incubadoras y ve un {cb_name} cuidando de los huevos, quizás fuera ella la autora del sonido. Escanea al Pokémon mientras escucha que {mj} ha conseguido localizarlo."
+                r1, r2 = reward(uj, mj, 190, s_aipom), reward(ui, mi, cb_id, s_cb)
+        elif combo == 'mi':
+            text = f"<i>{mm} eligió investigar la maceta, y {mi} a investigar el ruido</i>\n{mm} ve un Sunflora moviendo las hojas. Escanea al Pokémon.\n{mi} ve un {cb_name} cuidando de los huevos. Escanea al Pokémon.\nAmbos escuchan al profesor Elm diciéndoles que ya encontró a Chikorita."
+            r1, r2 = reward(um, mm, 192, s_sunflora), reward(ui, mi, cb_id, s_cb)
+
+    return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text + "\n\n" + r1 + "\n\n" + r2}
+
+
+# 8. MONTE PLATEADO
+def _get_monte_plateado_variant(user):
+    text = (
+        f"<i>Evento aceptado por {user.first_name}</i>\n\n"
+        f"🔸{user.first_name} sale del Centro Pokémon que está al lado del Monte Plateado. "
+        f"Dirige su mirada hacia la entrada de la cueva, indeciso. Piensa si entrar o quedarse tranquilamente por los alrededores del Centro Pokémon:"
+    )
+    keyboard = [[
+        {'text': 'Entrar', 'callback_data': 'ev|johto_plateado|decision|monte'},
+        {'text': 'Quedarse fuera', 'callback_data': 'ev|johto_plateado|decision|centro'}
+    ]]
+    return {'text': text, 'keyboard': keyboard}
+
+
+def evento_johto_plateado(user, decision_parts, original_text, chat_id):
+    user_id = user.id
+    user_mention = user.mention_html()
+    choice = decision_parts[0]
+
+    result_text = ""
+    choice_made_text = ""
+
+    if choice == 'monte':
+        choice_made_text = "ℹ Elegiste entrar."
+
+        # Larvitar(246), Pupitar(247), Ursaring(217), Sneasel(215), Quagsire(195), Donphan(232), Misdreavus(200)
+        pool_monte = [246, 247, 217, 215, 195, 232, 200]
+        poke_id = random.choice(pool_monte)
+        poke_name = POKEMON_BY_ID[poke_id]['name']
+
+        result_text = (
+            f"🔸Después de estar dando vueltas, perdido por el Monte Plateado, {user.first_name} pensó que era imposible avanzar sin un Pokémon ayudante, por lo que decidió salir de allí. "
+            f"Cuando estaba a punto de irse, ve que un <b>{poke_name}</b> se encuentra cerca de la salida. Con sigilo, va rodeando al Pokémon, usa su Álbumdex para escanearlo, y sale de la cueva.\n\n"
+        )
+
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+    elif choice == 'centro':
+        choice_made_text = "ℹ Elegiste quedarte en el Centro Pokémon."
+
+        # Natu(177), Aipom(190), Heracross(214), Xatu(178)
+        pool_centro = [177, 190, 214, 178]
+        poke_id = random.choice(pool_centro)
+        poke_name = POKEMON_BY_ID[poke_id]['name']
+
+        result_text = (
+            f"🔸{user.first_name} se sienta a relajarse en un banco cercano al Centro Pokémon. Tan solo se escucha el sonido de las hojas de los árboles agitándose con el viento. "
+            f"De pronto, oye el grito de un Pokémon, mira hacia arriba y ve un <b>{poke_name}</b> entre las ramas de un árbol. Lo escanea con su Álbumdex.\n\n"
+        )
+
+        is_shiny = roll_shiny()
+        result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
+
+    separator = "\n\n" + "—" * 20 + "\n\n"
+    final_text = original_text + separator + f"<i>{choice_made_text}</i>\n\n{result_text}"
+    return {'text': final_text}
+
+
 # --- REGISTRO DE EVENTOS (MEZCLADO) ---
 EVENTS_KANTO = {
     'pesca_ruta_12': {'name': "Pesca Ruta 12", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice([{
-                                                                                                                         'text': f"<i>Evento aceptado...</i>",
-                                                                                                                         'keyboard': [
-                                                                                                                             [
-                                                                                                                                 {
-                                                                                                                                     'text': 'Vale',
-                                                                                                                                     'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'}]]}])},
+        'text': f"<i>Evento aceptado...</i>",
+        'keyboard': [
+            [
+                {
+                    'text': 'Vale',
+                    'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|vale'}]]}])},
                                                          'decision': {'action': evento_pesca_ruta_12}}},
 }
 
@@ -1790,7 +2076,9 @@ EVENTS_JOHTO = {
             'start': {'get_text_and_keyboard': _get_safari_start},
             'decision': {'action': evento_johto_safari}
         }
-    }
+    },
+'doble_primavera': {'name': "Pueblo Primavera (Doble)", 'steps': {'start': {'get_text_and_keyboard': _get_primavera_start}, 'decision': {'action': evento_doble_primavera}}},
+'johto_plateado': {'name': "Monte Plateado", 'steps': {'start': {'get_text_and_keyboard': _get_monte_plateado_variant}, 'decision': {'action': evento_johto_plateado}}},
 }
 
 # --- UNIFICACIÓN (IMPORTANTE) ---
@@ -1882,5 +2170,5 @@ KANTO_EVENT_KEYS = [
 ]
 
 JOHTO_EVENT_KEYS = [
-    'johto_orquidea', 'johto_primo', 'johto_danza', 'doble_mumu', 'doble_safari'
+    'johto_orquidea', 'johto_primo', 'johto_danza', 'doble_mumu', 'doble_safari', 'doble_primavera', 'johto_plateado'
 ]
