@@ -29,7 +29,7 @@ from telegram.ext import filters, MessageHandler
 
 import database as db
 from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_ID
-from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE, ALL_POKEMON_PACKS
+from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMON_SPAWNABLE, ALL_POKEMON_PACKS, UNOWN_IDS
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 from events import EVENTS, KANTO_EVENT_KEYS, JOHTO_EVENT_KEYS
 
@@ -159,7 +159,16 @@ SHOP_CONFIG = {
     'pack_elem_acero': {'name': 'Sobre Acero Kanto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Acero.',
                         'hidden': True, 'type_filter': 'Acero', 'emoji': '🔩'},
     'pack_elem_especial': {'name': 'Sobre Especial Kanto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble.',
-                           'hidden': True, 'emoji': '✨🔺'}
+                           'hidden': True, 'emoji': '✨🔺'},
+
+# --- SOBRES UNOWN (EVENTO) ---
+    'pack_small_unown': {'name': 'Sobre Pequeño Unown', 'price': 0, 'size': 2, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 2 stickers de Unown.', 'emoji': '🎴'},
+    'pack_medium_unown': {'name': 'Sobre Mediano Unown', 'price': 0, 'size': 4, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 4 stickers de Unown.', 'emoji': '🎴'},
+    'pack_large_unown': {'name': 'Sobre Grande Unown', 'price': 0, 'size': 6, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 6 stickers de Unown.', 'emoji': '🎴'},
+'pack_magic_small_unown': {'name': 'Sobre Mágico Peq. Unown', 'price': 0, 'size': 1, 'is_magic': True, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 1 sticker que no tienes de Unown.', 'emoji': '🎴'},
+    'pack_magic_medium_unown': {'name': 'Sobre Mágico Med. Unown', 'price': 0, 'size': 2, 'is_magic': True, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 2 stickers que no tienes de Unown.', 'emoji': '🎴'},
+    'pack_magic_large_unown': {'name': 'Sobre Mágico Gra. Unown', 'price': 0, 'size': 3, 'is_magic': True, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 3 stickers que no tienes de Unown.', 'emoji': '🎴'},
+    'pack_special_unown': {'name': 'Sobre Especial Unown', 'price': 0, 'size': 6, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 6 stickers de Unown con probabilidad brillante doble.', 'emoji': '✨🔺'},
 }
 
 # (Esto déjalo igual, se actualiza solo)
@@ -542,9 +551,16 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.register_user_in_group(owner_user.id, update.effective_chat.id)
 
     user_collection = db.get_all_user_stickers(owner_user.id)
-    total_pokemon_count = len(ALL_POKEMON)
+
+    # Contamos cuántos Pokémon normales y shinys tiene
     owned_normal = len({s[0] for s in user_collection if s[1] == 0})
     owned_shiny = len({s[0] for s in user_collection if s[1] == 1})
+
+    # Contamos cuántos Unown distintos tiene
+    owned_unown = len({s[0] for s in user_collection if s[0] in UNOWN_IDS})
+
+    # El total de la Pokédex es todo menos los Unown (para no falsear el porcentaje de Kanto/Johto)
+    total_pokemon_count = len([p for p in ALL_POKEMON if p['id'] not in UNOWN_IDS])
 
     rarity_counts = {rarity: 0 for rarity in RARITY_VISUALS.keys()}
     for pokemon_id, is_shiny in user_collection:
@@ -558,6 +574,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
             f"Stickers: *{owned_normal}/{total_pokemon_count}*\n"
             f"Brillantes: *{owned_shiny}/{total_pokemon_count}*\n\n"
+            f"Unown: *{owned_unown}/28*\n\n"
             f"Rarezas: {', '.join(rarity_lines)}\n\n"
             "Selecciona una opción:")
 
@@ -952,20 +969,17 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     user_collection = db.get_all_user_stickers(owner_id)
 
-    # --- NUEVO: CALCULAR PROGRESO REGIONAL ---
-    # Contamos cuántos IDs únicos de ESTA región tiene el usuario
-    # (raw_list contiene los diccionarios de los pokémon de esta región)
+    # --- CÁLCULO DE PROGRESO ---
     region_ids = {p['id'] for p in raw_list}
-    owned_in_region = 0
-
-    # Recorremos la colección del usuario para contar
-    # user_collection es un set de tuplas (id, is_shiny)
-    # Usamos un set temporal para no contar dobles (normal + shiny del mismo pokémon cuenta como 1 capturado)
     unique_owned_ids = {pid for pid, _ in user_collection}
 
-    # Intersección: IDs que tiene el usuario Y que pertenecen a esta región
+    # EFECTO ESPEJO UNOWN (Solo para Johto)
+    if region_name == "Johto":
+        if any(uid in unique_owned_ids for uid in UNOWN_IDS):
+            unique_owned_ids.add(201)
+
     owned_in_region = len(unique_owned_ids.intersection(region_ids))
-    # -----------------------------------------
+    # ---------------------------
 
     total_region = len(pokemon_list_region)
     total_pages = math.ceil(total_region / POKEMON_PER_PAGE)
@@ -976,18 +990,29 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     order_icon = "🔤" if sort_mode == 'az' else "🔢"
 
-    # --- TEXTO ACTUALIZADO ---
     text = (f"📖 <b>Álbumdex de {region_name}</b> ({order_icon})\n"
             f"📊 <b>{owned_in_region}/{total_region}</b>\n"
             f"(Pág. {page + 1}/{total_pages})")
 
     keyboard, row = [], []
     for pokemon in pokemon_on_page:
-        has_normal = (pokemon['id'], 0) in user_collection
-        has_shiny = (pokemon['id'], 1) in user_collection
+
+        # --- EFECTO ESPEJO UNOWN (Botones) ---
+        if pokemon['id'] == 201:
+            has_normal = any((uid, 0) in user_collection for uid in UNOWN_IDS)
+            has_shiny = any((uid, 1) in user_collection for uid in UNOWN_IDS)
+        else:
+            has_normal = (pokemon['id'], 0) in user_collection
+            has_shiny = (pokemon['id'], 1) in user_collection
+        # -------------------------------------
 
         if has_normal or has_shiny:
-            button_text = f"#{pokemon['id']:03} {pokemon['name']}"
+            # Formato bonito para ocultar el ID numérico en el álbum de Unowns
+            if pokemon['id'] > 1000:
+                button_text = f"{pokemon['name']}"
+            else:
+                button_text = f"#{pokemon['id']:03} {pokemon['name']}"
+
             if has_shiny:
                 button_text += f" ✨{RARITY_VISUALS.get(get_rarity(pokemon['category'], True), '')}"
             elif has_normal:
@@ -997,13 +1022,21 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
             callback_data = cb_data
         else:
-            button_text = f"#{pokemon['id']:03} ---"
+            # Fallback bonito para los Unown que aún no tienes
+            if pokemon['id'] > 1000:
+                letra = pokemon['name'].split('(')[1][0] if '(' in pokemon['name'] else '?'
+                button_text = f"--- ({letra})"
+            else:
+                button_text = f"#{pokemon['id']:03} ---"
+
             callback_data = "missing_sticker"
 
         row.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+
         if len(row) == 2:
             keyboard.append(row)
             row = []
+
     if row: keyboard.append(row)
 
     pagination_row = []
@@ -3071,6 +3104,14 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_data = random.choice(cat_pool)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
+        # 3B. Sobre Especial Unown (NUEVO)
+        elif item_id == 'pack_special_unown':
+                from pokemon_data import POKEMON_UNOWN
+                for _ in range(pack_size):
+                    is_shiny = random.random() < (SHINY_CHANCE * 2)  # Doble de probabilidad
+                    p_data = random.choice(POKEMON_UNOWN)
+                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
         # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
@@ -3090,6 +3131,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Unown':
+                from pokemon_data import POKEMON_UNOWN
+                base_pool = POKEMON_UNOWN
 
             user_quantities = db.get_user_collection_quantities(user.id)
 
@@ -3128,8 +3172,11 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Unown':
+                from pokemon_data import POKEMON_UNOWN  # Importamos la lista pura de los 28
+                base_pool = POKEMON_UNOWN
 
-            pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+                pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
             for p in base_pool: pool_by_cat[p['category']].append(p)
 
             for _ in range(pack_size):
