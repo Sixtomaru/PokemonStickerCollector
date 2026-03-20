@@ -113,7 +113,7 @@ def init_db():
         "ALTER TABLE group_members ADD COLUMN stickers_this_month INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1",
         "ALTER TABLE users ADD COLUMN last_delibird_claim TEXT DEFAULT NULL",
-        "ALTER TABLE users ADD COLUMN johto_completed INTEGER DEFAULT 0"
+        "ALTER TABLE users ADD COLUMN johto_completed INTEGER DEFAULT 0",
 
         # --- NUEVO PARA INTERCAMBIOS ---
         "ALTER TABLE collection ADD COLUMN quantity INTEGER DEFAULT 1",
