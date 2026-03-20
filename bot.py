@@ -572,9 +572,9 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rarity_lines = [f"{rarity_counts[code]} {emoji}" for code, emoji in RARITY_VISUALS.items()]
 
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
-            f"Stickers: *{owned_normal}/{total_pokemon_count}*\n"
-            f"Brillantes: *{owned_shiny}/{total_pokemon_count}*\n\n"
-            f"Unown: *{owned_unown}/28*\n\n"
+            f"🐱 Stickers: *{owned_normal}/{total_pokemon_count}*\n"
+            f"✨ Brillantes: *{owned_shiny}/{total_pokemon_count}*\n\n"
+            f"👁‍🗨 Unown: *{owned_unown}/28*\n\n"
             f"Rarezas: {', '.join(rarity_lines)}\n\n"
             "Selecciona una opción:")
 
@@ -3164,30 +3164,33 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pack_results.append({'data': p_data, 'is_shiny': s})
                 user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
 
-        # 6. Sobres Normales
-        else:
-            region_filter = pack_config.get('region_filter')
-            base_pool = ALL_POKEMON_PACKS
-            if region_filter == 'Kanto':
-                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
-            elif region_filter == 'Johto':
-                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
-            elif region_filter == 'Unown':
-                from pokemon_data import POKEMON_UNOWN  # Importamos la lista pura de los 28
-                base_pool = POKEMON_UNOWN
+                # 6. Sobres Normales
+            else:
+                region_filter = pack_config.get('region_filter')
+                base_pool = ALL_POKEMON_PACKS
 
+                if region_filter == 'Kanto':
+                    base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+                elif region_filter == 'Johto':
+                    base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+                elif region_filter == 'Unown':
+                    from pokemon_data import POKEMON_UNOWN
+                    base_pool = POKEMON_UNOWN
+
+                # ESTA ES LA LÍNEA QUE DABA ERROR POR ESTAR MAL ALINEADA
                 pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-            for p in base_pool: pool_by_cat[p['category']].append(p)
+                for p in base_pool:
+                    pool_by_cat[p['category']].append(p)
 
-            for _ in range(pack_size):
-                is_shiny = random.random() < SHINY_CHANCE
-                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-                possible = pool_by_cat[cat]
-                if not possible: possible = base_pool
-                p_data = random.choice(possible)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+                for _ in range(pack_size):
+                    is_shiny = random.random() < SHINY_CHANCE
+                    cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                    possible = pool_by_cat[cat]
+                    if not possible: possible = base_pool
+                    p_data = random.choice(possible)
+                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # --- PROCESAMIENTO DE RESULTADOS ---
+            # --- PROCESAMIENTO DE RESULTADOS ---
         summary_parts = []
 
         for result in pack_results:
