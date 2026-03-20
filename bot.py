@@ -3288,11 +3288,8 @@ async def regalar_objeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     targets = set()
     item_id = None
 
-    VALID_ITEMS = [
-        'pack_small_national', 'pack_medium_national', 'pack_large_national',
-        'pack_magic_small_national', 'pack_magic_medium_national', 'pack_magic_large_national',
-        'pluma_naranja', 'pluma_amarilla', 'pluma_azul', 'foto_psiquica', 'lottery_ticket'
-    ]
+    # LISTA ACTUALIZADA CON TODOS LOS SOBRES Y OBJETOS
+    VALID_ITEMS = list(ITEM_NAMES.keys())
 
     for arg in args:
         if arg.lower() in VALID_ITEMS:
@@ -3303,39 +3300,11 @@ async def regalar_objeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await message.reply_text(
             "❌ No has especificado un objeto válido.\n"
             "Uso: `/regalarobjeto @usuario1 @usuario2 item_id`\n"
-            "Ejemplo: `/regalarobjeto @Pepe pack_medium_national`"
+            "Ejemplo: `/regalarobjeto @Pepe pack_large_johto`"
         )
 
     if message.reply_to_message:
         targets.add(message.reply_to_message.from_user.id)
-
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == MessageEntity.TEXT_MENTION:
-                targets.add(entity.user.id)
-            elif entity.type == MessageEntity.MENTION:
-                username = message.text[entity.offset:entity.offset + entity.length]
-                uid = db.get_user_id_by_username(username)
-                if uid: targets.add(uid)
-
-    for arg in args:
-        if arg.startswith("@"):
-            uid = db.get_user_id_by_username(arg)
-            if uid: targets.add(uid)
-
-    if not targets:
-        return await message.reply_text(
-            "⚠️ No detecté a ningún usuario. Asegúrate de mencionar (@) o responder a un mensaje.")
-
-    count = 0
-    for uid in targets:
-        db.get_or_create_user(uid, None)
-        msg = "¡Un regalo especial de la administración!"
-        db.add_mail(uid, 'inventory_item', item_id, msg)
-        count += 1
-
-    item_name = ITEM_NAMES.get(item_id, item_id)
-    await message.reply_text(f"✅ Enviado *{item_name}* al buzón de {count} usuarios.", parse_mode='Markdown')
 
 
 async def view_special_item_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
