@@ -1,12 +1,25 @@
-# database.py
 import os
-import sqlite3
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
-from urllib.parse import urlparse
+import sqlite3
 
-# Intenta obtener la URL de la base de datos de las variables de entorno
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# --- CONFIGURACIÓN DE LA PISCINA DE CONEXIONES (POOL) ---
+# Creamos una piscina de entre 1 y 5 conexiones permanentes
+_db_pool = None
+
+def get_pool():
+    global _db_pool
+    if _db_pool is None and DATABASE_URL:
+        try:
+            # Usamos SimpleConnectionPool para 1 solo proceso
+            _db_pool = psycopg2.pool.SimpleConnectionPool(1, 5, DATABASE_URL, sslmode='require')
+            print("🏊 Piscina de conexiones (Pool) creada con éxito.")
+        except Exception as e:
+            print(f"❌ Error al crear la piscina: {e}")
+    return _db_pool
 
 
 def get_connection():
@@ -136,36 +149,57 @@ def init_db():
 
 # --- HELPERS DE CONSULTA ---
 def query_db(query, args=(), one=False, dict_cursor=False):
-    """Ejecuta una consulta y devuelve resultados."""
-    conn = get_connection()
+    """Ejecuta consultas de forma rápida y segura usando el Pool de conexiones."""
 
-    if DATABASE_URL and dict_cursor:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-    elif not DATABASE_URL and dict_cursor:
-        conn.row_factory = sqlite3.Row
+    # --- CASO SQLITE (LOCAL) ---
+    if not DATABASE_URL:
+        conn = sqlite3.connect("pokesticker.db")
+        if dict_cursor: conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-    else:
-        cursor = conn.cursor()
-
-    if DATABASE_URL:
-        query = query.replace('?', '%s')
-
-    try:
         cursor.execute(query, args)
+        rv = cursor.fetchall()
+        conn.commit()
+        conn.close()
+        return (rv[0] if rv else None) if one else rv
+
+    # --- CASO SUPABASE (POSTGRES CON POOL) ---
+    pool = get_pool()
+    if not pool: return None
+
+    conn = None
+    try:
+        # Alquilamos una conexión de la piscina
+        conn = pool.getconn()
+        conn.autocommit = True
+
+        if dict_cursor:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+
+        # Adaptamos el formato de ? a %s
+        formatted_query = query.replace('?', '%s')
+        cursor.execute(formatted_query, args)
+
         if query.strip().upper().startswith("SELECT"):
             rv = cursor.fetchall()
-            conn.close()
-            if not DATABASE_URL and dict_cursor:
-                rv = [dict(row) for row in rv]
-
+            cursor.close()
+            # Devolvemos la conexión a la piscina para que otro la use
+            pool.putconn(conn)
             return (rv[0] if rv else None) if one else rv
         else:
-            conn.commit()
-            conn.close()
-            return cursor.rowcount
+            count = cursor.rowcount
+            cursor.close()
+            pool.putconn(conn)
+            return count
+
+    except (psycopg2.InterfaceError, psycopg2.OperationalError):
+        # Si una conexión de la piscina se puso "mala", la descartamos y reintentamos
+        if conn: pool.putconn(conn, close=True)
+        return query_db(query, args, one, dict_cursor)
     except Exception as e:
-        if DATABASE_URL: conn.rollback()
-        conn.close()
+        if conn: pool.putconn(conn)
+        print(f"❌ Error de base de datos: {e}")
         raise e
 
 
