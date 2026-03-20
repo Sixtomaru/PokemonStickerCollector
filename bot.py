@@ -3093,7 +3093,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_data = random.choice(johto_pool)
             pack_results.append({'data': p_data, 'is_shiny': True})
 
-        # 3. Sobre Especial Kanto
+        # 3. Sobre Especial Kanto (Doble probabilidad shiny)
         elif item_id == 'pack_elem_especial':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
@@ -3104,13 +3104,13 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_data = random.choice(cat_pool)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 3B. Sobre Especial Unown (NUEVO)
+        # 3B. Sobre Especial Unown (Doble probabilidad shiny)
         elif item_id == 'pack_special_unown':
-                from pokemon_data import POKEMON_UNOWN
-                for _ in range(pack_size):
-                    is_shiny = random.random() < (SHINY_CHANCE * 2)  # Doble de probabilidad
-                    p_data = random.choice(POKEMON_UNOWN)
-                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+            from pokemon_data import POKEMON_UNOWN
+            for _ in range(pack_size):
+                is_shiny = random.random() < (SHINY_CHANCE * 2)
+                p_data = random.choice(POKEMON_UNOWN)
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
         # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
@@ -3164,33 +3164,32 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pack_results.append({'data': p_data, 'is_shiny': s})
                 user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
 
-                # 6. Sobres Normales
-            else:
-                region_filter = pack_config.get('region_filter')
-                base_pool = ALL_POKEMON_PACKS
+        # 6. Sobres Normales (REPARADO)
+        else:
+            region_filter = pack_config.get('region_filter')
+            base_pool = ALL_POKEMON_PACKS
 
-                if region_filter == 'Kanto':
-                    base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
-                elif region_filter == 'Johto':
-                    base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
-                elif region_filter == 'Unown':
-                    from pokemon_data import POKEMON_UNOWN
-                    base_pool = POKEMON_UNOWN
+            if region_filter == 'Kanto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif region_filter == 'Johto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Unown':
+                from pokemon_data import POKEMON_UNOWN
+                base_pool = POKEMON_UNOWN
 
-                # ESTA ES LA LÍNEA QUE DABA ERROR POR ESTAR MAL ALINEADA
-                pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-                for p in base_pool:
-                    pool_by_cat[p['category']].append(p)
+            pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
+            for p in base_pool:
+                pool_by_cat[p['category']].append(p)
 
-                for _ in range(pack_size):
-                    is_shiny = random.random() < SHINY_CHANCE
-                    cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-                    possible = pool_by_cat[cat]
-                    if not possible: possible = base_pool
-                    p_data = random.choice(possible)
-                    pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+            for _ in range(pack_size):
+                is_shiny = random.random() < SHINY_CHANCE
+                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                possible = pool_by_cat[cat]
+                if not possible: possible = base_pool
+                p_data = random.choice(possible)
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-            # --- PROCESAMIENTO DE RESULTADOS ---
+        # --- PROCESAMIENTO DE RESULTADOS ---
         summary_parts = []
 
         for result in pack_results:
@@ -3198,7 +3197,12 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rarity = get_rarity(p['category'], s)
 
             try:
-                region_folder = "Johto" if p['id'] > 151 else "Kanto"
+                # Ruta dinámica según región (Unown tiene su propia subcarpeta)
+                if p['id'] > 20000:
+                    region_folder = "Unown"
+                else:
+                    region_folder = "Johto" if p['id'] > 151 else "Kanto"
+
                 path = f"Stickers/{region_folder}/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png"
                 with open(path, 'rb') as f:
                     msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
@@ -3228,7 +3232,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
-        # --- PREMIOS INDIVIDUALES ---
+        # Precios individuales (Kanto y Johto)
         if not db.is_kanto_completed_by_user(user.id):
             if db.get_user_unique_kanto_count(user.id) >= 151:
                 db.set_kanto_completed_by_user(user.id)
@@ -3242,42 +3246,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
-
-        # --- PREMIOS RETOS GRUPALES ---
-        is_qualified = await is_group_qualified(message.chat.id, context)
-        chat_id = message.chat.id
-
-        if message.chat.type in ['group', 'supergroup']:
-            # 1. RETO KANTO (151)
-            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
-                if len(group_unique_ids) >= 151:
-                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
-                    if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
-                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
-                            db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
-                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
-                    else:
-                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
-
-            # 2. RETO JOHTO (91)
-            excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
-            if not db.is_event_completed(chat_id, 'johto_group_challenge'):
-                raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
-                valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
-
-                if len(valid_johto_ids) >= 91:
-                    db.mark_event_completed(chat_id, 'johto_group_challenge')
-                    if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
-                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
-                            db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
-                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
-                    else:
-                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
