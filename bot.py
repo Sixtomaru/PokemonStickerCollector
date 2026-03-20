@@ -2989,7 +2989,7 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
             pass
 
         text = (
-            "🐣 <b>¡Anda!, ¡el huevo se ha abierto!</b>\n\n"
+            "🐣 <b>¡Anda, el huevo se ha abierto!</b>\n\n"
             f"¡Ha nacido un <b>{p_name_clean}</b>!\n\n"
             f"{user_name} lo escanea en su Álbumdex y lo devuelve a la guardería Pokémon.\n\n"
             f"{final_msg}\n\n"
@@ -3288,7 +3288,7 @@ async def regalar_objeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     targets = set()
     item_id = None
 
-    # LISTA ACTUALIZADA CON TODOS LOS SOBRES Y OBJETOS
+    # LISTA ACTUALIZADA MÁGICA
     VALID_ITEMS = list(ITEM_NAMES.keys())
 
     for arg in args:
@@ -3305,6 +3305,34 @@ async def regalar_objeto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if message.reply_to_message:
         targets.add(message.reply_to_message.from_user.id)
+
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == MessageEntity.TEXT_MENTION:
+                targets.add(entity.user.id)
+            elif entity.type == MessageEntity.MENTION:
+                username = message.text[entity.offset:entity.offset + entity.length]
+                uid = db.get_user_id_by_username(username)
+                if uid: targets.add(uid)
+
+    for arg in args:
+        if arg.startswith("@"):
+            uid = db.get_user_id_by_username(arg)
+            if uid: targets.add(uid)
+
+    if not targets:
+        return await message.reply_text(
+            "⚠️ No detecté a ningún usuario. Asegúrate de mencionar (@) o responder a un mensaje.")
+
+    count = 0
+    for uid in targets:
+        db.get_or_create_user(uid, None)
+        msg = "¡Un regalo!"
+        db.add_mail(uid, 'inventory_item', item_id, msg)
+        count += 1
+
+    item_name = ITEM_NAMES.get(item_id, item_id)
+    await message.reply_text(f"✅ Enviado *{item_name}* al buzón de {count} usuarios.", parse_mode='Markdown')
 
 
 async def view_special_item_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
