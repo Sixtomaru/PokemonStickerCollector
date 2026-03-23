@@ -3,3 +3,4 @@ flask
 pytz
 psycopg2-binary
 waitress
+requests
