@@ -34,7 +34,7 @@ from pokemon_data import POKEMON_REGIONS, ALL_POKEMON, POKEMON_BY_ID, ALL_POKEMO
 from bot_utils import format_money, get_rarity, RARITY_VISUALS, DUPLICATE_MONEY_VALUES, get_formatted_name
 from events import EVENTS, KANTO_EVENT_KEYS, JOHTO_EVENT_KEYS
 
-from flask import request, jsonify
+from flask import request, jsonify, make_response
 from telegram import WebAppInfo # Añade WebAppInfo a tus imports de telegram
 
 # --- ALMACÉN DE MINIJUEGOS ---
@@ -59,25 +59,35 @@ def keep_alive():
     t.start()
 
 
-@app.route('/api/win_minigame', methods=['POST'])
+@app.route('/api/win_minigame', methods=['POST', 'OPTIONS'])
 def win_minigame():
+    # 1. PERMISOS DE CORS (La llave para abrir la puerta a tu web)
+    if request.method == 'OPTIONS':
+        res = make_response()
+        res.headers.add("Access-Control-Allow-Origin", "*")
+        res.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        res.headers.add("Access-Control-Allow-Methods", "POST")
+        return res
+
     data = request.json
     user_id = data.get('user_id')
     first_name = data.get('first_name')
     chat_id = int(data.get('chat_id'))
     msg_id = int(data.get('msg_id'))
 
-    # 1. Comprobamos que el evento existe
     if chat_id not in MINIGAME_STATE or msg_id not in MINIGAME_STATE[chat_id]:
-        return jsonify({"error": "event_not_found"}), 400
+        res = jsonify({"error": "event_not_found"})
+        res.headers.add("Access-Control-Allow-Origin", "*")
+        return res, 400
 
     state = MINIGAME_STATE[chat_id][msg_id]
 
-    # 2. Comprobamos si ya jugó a este mensaje exacto
     if user_id in state['winners']:
-        return jsonify({"error": "already_played"}), 200
+        res = jsonify({"error": "already_played"})
+        res.headers.add("Access-Control-Allow-Origin", "*")
+        return res, 200
 
-    # 3. Lotería de premios Unown
+    # Lotería de premios Unown
     if random.random() < 0.80:
         prize_id = random.choice(['pack_small_unown', 'pack_medium_unown', 'pack_large_unown'])
     else:
@@ -86,19 +96,16 @@ def win_minigame():
 
     prize_name = SHOP_CONFIG[prize_id]['name']
 
-    # 4. Entregar premio
     db.get_or_create_user(user_id, first_name)
     db.add_item_to_inventory(user_id, prize_id, 1)
 
-    # 5. Actualizar la lista visual
     safe_name = first_name.replace('*', '').replace('_', '')
     state['winners'].append(user_id)
     state['results'].append(f"👤 {safe_name}: {prize_name} ✅")
 
-    text_final = "🎲 **¡Un Evento Minijuego ha aparecido!**\n\nResuelve el puzzle de las Ruinas Alfa.\n\n"
+    text_final = "🎲 **¡Un Evento Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa para conseguir un sobre de Unown.\n\n"
     text_final += "**Resultados:**\n" + "\n".join(state['results'])
 
-    # 6. Actualizar el mensaje en Telegram (Síncrono para evitar problemas de hilos)
     url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
     payload = {
         "chat_id": chat_id,
@@ -111,8 +118,9 @@ def win_minigame():
     }
     requests.post(url_tg, json=payload)
 
-    # 7. Decirle a la Web App que todo ha ido bien
-    return jsonify({"success": True, "prize_name": prize_name})
+    res = jsonify({"success": True, "prize_name": prize_name})
+    res.headers.add("Access-Control-Allow-Origin", "*")
+    return res
 
 # ---------------------------------------------------------
 
