@@ -1,22 +1,20 @@
 import os
 import psycopg2
-from psycopg2 import pool
+from psycopg2.pool import ThreadedConnectionPool # <--- CAMBIO IMPORTANTE AQUI
 from psycopg2.extras import RealDictCursor
 import sqlite3
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# --- CONFIGURACIÓN DE LA PISCINA DE CONEXIONES (POOL) ---
-# Creamos una piscina de entre 1 y 5 conexiones permanentes
 _db_pool = None
 
 def get_pool():
     global _db_pool
     if _db_pool is None and DATABASE_URL:
         try:
-            # Usamos SimpleConnectionPool para 1 solo proceso
-            _db_pool = psycopg2.pool.SimpleConnectionPool(1, 5, DATABASE_URL, sslmode='require')
-            print("🏊 Piscina de conexiones (Pool) creada con éxito.")
+            # Usamos ThreadedConnectionPool para evitar choques entre la Web y Telegram
+            _db_pool = ThreadedConnectionPool(1, 5, DATABASE_URL, sslmode='require')
+            print("🏊 Piscina multicarril creada con éxito.")
         except Exception as e:
             print(f"❌ Error al crear la piscina: {e}")
     return _db_pool
@@ -28,6 +26,53 @@ def get_connection():
         # Fallback a SQLite si no hay URL (para pruebas locales)
         return sqlite3.connect("pokesticker.db")
     return psycopg2.connect(DATABASE_URL, sslmode='require')
+
+
+import json  # Asegúrate de que import json está arriba del todo en database.py
+
+
+def create_minigame(chat_id, msg_id, web_url, group_btn_url):
+    """Guarda un nuevo minijuego en la base de datos."""
+    sql = """
+        INSERT INTO minigames (chat_id, msg_id, web_url, group_btn_url, winners, results) 
+        VALUES (%s, %s, %s, %s, '[]', '[]')
+    """
+    query_db(sql, (chat_id, msg_id, web_url, group_btn_url))
+
+
+def get_minigame(chat_id, msg_id):
+    """Obtiene los datos de un minijuego. Devuelve None si no existe o expiró."""
+    res = query_db("SELECT * FROM minigames WHERE chat_id = %s AND msg_id = %s", (chat_id, msg_id), one=True,
+                   dict_cursor=True)
+    if res:
+        # Convertimos los textos JSON a listas de Python
+        res['winners'] = json.loads(res['winners'])
+        res['results'] = json.loads(res['results'])
+    return res
+
+
+def update_minigame_winner(chat_id, msg_id, user_id, result_text):
+    """Añade un ganador y su texto de resultado al minijuego."""
+    game = get_minigame(chat_id, msg_id)
+    if not game: return False
+
+    winners = game['winners']
+    results = game['results']
+
+    if user_id in winners: return False  # Ya jugó
+
+    winners.append(user_id)
+    results.append(result_text)
+
+    sql = "UPDATE minigames SET winners = %s, results = %s WHERE chat_id = %s AND msg_id = %s"
+    query_db(sql, (json.dumps(winners), json.dumps(results), chat_id, msg_id))
+    return True
+
+
+def delete_expired_minigames():
+    """Borra los minijuegos que tengan más de 3 días."""
+    sql = "DELETE FROM minigames WHERE created_at < NOW() - INTERVAL '3 days'"
+    query_db(sql)
 
 
 def init_db():
