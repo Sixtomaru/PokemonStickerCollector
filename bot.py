@@ -60,8 +60,13 @@ def keep_alive():
     t.start()
 
 
-@app.route('/api/win_minigame', methods=['POST'])
+@app.route('/api/win_minigame', methods=['POST', 'OPTIONS'])
 def win_minigame():
+    # 1. Dejamos pasar la petición de seguridad (Preflight) del navegador
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
+    # 2. Procesamos la victoria normal (POST)
     try:
         data = request.json
         user_id = int(data.get('user_id'))
