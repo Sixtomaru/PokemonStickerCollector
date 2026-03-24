@@ -5,6 +5,7 @@ import time  # <--- Este es el módulo time original (necesario para time.time)
 import asyncio
 import re
 import requests
+
 # --- CORRECCIÓN IMPORTS: Renombramos time a dt_time para evitar conflicto ---
 from datetime import datetime, time as dt_time, timedelta
 import pytz
@@ -15,6 +16,7 @@ from threading import Thread
 
 # --- Importamos Flask y Waitress ---
 from flask import Flask
+from flask_cors import CORS
 from waitress import serve
 
 from telegram import (
@@ -41,6 +43,7 @@ from telegram import WebAppInfo # Añade WebAppInfo a tus imports de telegram
 # --- CONFIGURACIÓN DEL SERVIDOR WEB ---
 app = Flask('')
 
+CORS(app)
 
 @app.route('/')
 def home():
@@ -57,15 +60,8 @@ def keep_alive():
     t.start()
 
 
-@app.route('/api/win_minigame', methods=['POST', 'OPTIONS'])
+@app.route('/api/win_minigame', methods=['POST'])
 def win_minigame():
-    if request.method == 'OPTIONS':
-        res = make_response()
-        res.headers.add("Access-Control-Allow-Origin", "*")
-        res.headers.add("Access-Control-Allow-Headers", "Content-Type")
-        res.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-        return res, 200
-
     try:
         data = request.json
         user_id = int(data.get('user_id'))
@@ -76,15 +72,11 @@ def win_minigame():
         # 1. Obtenemos el juego de la Base de Datos
         state = db.get_minigame(chat_id, msg_id)
         if not state:
-            res = jsonify({"error": "event_not_found"})
-            res.headers.add("Access-Control-Allow-Origin", "*")
-            return res, 200
+            return jsonify({"error": "event_not_found"}), 200
 
         # 2. Comprobamos si ya ganó
         if user_id in state['winners']:
-            res = jsonify({"error": "already_played"})
-            res.headers.add("Access-Control-Allow-Origin", "*")
-            return res, 200
+            return jsonify({"error": "already_played"}), 200
 
         # 3. Lotería Unown
         if random.random() < 0.80:
@@ -104,11 +96,10 @@ def win_minigame():
         result_text = f"👤 {safe_name}: {prize_name} ✅"
         db.update_minigame_winner(chat_id, msg_id, user_id, result_text)
 
-        # Volvemos a leer el estado para tener la lista completa y actualizada
         updated_state = db.get_minigame(chat_id, msg_id)
 
         # 6. Actualizamos el mensaje en Telegram
-        text_final = "🎲 **¡Un Evento Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa.\n\n"
+        text_final = "🎲 **¡Un Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa.\n\n"
         text_final += "**Resultados:**\n" + "\n".join(updated_state['results'])
 
         url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
@@ -118,20 +109,16 @@ def win_minigame():
             "text": text_final,
             "parse_mode": "Markdown",
             "reply_markup": {
-                "inline_keyboard": [[{"text": "Jugar", "url": updated_state['group_btn_url']}]]
+                "inline_keyboard": [[{"text": "Ir al juego ↗", "url": updated_state['group_btn_url']}]]
             }
         }
         requests.post(url_tg, json=payload)
 
-        res = jsonify({"success": True, "prize_name": prize_name})
-        res.headers.add("Access-Control-Allow-Origin", "*")
-        return res
+        return jsonify({"success": True, "prize_name": prize_name})
 
     except Exception as e:
         print(f"Error grave en Flask: {e}")
-        res = jsonify({"error": "server_error"})
-        res.headers.add("Access-Control-Allow-Origin", "*")
-        return res, 500
+        return jsonify({"error": "server_error"}), 500
 
 # ---------------------------------------------------------
 
@@ -867,7 +854,7 @@ async def test_minijuego_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
 
     text = (
-        "🎲 **¡Un Evento Minijuego ha aparecido!**\n"
+        "🎲 **¡Un Minijuego ha aparecido!**\n"
         "Resuelve el puzzle de las Ruinas Alfa.\n\n"
         "**Resultados:**\n_Aún nadie ha jugado_"
     )
@@ -875,7 +862,7 @@ async def test_minijuego_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_chat.type == 'private':
         keyboard = [[InlineKeyboardButton("Jugar", web_app=WebAppInfo(url=full_url))]]
     else:
-        keyboard = [[InlineKeyboardButton("Jugar", url=deep_link)]]
+        keyboard = [[InlineKeyboardButton("Ir al juego ↗", url=deep_link)]]
 
     await context.bot.edit_message_text(
         chat_id=chat_id,
