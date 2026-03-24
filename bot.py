@@ -37,8 +37,6 @@ from events import EVENTS, KANTO_EVENT_KEYS, JOHTO_EVENT_KEYS
 from flask import request, jsonify, make_response
 from telegram import WebAppInfo # Añade WebAppInfo a tus imports de telegram
 
-# --- ALMACÉN DE MINIJUEGOS ---
-MINIGAME_STATE = {}
 
 # --- CONFIGURACIÓN DEL SERVIDOR WEB ---
 app = Flask('')
@@ -61,66 +59,79 @@ def keep_alive():
 
 @app.route('/api/win_minigame', methods=['POST', 'OPTIONS'])
 def win_minigame():
-    # 1. PERMISOS DE CORS (La llave para abrir la puerta a tu web)
     if request.method == 'OPTIONS':
         res = make_response()
         res.headers.add("Access-Control-Allow-Origin", "*")
         res.headers.add("Access-Control-Allow-Headers", "Content-Type")
-        res.headers.add("Access-Control-Allow-Methods", "POST")
-        return res
-
-    data = request.json
-    user_id = data.get('user_id')
-    first_name = data.get('first_name')
-    chat_id = int(data.get('chat_id'))
-    msg_id = int(data.get('msg_id'))
-
-    if chat_id not in MINIGAME_STATE or msg_id not in MINIGAME_STATE[chat_id]:
-        res = jsonify({"error": "event_not_found"})
-        res.headers.add("Access-Control-Allow-Origin", "*")
-        return res, 400
-
-    state = MINIGAME_STATE[chat_id][msg_id]
-
-    if user_id in state['winners']:
-        res = jsonify({"error": "already_played"})
-        res.headers.add("Access-Control-Allow-Origin", "*")
+        res.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return res, 200
 
-    # Lotería de premios Unown
-    if random.random() < 0.80:
-        prize_id = random.choice(['pack_small_unown', 'pack_medium_unown', 'pack_large_unown'])
-    else:
-        prize_id = random.choice(
-            ['pack_magic_small_unown', 'pack_magic_medium_unown', 'pack_magic_large_unown', 'pack_special_unown'])
+    try:
+        data = request.json
+        user_id = int(data.get('user_id'))
+        first_name = data.get('first_name')
+        chat_id = int(data.get('chat_id'))
+        msg_id = int(data.get('msg_id'))
 
-    prize_name = SHOP_CONFIG[prize_id]['name']
+        # 1. Obtenemos el juego de la Base de Datos
+        state = db.get_minigame(chat_id, msg_id)
+        if not state:
+            res = jsonify({"error": "event_not_found"})
+            res.headers.add("Access-Control-Allow-Origin", "*")
+            return res, 200
 
-    db.get_or_create_user(user_id, first_name)
-    db.add_item_to_inventory(user_id, prize_id, 1)
+        # 2. Comprobamos si ya ganó
+        if user_id in state['winners']:
+            res = jsonify({"error": "already_played"})
+            res.headers.add("Access-Control-Allow-Origin", "*")
+            return res, 200
 
-    safe_name = first_name.replace('*', '').replace('_', '')
-    state['winners'].append(user_id)
-    state['results'].append(f"👤 {safe_name}: {prize_name} ✅")
+        # 3. Lotería Unown
+        if random.random() < 0.80:
+            prize_id = random.choice(['pack_small_unown', 'pack_medium_unown', 'pack_large_unown'])
+        else:
+            prize_id = random.choice(
+                ['pack_magic_small_unown', 'pack_magic_medium_unown', 'pack_magic_large_unown', 'pack_special_unown'])
 
-    text_final = "🎲 **¡Un Evento Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa para conseguir un sobre de Unown.\n\n"
-    text_final += "**Resultados:**\n" + "\n".join(state['results'])
+        prize_name = SHOP_CONFIG[prize_id]['name']
 
-    url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
-    payload = {
-        "chat_id": chat_id,
-        "message_id": msg_id,
-        "text": text_final,
-        "parse_mode": "Markdown",
-        "reply_markup": {
-            "inline_keyboard": [[{"text": "Jugar", "web_app": {"url": state['web_url']}}]]
+        # 4. Entregamos premio
+        db.get_or_create_user(user_id, first_name)
+        db.add_item_to_inventory(user_id, prize_id, 1)
+
+        # 5. Guardamos la victoria en la BD
+        safe_name = first_name.replace('*', '').replace('_', '')
+        result_text = f"👤 {safe_name}: {prize_name} ✅"
+        db.update_minigame_winner(chat_id, msg_id, user_id, result_text)
+
+        # Volvemos a leer el estado para tener la lista completa y actualizada
+        updated_state = db.get_minigame(chat_id, msg_id)
+
+        # 6. Actualizamos el mensaje en Telegram
+        text_final = "🎲 **¡Un Evento Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa.\n\n"
+        text_final += "**Resultados:**\n" + "\n".join(updated_state['results'])
+
+        url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+        payload = {
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": text_final,
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": [[{"text": "Jugar", "url": updated_state['group_btn_url']}]]
+            }
         }
-    }
-    requests.post(url_tg, json=payload)
+        requests.post(url_tg, json=payload)
 
-    res = jsonify({"success": True, "prize_name": prize_name})
-    res.headers.add("Access-Control-Allow-Origin", "*")
-    return res
+        res = jsonify({"success": True, "prize_name": prize_name})
+        res.headers.add("Access-Control-Allow-Origin", "*")
+        return res
+
+    except Exception as e:
+        print(f"Error grave en Flask: {e}")
+        res = jsonify({"error": "server_error"})
+        res.headers.add("Access-Control-Allow-Origin", "*")
+        return res, 500
 
 # ---------------------------------------------------------
 
@@ -843,34 +854,29 @@ async def test_minijuego_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_user.id != ADMIN_USER_ID: return
     chat_id = update.effective_chat.id
 
-    # Primero enviamos un mensaje vacío para conseguir su ID
     msg = await update.message.reply_text("Generando minijuego...", disable_notification=True)
 
-    # SUSTITUYE POR TU URL DE LA WEB DONDE ESTÁ ALOJADO EL JUEGO DE REACT
-    base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
-
-    # Construimos la URL con los parámetros del chat y mensaje
+    # URL DE TU WEB
+    base_web_url = "https://TU-PAGINA-WEB.com"
     full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
 
-    # Guardamos el estado
-    if chat_id not in MINIGAME_STATE:
-        MINIGAME_STATE[chat_id] = {}
+    bot_username = context.bot.username
+    deep_link = f"https://t.me/{bot_username}?start=game_{chat_id}_{msg.message_id}"
 
-    MINIGAME_STATE[chat_id][msg.message_id] = {
-        'winners': [],
-        'results': [],
-        'web_url': full_url
-    }
+    # GUARDAMOS EN LA BASE DE DATOS (No en RAM)
+    db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
 
     text = (
-        "🎲 **¡Un Evento Minijuego ha aparecido!**\n\n"
+        "🎲 **¡Un Evento Minijuego ha aparecido!**\n"
         "Resuelve el puzzle de las Ruinas Alfa.\n\n"
         "**Resultados:**\n_Aún nadie ha jugado_"
     )
 
-    keyboard = [[InlineKeyboardButton("Jugar", web_app=WebAppInfo(url=full_url))]]
+    if update.effective_chat.type == 'private':
+        keyboard = [[InlineKeyboardButton("Jugar", web_app=WebAppInfo(url=full_url))]]
+    else:
+        keyboard = [[InlineKeyboardButton("Jugar", url=deep_link)]]
 
-    # Editamos el mensaje poniéndole el botón WebApp
     await context.bot.edit_message_text(
         chat_id=chat_id,
         message_id=msg.message_id,
@@ -878,7 +884,6 @@ async def test_minijuego_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
-
 
 async def admin_ban_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Banea un grupo por su ID de forma silenciosa."""
@@ -1724,6 +1729,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- CAMBIO: Registramos al usuario SIEMPRE, sea grupo o privado ---
     db.get_or_create_user(user.id, user.first_name)
     # -----------------------------------------------------------------
+    # RECOGER JUGADORES DEL MINIJUEGO
+    # RECOGER JUGADORES DEL MINIJUEGO
+    if context.args and context.args[0].startswith("game_"):
+        parts = context.args[0].split("_")
+        if len(parts) == 3:
+            try:
+                c_id, m_id = int(parts[1]), int(parts[2])
+                state = db.get_minigame(c_id, m_id)  # Leer de BD
+                if state:
+                    keyboard = [[InlineKeyboardButton("Jugar", web_app=WebAppInfo(url=state['web_url']))]]
+                    await update.message.reply_text(
+                        "Minijuego de las Ruinas Alfa.",
+                        reply_markup=InlineKeyboardMarkup(keyboard))
+                    return
+                else:
+                    await update.message.reply_text("Este minijuego ya ha expirado o no existe.")
+                    return
+            except ValueError:
+                pass
 
     if chat.type in ['group', 'supergroup']:
         # --- CHEQUEO DE BANEO (SHADOW BAN) ---
@@ -5618,6 +5642,14 @@ def main():
         time=dt_time(10, 0, tzinfo=TZ_SPAIN),
         name="regional_event_announcement"
     )
+
+    # Limpiador de minijuegos caducados (03:00 AM)
+    application.job_queue.run_daily(
+        lambda context: db.delete_expired_minigames(),
+        time=dt_time(3, 0, tzinfo=TZ_SPAIN),
+        name="clean_expired_minigames"
+    )
+
 
     async def admin_setup_codes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Crea el mensaje fijo de códigos."""
