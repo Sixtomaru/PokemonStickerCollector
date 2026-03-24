@@ -857,7 +857,7 @@ async def test_minijuego_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     msg = await update.message.reply_text("Generando minijuego...", disable_notification=True)
 
     # URL DE TU WEB
-    base_web_url = "https://TU-PAGINA-WEB.com"
+    base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
     full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
 
     bot_username = context.bot.username
