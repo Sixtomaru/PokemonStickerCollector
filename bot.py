@@ -60,30 +60,37 @@ def keep_alive():
     t.start()
 
 
-@app.route('/api/win_minigame', methods=['POST', 'OPTIONS'])
+@app.route('/api/win_minigame', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
 def win_minigame():
-    # 1. Dejamos pasar la petición de seguridad (Preflight) del navegador
+    # 1. Seguridad CORS (Preflight)
     if request.method == 'OPTIONS':
         return jsonify({"status": "ok"}), 200
 
-    # 2. Procesamos la victoria normal (POST)
+    # 2. Por si el navegador hace un GET por error al redirigir
+    if request.method == 'GET':
+        return jsonify({"status": "El servidor está escuchando, pero debes enviar un POST."}), 200
+
+    # 3. El procesamiento real de la victoria (POST)
     try:
         data = request.json
+        if not data:
+            return jsonify({"error": "no_data"}), 400
+
         user_id = int(data.get('user_id'))
         first_name = data.get('first_name')
         chat_id = int(data.get('chat_id'))
         msg_id = int(data.get('msg_id'))
 
-        # 1. Obtenemos el juego de la Base de Datos
+        # Obtenemos el juego de la Base de Datos
         state = db.get_minigame(chat_id, msg_id)
         if not state:
             return jsonify({"error": "event_not_found"}), 200
 
-        # 2. Comprobamos si ya ganó
+        # Comprobamos si ya ganó
         if user_id in state['winners']:
             return jsonify({"error": "already_played"}), 200
 
-        # 3. Lotería Unown
+        # Lotería Unown
         if random.random() < 0.80:
             prize_id = random.choice(['pack_small_unown', 'pack_medium_unown', 'pack_large_unown'])
         else:
@@ -92,18 +99,18 @@ def win_minigame():
 
         prize_name = SHOP_CONFIG[prize_id]['name']
 
-        # 4. Entregamos premio
+        # Entregamos premio
         db.get_or_create_user(user_id, first_name)
         db.add_item_to_inventory(user_id, prize_id, 1)
 
-        # 5. Guardamos la victoria en la BD
+        # Guardamos la victoria en la BD
         safe_name = first_name.replace('*', '').replace('_', '')
         result_text = f"👤 {safe_name}: {prize_name} ✅"
         db.update_minigame_winner(chat_id, msg_id, user_id, result_text)
 
         updated_state = db.get_minigame(chat_id, msg_id)
 
-        # 6. Actualizamos el mensaje en Telegram
+        # Actualizamos el mensaje en Telegram
         text_final = "🎲 **¡Un Minijuego ha aparecido!**\nResuelve el puzzle de las Ruinas Alfa.\n\n"
         text_final += "**Resultados:**\n" + "\n".join(updated_state['results'])
 
@@ -123,7 +130,7 @@ def win_minigame():
 
     except Exception as e:
         print(f"Error grave en Flask: {e}")
-        return jsonify({"error": "server_error"}), 500
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
 
