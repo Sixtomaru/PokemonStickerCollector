@@ -3331,9 +3331,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rarity = get_rarity(p['category'], s)
 
             try:
-                # Ruta dinámica según región (Unown tiene su propia subcarpeta)
+                # Ruta dinámica (Los Unown con IDs de 5 cifras viven en Johto)
                 if p['id'] > 20000:
-                    region_folder = "Unown"
+                    region_folder = "Johto"
                 else:
                     region_folder = "Johto" if p['id'] > 151 else "Kanto"
 
