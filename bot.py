@@ -1454,6 +1454,37 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     event_id = random.choice(available_events)
 
     # Texto especial si es un evento doble
+    # --- CASO ESPECIAL: ES UN MINIJUEGO ---
+    if event_id == 'minijuego_unown':
+        msg = await context.bot.send_message(chat_id=chat_id, text="Generando minijuego...", disable_notification=True)
+
+        # URL DE TU WEB (La misma que usaste en testminijuego)
+        base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
+        full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
+
+        bot_username = context.bot.username
+        deep_link = f"https://t.me/{bot_username}?start=game_{chat_id}_{msg.message_id}"
+
+        db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
+
+        text = (
+            "🎲 **¡Un Minijuego ha aparecido!**\n"
+            "Resuelve el puzzle de las Ruinas Alfa.\n\n"
+            "**Resultados:**\n_Aún nadie ha jugado_"
+        )
+
+        keyboard = [[InlineKeyboardButton("Ir al juego ↗", url=deep_link)]]
+
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg.message_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return  # Terminamos aquí porque el minijuego va por su propio camino
+
+    # --- CASO NORMAL: EVENTOS DE HISTORIA ---
     if event_id.startswith("doble_"):
         text = "👥 <b>¡Ha aparecido un Evento Doble!</b>"
     else:
@@ -1924,8 +1955,8 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if ev_id in legendary_missions and db.is_event_completed(chat_id, ev_id):
             continue
 
-        # Filtro Johto
-        if ev_id.startswith('johto_') and not johto_unlocked:
+        # Filtro Johto (usamos la lista oficial de claves que hemos creado)
+        if ev_id in JOHTO_EVENT_KEYS and not johto_unlocked:
             continue
 
         available_events.append(ev_id)
@@ -1937,10 +1968,43 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     event_id = random.choice(available_events)
 
+    # --- CASO ESPECIAL: ES UN MINIJUEGO ---
+    if event_id == 'minijuego_unown':
+        msg = await context.bot.send_message(chat_id=chat_id, text="Generando minijuego...", disable_notification=True)
+
+        # ---> PON TU ENLACE DE RENDER AQUÍ (EL DE TU WEB EN REACT/VERCEL) <---
+        base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
+        full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
+
+        bot_username = context.bot.username
+        deep_link = f"https://t.me/{bot_username}?start=game_{chat_id}_{msg.message_id}"
+
+        # Guardamos en la base de datos
+        db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
+
+        text = (
+            "🎲 **¡Un Minijuego ha aparecido!**\n"
+            "Resuelve el puzzle de las Ruinas Alfa.\n\n"
+            "**Resultados:**\n_Aún nadie ha jugado_"
+        )
+
+        keyboard = [[InlineKeyboardButton("Ir al juego ↗", url=deep_link)]]
+
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg.message_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        await update.message.delete()
+        return
+
+    # --- CASO NORMAL: EVENTOS DE HISTORIA ---
     if event_id.startswith("doble_"):
         text = "👥 <b>¡Ha aparecido un Evento Doble!</b>\n"
     else:
-        text = "¡Un Evento ha aparecido!"
+        text = "👤 <b>¡Un Evento ha aparecido!</b>"
 
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
