@@ -2155,7 +2155,8 @@ EVENTS = {
     'doble_mumu': {'name': "Granja Mu-mu", 'steps': {'start': {'get_text_and_keyboard': _get_mumu_start},
                                                      'decision': {'action': evento_doble_mumu}}},
     'doble_safari': {'name': "Zona Safari", 'steps': {'start': {'get_text_and_keyboard': _get_safari_start},
-                                                      'decision': {'action': evento_johto_safari}}}
+                                                      'decision': {'action': evento_johto_safari}}},
+    'minijuego_unown': {'name': "Minijuego Ruinas Alfa", 'is_minigame': True},
 }
 
 # --- EXPORTAR CLAVES PARA FILTROS REGIONALES ---
@@ -2170,5 +2171,5 @@ KANTO_EVENT_KEYS = [
 ]
 
 JOHTO_EVENT_KEYS = [
-    'johto_orquidea', 'johto_primo', 'johto_danza', 'doble_mumu', 'doble_safari', 'doble_primavera', 'johto_plateado'
+    'johto_orquidea', 'johto_primo', 'johto_danza', 'doble_mumu', 'doble_safari', 'doble_primavera', 'johto_plateado', 'minijuego_unown'
 ]
