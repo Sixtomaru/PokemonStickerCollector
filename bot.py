@@ -248,6 +248,7 @@ SHOP_CONFIG = {
     'pack_magic_medium_unown': {'name': 'Sobre Mágico Med. Unown', 'price': 0, 'size': 2, 'is_magic': True, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 2 stickers que no tienes de Unown.', 'emoji': '🎴'},
     'pack_magic_large_unown': {'name': 'Sobre Mágico Gra. Unown', 'price': 0, 'size': 3, 'is_magic': True, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 3 stickers que no tienes de Unown.', 'emoji': '🎴'},
     'pack_special_unown': {'name': 'Sobre Especial Unown', 'price': 0, 'size': 6, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 6 stickers de Unown con probabilidad brillante doble.', 'emoji': '✨🔺'},
+    'pack_shiny_unown': {'name': 'Sobre Brillante Unown', 'price': 0, 'size': 1, 'hidden': True, 'desc': 'Garantiza 1 Unown Shiny.', 'emoji': '✨🎴'},
 }
 
 # (Esto déjalo igual, se actualiza solo)
@@ -2125,7 +2126,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # Johto (91)
         if not db.is_johto_completed_by_user(user.id):
-            if db.get_user_unique_johto_count(user.id) >= 91:
+            if db.get_user_unique_johto_count(user.id) >= 100:
                 db.set_johto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
@@ -3186,17 +3187,42 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+        # --- DETECTOR DE ÁLBUM COMPLETO ---
+        premios_extra = ""
+        user_mention = f'<a href="tg://user?id={user_id}">{user_name}</a>'
+
+        if not db.is_kanto_completed_by_user(user_id):
+            if db.get_user_unique_kanto_count(user_id) >= 151:
+                db.set_kanto_completed_by_user(user_id)
+                db.update_money(user_id, 3000)
+                db.add_item_to_inventory(user_id, 'pack_shiny_kanto', 1)
+                premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+
+        if not db.is_johto_completed_by_user(user_id):
+            if db.get_user_unique_johto_count(user_id) >= 91:
+                db.set_johto_completed_by_user(user_id)
+                db.update_money(user_id, 3000)
+                db.add_item_to_inventory(user_id, 'pack_shiny_johto', 1)
+                premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+        # -----------------------------------
+
         text = (
-            "🐣 <b>¡Anda, el huevo se ha abierto!</b>\n\n"
+            "🐣 <b>¡Anda!, ¡el huevo se ha abierto!</b>\n\n"
             f"¡Ha nacido un <b>{p_name_clean}</b>!\n\n"
             f"{user_name} lo escanea en su Álbumdex y lo devuelve a la guardería Pokémon.\n\n"
             f"{final_msg}\n\n"
             "La persona encargada de la guardería te da las gracias y <b>400₽</b> por cuidarlo."
+            f"{premios_extra}"
         )
 
         # 5. Notificar
         try:
-            region_folder = "Johto" if pokemon_id > 151 else "Kanto"
+            # Ruta de imagen dinámica
+            if pokemon_id > 20000:
+                region_folder = "Unown"
+            else:
+                region_folder = "Johto" if pokemon_id > 151 else "Kanto"
+
             path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_id}{'s' if is_shiny else ''}.png"
 
             with open(path, 'rb') as f:
@@ -3289,6 +3315,12 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif item_id == 'pack_shiny_johto':
             johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
             p_data = random.choice(johto_pool)
+            pack_results.append({'data': p_data, 'is_shiny': True})
+
+        # 2B. Sobre Brillante Unown (NUEVO)
+        elif item_id == 'pack_shiny_unown':
+            from pokemon_data import POKEMON_UNOWN
+            p_data = random.choice(POKEMON_UNOWN)
             pack_results.append({'data': p_data, 'is_shiny': True})
 
         # 3. Sobre Especial Kanto (Doble probabilidad shiny)
@@ -3439,11 +3471,18 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
         if not db.is_johto_completed_by_user(user.id):
-            if db.get_user_unique_johto_count(user.id) >= 91:
+            if db.get_user_unique_johto_count(user.id) >= 100:
                 db.set_johto_completed_by_user(user.id)
                 db.update_money(user.id, 3000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+        if not db.is_unown_completed_by_user(user.id):
+            if db.get_user_unique_unown_count(user.id) >= 28:
+                db.set_unown_completed_by_user(user.id)
+                db.update_money(user.id, 2000)
+                db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
@@ -4771,6 +4810,7 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+
 async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
@@ -4809,7 +4849,7 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     want_p, want_s = int(parts[4]), bool(int(parts[5]))  # Lo que da el TARGET (Destinatario)
     offer_p, offer_s = int(parts[6]), bool(int(parts[7]))  # Lo que da el SENDER (Solicitante)
 
-    # 3. VALIDACIÓN CRÍTICA DE STOCK (¡NUEVO!)
+    # 3. VALIDACIÓN CRÍTICA DE STOCK
     # Comprobamos si el Solicitante aún tiene el repetido que ofreció
     if not db.has_duplicate(sender_id, offer_p, offer_s):
         await query.answer("❌ Error: El usuario que envió la oferta ya no tiene ese Pokémon repetido.", show_alert=True)
@@ -4826,9 +4866,12 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 4. Ejecución en Base de Datos
     status_sender, status_target = db.execute_trade(sender_id, offer_p, offer_s, target_id, want_p, want_s)
 
-    # Obtener nombres
-    s_name = (await context.bot.get_chat(sender_id)).first_name
-    t_name = (await context.bot.get_chat(target_id)).first_name
+    # Obtener nombres e información
+    sender = await context.bot.get_chat(sender_id)
+    target = await context.bot.get_chat(target_id)
+
+    s_name = sender.first_name
+    t_name = target.first_name
 
     w_data = POKEMON_BY_ID[want_p]
     o_data = POKEMON_BY_ID[offer_p]
@@ -4849,10 +4892,59 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.update_money(target_id, price)
         o_txt += f" (+{format_money(price)}₽)"
 
+    # --- DETECTOR DE ÁLBUM COMPLETO (Para ambos jugadores) ---
+    premios_extra = ""
+
+    # Comprobamos al Sender (El que inició el intercambio)
+    if not db.is_kanto_completed_by_user(sender_id):
+        if db.get_user_unique_kanto_count(sender_id) >= 151:
+            db.set_kanto_completed_by_user(sender_id)
+            db.update_money(sender_id, 3000)
+            db.add_item_to_inventory(sender_id, 'pack_shiny_kanto', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {sender.mention_markdown()}, has completado *Kanto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+
+    if not db.is_johto_completed_by_user(sender_id):
+        if db.get_user_unique_johto_count(sender_id) >= 100:
+            db.set_johto_completed_by_user(sender_id)
+            db.update_money(sender_id, 3000)
+            db.add_item_to_inventory(sender_id, 'pack_shiny_johto', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {sender.mention_markdown()}, has completado *Johto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+    if not db.is_unown_completed_by_user(sender_id):
+        if db.get_user_unique_unown_count(sender_id) >= 28:
+            db.set_unown_completed_by_user(sender_id)
+            db.update_money(sender_id, 2000)
+            db.add_item_to_inventory(sender_id, 'pack_shiny_unown', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {sender.mention_markdown()}, has completado el *Álbum Unown*! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+
+    # Comprobamos al Target (El que aceptó el intercambio)
+    if not db.is_kanto_completed_by_user(target_id):
+        if db.get_user_unique_kanto_count(target_id) >= 151:
+            db.set_kanto_completed_by_user(target_id)
+            db.update_money(target_id, 3000)
+            db.add_item_to_inventory(target_id, 'pack_shiny_kanto', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {target.mention_markdown()}, has completado *Kanto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+
+    if not db.is_johto_completed_by_user(target_id):
+        if db.get_user_unique_johto_count(target_id) >= 100:
+            db.set_johto_completed_by_user(target_id)
+            db.update_money(target_id, 3000)
+            db.add_item_to_inventory(target_id, 'pack_shiny_johto', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {target.mention_markdown()}, has completado *Johto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+    if not db.is_unown_completed_by_user(target_id):
+        if db.get_user_unique_unown_count(target_id) >= 28:
+            db.set_unown_completed_by_user(target_id)
+            db.update_money(target_id, 2000)
+            db.add_item_to_inventory(target_id, 'pack_shiny_unown', 1)
+            premios_extra += f"\n\n🎊 ¡Felicidades {target.mention_markdown()}, has completado el *Álbum Unown*! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+    # ---------------------------------------------------------
+
     final_text = (
         f"♻✅ **¡Intercambio aceptado!**\n\n"
         f"👤 {s_name} recibió: {w_txt}\n"
         f"👤 {t_name} recibió: {o_txt}"
+        f"{premios_extra}"
     )
 
     await query.edit_message_text(final_text, parse_mode='Markdown')
