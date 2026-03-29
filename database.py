@@ -830,15 +830,28 @@ def set_johto_completed_by_user(user_id):
 
 
 def get_user_unique_johto_count(user_id):
-    # Excluimos IDs: 172, 173, 174, 175, 201, 236, 238, 239, 240
+    """
+    Cuenta cuántos Pokémon de Johto tiene el jugador INDIVIDUALMENTE.
+    Debe llegar a 100 (incluyendo bebés y al menos 1 Unown).
+    """
+    # 1. Contamos los de Johto (del 152 al 251), excluyendo al 201 base
+    # (Aquí SÍ contamos a los bebés porque el jugador puede criarlos)
     res = query_db("""
         SELECT COUNT(DISTINCT pokemon_id) 
         FROM collection 
-        WHERE user_id = ? 
+        WHERE user_id = %s 
         AND pokemon_id >= 152 AND pokemon_id <= 251
-        AND pokemon_id NOT IN (172, 173, 174, 175, 201, 236, 238, 239, 240)
+        AND pokemon_id != 201
     """, (user_id,), one=True)
-    return res[0] if res else 0
+    count = res[0] if res else 0
+
+    # 2. Efecto Espejo Unown: Si tiene CUALQUIERA de los 28 Unown (>20000)
+    # le sumamos el Unown #201 al conteo total de Johto.
+    has_unown = query_db("SELECT 1 FROM collection WHERE user_id = %s AND pokemon_id > 20000 LIMIT 1", (user_id,), one=True)
+    if has_unown:
+        count += 1
+
+    return count
 
 # --- SISTEMA DE GUARDERÍA (HUEVOS) ---
 
