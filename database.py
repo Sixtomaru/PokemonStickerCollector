@@ -299,6 +299,17 @@ def is_kanto_completed_by_user(user_id):
 def set_kanto_completed_by_user(user_id):
     query_db("UPDATE users SET kanto_completed = 1 WHERE user_id = ?", (user_id,))
 
+def is_unown_completed_by_user(user_id):
+    res = query_db("SELECT unown_completed FROM users WHERE user_id = ?", (user_id,), one=True)
+    return res[0] if res else 0
+
+def set_unown_completed_by_user(user_id):
+    query_db("UPDATE users SET unown_completed = 1 WHERE user_id = ?", (user_id,))
+
+def get_user_unique_unown_count(user_id):
+    # Los Unown son todos los que tienen ID mayor de 20000
+    res = query_db("SELECT COUNT(DISTINCT pokemon_id) FROM collection WHERE user_id = ? AND pokemon_id > 20000", (user_id,), one=True)
+    return res[0] if res else 0
 
 # --- MODIFICADO: Sistema de Pokedex Grupal Independiente ---
 def add_pokemon_to_group_pokedex(chat_id, pokemon_id):
