@@ -2095,7 +2095,7 @@ EVENTS = {}
 EVENTS = {
     # --- KANTO ---
     'pesca_ruta_12': {'name': "Pesca", 'steps': {'start': {'get_text_and_keyboard': lambda u: random.choice([{
-                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} va paseando por la Ruta 12...\n💬 <b>Oye, perdona...</b>",
+                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} va paseando por la Ruta 12, y de pronto escucha la voz de alguien:\n💬 <b>Oye, perdona, ¿puedes venir un momento?</b>\n{u.first_name} se acerca a un pescador, que le indica con la mano que se acerque:\n💬¿Podría pedirte un favor?, ¿puedes vigilar la caña? voy a comprar cebo, solo será un momento.",
                                                                                                                  'keyboard': [
                                                                                                                      [{
                                                                                                                           'text': 'Vale',
@@ -2104,7 +2104,7 @@ EVENTS = {
                                                                                                                           'text': 'No puedo',
                                                                                                                           'callback_data': 'ev|pesca_ruta_12|decision|vigilar_caña|no_puedo'}]]},
                                                                                                              {
-                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} ve un puesto de cañas.\n\"¡Alquila una caña por 200₽!\"",
+                                                                                                                 'text': f"<i>Evento aceptado por {u.first_name}</i>\n\n🔸{u.first_name} va a entrar en la Ruta 12, y ve un puesto con cañas de pescar, con un cartel que anuncia: ¡Alquila una caña de pescar por solo 200 monedas!",
                                                                                                                  'keyboard': [
                                                                                                                      [{
                                                                                                                           'text': 'Lo haré',
