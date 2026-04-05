@@ -5292,9 +5292,9 @@ async def schedule_delibird_week(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_delibird_startup(application):
-    """Se ejecuta al encender el bot: recupera o reprograma Delibird para la semana ACTUAL."""
+    """Se ejecuta al encender el bot: recupera o reprograma Delibird asegurando 1 solo por semana."""
     last_check = application.bot_data.get('last_startup_check')
-    now_min = datetime.now().strftime('%Y-%m-%d %H:%M')
+    now_min = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d %H:%M')
     if last_check == now_min:
         return
     application.bot_data['last_startup_check'] = now_min
@@ -5309,29 +5309,39 @@ async def check_delibird_startup(application):
         if delay <= 0:
             logger.warning("🐧 Delibird detectado en startup. Lanzando...")
             db.clear_delibird_schedule()
-            # Lanzamos una tarea casi inmediata (1 segundo) para que se ejecute bien
             application.job_queue.run_once(trigger_delibird_event, 1, name="delibird_recovered_event")
         else:
             trigger_date = datetime.fromtimestamp(saved_timestamp, TZ_SPAIN)
-            logger.info(f"🐧 Restaurando evento Delibird para: {trigger_date}")
+            logger.info(f"🐧 Restaurando evento Delibird para: {trigger_date.strftime('%d/%m/%Y %H:%M:%S')}")
             application.job_queue.run_once(trigger_delibird_event, delay, name="delibird_restored_event")
 
-    # 2. LA MAGIA: Si NO hay fecha, la calculamos SOLO para lo que queda de semana
+    # 2. Si NO hay fecha, comprobamos si YA SALIÓ esta semana
     else:
+        # Obtenemos la semana actual (ej: '2026-W42')
+        current_week = datetime.now(TZ_SPAIN).strftime('%Y-W%V')
+
+        # Le preguntamos a la BD si alguien tiene esa semana registrada como reclamada
+        # (Usamos una consulta rápida para ver si existe al menos 1 registro esta semana)
+        ya_salio = db.query_db("SELECT 1 FROM users WHERE last_delibird_claim = %s LIMIT 1", (current_week,), one=True)
+
+        if ya_salio:
+            logger.info("🐧 Startup: Delibird ya hizo su reparto esta semana. A dormir hasta el lunes.")
+            return  # ¡Cortamos aquí! No programamos nada nuevo.
+
+        # 3. Si NO hay fecha y NO ha salido esta semana, lo reprogramamos de emergencia
         seconds_left = get_seconds_until_end_of_week()
 
-        # Si faltan menos de 2 horas para acabar la semana, lo lanzamos casi ya
-        if seconds_left < 7200:
-            random_delay = random.randint(60, max(120, seconds_left - 60))
+        if seconds_left < 7200:  # Quedan menos de 2 horas
+            random_delay = random.randint(60, max(120, int(seconds_left) - 60))
         else:
-            # Tiramos el dado entre 1 hora y el final de la semana
-            random_delay = random.randint(3600, seconds_left - 3600)
+            random_delay = random.randint(3600, int(seconds_left) - 3600)
 
         target_timestamp = current_time + random_delay
         db.set_delibird_schedule(target_timestamp)
 
         trigger_date = datetime.fromtimestamp(target_timestamp, TZ_SPAIN)
-        logger.info(f"🐧 Delibird REPROGRAMADO de emergencia para esta semana: {trigger_date}")
+        logger.info(
+            f"🐧 Delibird REPROGRAMADO de emergencia para esta semana: {trigger_date.strftime('%d/%m/%Y %H:%M:%S')}")
         application.job_queue.run_once(trigger_delibird_event, random_delay, name="delibird_emergency_event")
 
 
