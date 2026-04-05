@@ -632,16 +632,27 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_collection = db.get_all_user_stickers(owner_user.id)
 
-    # Contamos cuántos Pokémon normales y shinys tiene
-    owned_normal = len({s[0] for s in user_collection if s[1] == 0})
-    owned_shiny = len({s[0] for s in user_collection if s[1] == 1})
+    # --- 1. LÓGICA DE CONTEO NACIONAL (Efecto Espejo) ---
+    national_normal = set()
+    national_shiny = set()
 
-    # Contamos cuántos Unown distintos tiene
+    for pid, is_shiny in user_collection:
+        # Si es un Unown (>20000), lo convertimos visualmente al #201 para el conteo general
+        mapped_id = 201 if pid in UNOWN_IDS else pid
+
+        if is_shiny == 0:
+            national_normal.add(mapped_id)
+        else:
+            national_shiny.add(mapped_id)
+
+    owned_normal = len(national_normal)
+    owned_shiny = len(national_shiny)
+
+    # Conteo específico de letras Unown
     owned_unown = len({s[0] for s in user_collection if s[0] in UNOWN_IDS})
+    total_pokemon_count = 251  # Base inamovible (Kanto 151 + Johto 100)
 
-    # El total de la Pokédex es todo menos los Unown (para no falsear el porcentaje de Kanto/Johto)
-    total_pokemon_count = len([p for p in ALL_POKEMON if p['id'] not in UNOWN_IDS])
-
+    # --- 2. CONTEO DE RAREZAS (Aquí los Unown SÍ suman cada uno en su rareza 🟤) ---
     rarity_counts = {rarity: 0 for rarity in RARITY_VISUALS.keys()}
     for pokemon_id, is_shiny in user_collection:
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
@@ -649,7 +660,8 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             final_rarity = get_rarity(pokemon_data['category'], is_shiny)
             if final_rarity in rarity_counts: rarity_counts[final_rarity] += 1
 
-    rarity_lines = [f"{rarity_counts[code]} {emoji}" for code, emoji in RARITY_VISUALS.items()]
+    # --- 3. NUEVO DISEÑO VISUAL (Ej: 🟤94 en lugar de 94 🟤) ---
+    rarity_lines = [f"{emoji}{rarity_counts[code]}" for code, emoji in RARITY_VISUALS.items()]
 
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
             f"🐱 Stickers: *{owned_normal}/{total_pokemon_count}*\n"
@@ -1234,6 +1246,21 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
             return
     except (ValueError, IndexError):
         await query.answer("Error al obtener el sticker.", show_alert=True)
+        return
+
+        # --- NUEVO: INTERCEPTOR DEL UNOWN #201 EN JOHTO ---
+    if pokemon_id == 201:
+        text = "Para ver los Unown que tienes y sus versiones (Normal/Brillante), visita su propia sección en el **Álbumdex Nacional**."
+
+        keyboard = []
+        back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
+        if cmd_msg_id_str:
+            back_cb_data += f"_{cmd_msg_id_str}"
+        back_cb_data += "_num"
+
+        keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return
 
     refresh_deletion_timer(context, query.message, 60)
@@ -1931,6 +1958,56 @@ async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TY
         disable_notification=True
     )
 
+
+async def admin_check_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_USER_ID: return
+
+    # Obtenemos el timestamp de la base de datos
+    saved_timestamp = db.get_delibird_schedule()
+
+    if not saved_timestamp:
+        # Si no hay fecha guardada, es que ya ha salido y borró su rastro
+        await update.message.reply_text(
+            "🐧💤 **Delibird ya ha pasado por aquí esta semana**",
+            parse_mode='Markdown', disable_notification=True
+        )
+        return
+
+    current_time = time.time()
+    diff = saved_timestamp - current_time
+
+    if diff <= 0:
+        await update.message.reply_text("🐧 ¡Delibird debería estar al caer de un momento a otro!",
+                                        disable_notification=True)
+        return
+
+    # Cálculos matemáticos de la cuenta atrás
+    from datetime import timedelta
+    td = timedelta(seconds=diff)
+    days = td.days
+    hours, remainder = divmod(td.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    time_str = ""
+    if days > 0: time_str += f"**{days}** días, "
+    if hours > 0: time_str += f"**{hours}** horas, "
+    if minutes > 0: time_str += f"**{minutes}** minutos y "
+    time_str += f"**{seconds}** segundos"
+
+    # Fecha absoluta en hora de España
+    trigger_date = datetime.fromtimestamp(saved_timestamp, TZ_SPAIN)
+    dias_es = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves',
+               'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
+    dia_ingles = trigger_date.strftime('%A')
+    fecha_formateada = f"{dias_es.get(dia_ingles, dia_ingles)}, {trigger_date.strftime('%d/%m/%Y a las %H:%M:%S')}"
+
+    text = (
+        f"🐧 **Próximo Delibird programado:**\n"
+        f"🗓 {fecha_formateada}\n\n"
+        f"⏳ **Llegará en exactamente:**\n{time_str}"
+    )
+
+    await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
 
 async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fuerza la aparición de un Evento de Historia en el grupo actual."""
@@ -5904,6 +5981,7 @@ def main():
         CommandHandler("forceevento", force_event_command),
         CommandHandler("menugruposhuffle", menu_grupo_shuffle_cmd),
         CommandHandler("testminijuego", test_minijuego_cmd),
+        CommandHandler("cuandodelibird", admin_check_delibird),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
