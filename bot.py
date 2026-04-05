@@ -132,6 +132,20 @@ def win_minigame():
         print(f"Error grave en Flask: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+def get_seconds_until_end_of_week():
+    """Calcula los segundos exactos que faltan hasta el domingo a las 23:59:59."""
+    now = datetime.now(TZ_SPAIN)
+    # days_ahead: Si hoy es jueves (3), faltan 3 días para el domingo (6)
+    days_ahead = 6 - now.weekday()
+
+    # Creamos la fecha límite: este domingo a las 23:59:59
+    end_of_week = now.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(days=days_ahead)
+
+    # Calculamos la diferencia en segundos
+    diff = (end_of_week - now).total_seconds()
+    return max(0, int(diff))  # Por seguridad, nunca devolvemos números negativos
+
 # ---------------------------------------------------------
 
 # --- Configuración Inicial ---
@@ -5278,25 +5292,47 @@ async def schedule_delibird_week(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_delibird_startup(application):
-    """Se ejecuta al encender el bot: recupera eventos pendientes."""
-    saved_timestamp = db.get_delibird_schedule()
+    """Se ejecuta al encender el bot: recupera o reprograma Delibird para la semana ACTUAL."""
+    last_check = application.bot_data.get('last_startup_check')
+    now_min = datetime.now().strftime('%Y-%m-%d %H:%M')
+    if last_check == now_min:
+        return
+    application.bot_data['last_startup_check'] = now_min
 
+    saved_timestamp = db.get_delibird_schedule()
+    current_time = time.time()
+
+    # 1. Si hay fecha guardada y es válida, la respetamos
     if saved_timestamp:
-        current_time = time.time()
         delay = saved_timestamp - current_time
 
         if delay <= 0:
-            # ¡Ya pasó la hora mientras estaba apagado! -> Lanzar INMEDIATAMENTE
-            logger.warning("🐧 ¡Delibird se perdió por estar apagado! Lanzando AHORA MISMO de urgencia.")
-            # Ejecutamos la función directamente (simulando job)
-            # Nota: Necesitamos el context. Como no lo tenemos fácil aquí, usamos run_once con 1 segundo.
+            logger.warning("🐧 Delibird detectado en startup. Lanzando...")
+            db.clear_delibird_schedule()
+            # Lanzamos una tarea casi inmediata (1 segundo) para que se ejecute bien
             application.job_queue.run_once(trigger_delibird_event, 1, name="delibird_recovered_event")
-
         else:
-            # Aún falta tiempo -> Reprogramar
-            trigger_date = datetime.fromtimestamp(saved_timestamp)
+            trigger_date = datetime.fromtimestamp(saved_timestamp, TZ_SPAIN)
             logger.info(f"🐧 Restaurando evento Delibird para: {trigger_date}")
             application.job_queue.run_once(trigger_delibird_event, delay, name="delibird_restored_event")
+
+    # 2. LA MAGIA: Si NO hay fecha, la calculamos SOLO para lo que queda de semana
+    else:
+        seconds_left = get_seconds_until_end_of_week()
+
+        # Si faltan menos de 2 horas para acabar la semana, lo lanzamos casi ya
+        if seconds_left < 7200:
+            random_delay = random.randint(60, max(120, seconds_left - 60))
+        else:
+            # Tiramos el dado entre 1 hora y el final de la semana
+            random_delay = random.randint(3600, seconds_left - 3600)
+
+        target_timestamp = current_time + random_delay
+        db.set_delibird_schedule(target_timestamp)
+
+        trigger_date = datetime.fromtimestamp(target_timestamp, TZ_SPAIN)
+        logger.info(f"🐧 Delibird REPROGRAMADO de emergencia para esta semana: {trigger_date}")
+        application.job_queue.run_once(trigger_delibird_event, random_delay, name="delibird_emergency_event")
 
 
 async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
