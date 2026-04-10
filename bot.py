@@ -646,27 +646,30 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_collection = db.get_all_user_stickers(owner_user.id)
 
-    # --- 1. LÓGICA DE CONTEO NACIONAL (Efecto Espejo) ---
-    national_normal = set()
+    user_collection = db.get_all_user_stickers(owner_user.id)
+
+    # --- 1. LÓGICA DE CONTEO NACIONAL ---
+    national_unique = set()  # Contará especies únicas (Normal o Shiny, da igual)
     national_shiny = set()
 
     for pid, is_shiny in user_collection:
-        # Si es un Unown (>20000), lo convertimos visualmente al #201 para el conteo general
         mapped_id = 201 if pid in UNOWN_IDS else pid
 
-        if is_shiny == 0:
-            national_normal.add(mapped_id)
-        else:
+        # Lo añadimos a las especies únicas sí o sí
+        national_unique.add(mapped_id)
+
+        # Si es shiny, lo añadimos al contador de brillantes
+        if is_shiny == 1:
             national_shiny.add(mapped_id)
 
-    owned_normal = len(national_normal)
+    owned_unique = len(national_unique)
     owned_shiny = len(national_shiny)
 
     # Conteo específico de letras Unown
     owned_unown = len({s[0] for s in user_collection if s[0] in UNOWN_IDS})
     total_pokemon_count = 251  # Base inamovible (Kanto 151 + Johto 100)
 
-    # --- 2. CONTEO DE RAREZAS (Aquí los Unown SÍ suman cada uno en su rareza 🟤) ---
+    # --- 2. CONTEO DE RAREZAS ---
     rarity_counts = {rarity: 0 for rarity in RARITY_VISUALS.keys()}
     for pokemon_id, is_shiny in user_collection:
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
@@ -674,11 +677,11 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             final_rarity = get_rarity(pokemon_data['category'], is_shiny)
             if final_rarity in rarity_counts: rarity_counts[final_rarity] += 1
 
-    # --- 3. NUEVO DISEÑO VISUAL (Ej: 🟤94 en lugar de 94 🟤) ---
+    # --- 3. DISEÑO VISUAL ---
     rarity_lines = [f"{emoji}{rarity_counts[code]}" for code, emoji in RARITY_VISUALS.items()]
 
     text = (f"📖 *Álbumdex Nacional de {owner_user.first_name}*\n\n"
-            f"🐱 Stickers: *{owned_normal}/{total_pokemon_count}*\n"
+            f"🐱 Stickers: *{owned_unique}/{total_pokemon_count}*\n"
             f"✨ Brillantes: *{owned_shiny}/{total_pokemon_count}*\n\n"
             f"👁‍🗨 Unown: *{owned_unown}/28*\n\n"
             f"Rarezas: {', '.join(rarity_lines)}\n\n"
@@ -3290,7 +3293,7 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
                 premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
         if not db.is_johto_completed_by_user(user_id):
-            if db.get_user_unique_johto_count(user_id) >= 91:
+            if db.get_user_unique_johto_count(user_id) >= 100:
                 db.set_johto_completed_by_user(user_id)
                 db.update_money(user_id, 3000)
                 db.add_item_to_inventory(user_id, 'pack_shiny_johto', 1)
