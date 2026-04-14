@@ -4679,12 +4679,12 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
     # Obtener repetidos del TARGET
     duplicates = db.get_user_duplicates(target_id)
 
-    # 1. Filtro por Región
+    # 1. Filtro por Región (¡NUEVO: Incluye a los Unown en Johto!)
     filtered_dupes = []
     for pid, shiny in duplicates:
         if region == 'kanto' and 1 <= pid <= 151:
             filtered_dupes.append((pid, shiny))
-        elif region == 'johto' and 152 <= pid <= 251:
+        elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):  # <--- EL CAMBIO MÁGICO ESTÁ AQUÍ
             filtered_dupes.append((pid, shiny))
 
     if not filtered_dupes:
