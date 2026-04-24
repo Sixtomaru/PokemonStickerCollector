@@ -4676,15 +4676,14 @@ async def trade_back_reg_handler(update: Update, context: ContextTypes.DEFAULT_T
 
 async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id,
                                             region, page=0, cmd_msg_id=""):
-    # Obtener repetidos del TARGET
     duplicates = db.get_user_duplicates(target_id)
 
-    # 1. Filtro por Región (¡NUEVO: Incluye a los Unown en Johto!)
+    # 1. Filtro por Región
     filtered_dupes = []
     for pid, shiny in duplicates:
         if region == 'kanto' and 1 <= pid <= 151:
             filtered_dupes.append((pid, shiny))
-        elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):  # <--- EL CAMBIO MÁGICO ESTÁ AQUÍ
+        elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):
             filtered_dupes.append((pid, shiny))
 
     if not filtered_dupes:
@@ -4695,29 +4694,29 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # Obtener colección del SENDER para marcar los NEW
     sender_collection = db.get_all_user_stickers(sender_id)
 
-    # 2. Ordenación Inteligente (Sistema de 4 Prioridades)
+    # 2. Función de Estado: 0 (No tiene especie), 1 (Tiene una variante), 2 (Ya tiene esa variante exacta)
+    def get_status(p_id, s_shiny, collection):
+        has_exact = (p_id, s_shiny) in collection
+        has_normal = (p_id, 0) in collection
+        has_shiny = (p_id, 1) in collection
+
+        if not has_normal and not has_shiny: return 0  # Le falta la especie entera (🆕)
+        if not has_exact: return 1  # Le falta esta variante, pero tiene la otra (✔️)
+        return 2  # Ya tiene esta variante exacta (Nada)
+
+    # 3. Ordenación Inteligente
     def sort_key(item):
         pid, shiny = item
-        is_new = (pid, shiny) not in sender_collection
+        status = get_status(pid, shiny, sender_collection)
         name = POKEMON_BY_ID[pid]['name']
-
-        if is_new and not shiny:
-            priority = 1  # Faltan Normales
-        elif is_new and shiny:
-            priority = 2  # Faltan Shinys
-        elif not is_new and not shiny:
-            priority = 3  # Resto Normales
-        else:
-            priority = 4  # Resto Shinys
-
-        return (priority, name)
+        # Prioridad 0 (Falta especie), 1 (Falta variante), 2 (Ya lo tiene)
+        return (status, name)
 
     filtered_dupes.sort(key=sort_key)
 
-    # 3. Paginación
+    # 4. Paginación
     ITEMS_PER_PAGE = 20
     total_pages = math.ceil(len(filtered_dupes) / ITEMS_PER_PAGE)
     start = page * ITEMS_PER_PAGE
@@ -4730,11 +4729,17 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
         p_data = POKEMON_BY_ID[poke_id]
         rarity = get_rarity(p_data['category'], is_shiny)
 
-        is_new = (poke_id, is_shiny) not in sender_collection
-        new_mark = "🆕" if is_new else ""
-        shiny_mark = "✨" if is_shiny else ""
+        status = get_status(poke_id, is_shiny, sender_collection)
 
-        btn_text = f"{p_data['name']}{shiny_mark} {RARITY_VISUALS.get(rarity, '')} {new_mark}"
+        if status == 0:
+            mark = " 🆕"
+        elif status == 1:
+            mark = " ✔️"
+        else:
+            mark = ""
+
+        shiny_mark = "✨" if is_shiny else ""
+        btn_text = f"{p_data['name']}{shiny_mark} {RARITY_VISUALS.get(rarity, '')}{mark}"
         cb_data = f"trade_step2_{target_id}_{sender_id}_{poke_id}_{int(is_shiny)}_{cmd_msg_id}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
@@ -4743,7 +4748,6 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
             row = []
     if row: keyboard.append(row)
 
-    # Botones navegación
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
@@ -4793,22 +4797,22 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     target_collection = db.get_all_user_stickers(target_id)
 
-    # ORDENAR OFERTA (Sistema de 4 Prioridades)
+    # 1. Función de Estado para el Destinatario
+    def get_status(p_id, s_shiny, collection):
+        has_exact = (p_id, s_shiny) in collection
+        has_normal = (p_id, 0) in collection
+        has_shiny = (p_id, 1) in collection
+
+        if not has_normal and not has_shiny: return 0  # Le falta especie (🆕)
+        if not has_exact: return 1  # Le falta variante (✔️)
+        return 2  # Ya lo tiene (Nada)
+
+    # 2. Ordenación Inteligente
     def sort_key_offer(item):
         pid, shiny = item
-        is_useful = (pid, shiny) not in target_collection
+        status = get_status(pid, shiny, target_collection)
         name = POKEMON_BY_ID[pid]['name']
-
-        if is_useful and not shiny:
-            priority = 1  # Le faltan Normales
-        elif is_useful and shiny:
-            priority = 2  # Le faltan Shinys
-        elif not is_useful and not shiny:
-            priority = 3  # Resto Normales
-        else:
-            priority = 4  # Resto Shinys
-
-        return (priority, name)
+        return (status, name)
 
     valid_duplicates.sort(key=sort_key_offer)
 
@@ -4819,11 +4823,17 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     row = []
     for pid, shiny in valid_duplicates:
         p_data = POKEMON_BY_ID[pid]
-        is_useful = (pid, shiny) not in target_collection
-        useful_mark = "🆕" if is_useful else ""
-        shiny_mark = "✨" if shiny else ""
 
-        btn_text = f"{p_data['name']}{shiny_mark} {useful_mark}"
+        status = get_status(pid, shiny, target_collection)
+        if status == 0:
+            mark = " 🆕"
+        elif status == 1:
+            mark = " ✔️"
+        else:
+            mark = ""
+
+        shiny_mark = "✨" if shiny else ""
+        btn_text = f"{p_data['name']}{shiny_mark}{mark}"
         cb_data = f"trade_conf_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{pid}_{int(shiny)}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
@@ -5366,7 +5376,7 @@ async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [
-        [InlineKeyboardButton("🎁 ¡RECLAMAR PREMIO!", callback_data="delibird_claim")],
+        [InlineKeyboardButton("🎁 ¡RECLAMAR SOBRE!", callback_data="delibird_claim")],
         [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
     ]
 
