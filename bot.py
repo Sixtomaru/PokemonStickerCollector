@@ -297,6 +297,11 @@ SPECIAL_ITEMS_DATA = {
         'name': 'Foto Psíquica(?)',
         'emoji': '🖼',
         'desc': 'Una fotografía hecha con el Álbumdex. Sales tú con cara de asombro y un Pokémon legendario humanoide levitando tras de ti.'
+    },
+    'pluma_arcoiris': {
+        'name': 'Pluma Arcoíris',
+        'emoji': '🪶',
+        'desc': 'Misteriosa pluma que brilla con todos los colores del arcoíris al ser expuesta a la luz.'
     }
 }
 # ------------------------------------------------------------------
@@ -341,6 +346,7 @@ ITEM_NAMES['pluma_naranja'] = 'Pluma Naranja'
 ITEM_NAMES['pluma_amarilla'] = 'Pluma Amarilla'
 ITEM_NAMES['pluma_azul'] = 'Pluma Azul'
 ITEM_NAMES['foto_psiquica'] = 'Foto Psíquica(?)'
+ITEM_NAMES['pluma_arcoiris'] = 'Pluma Arcoíris'
 
 DAILY_WEIGHTS = [50, 32, 16, 2]
 USER_FRIENDLY_ITEM_IDS = {'sobremagicomedianonacional': 'pack_magic_medium_national'}
@@ -1468,7 +1474,7 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     # ----------------------------------------
 
     available_events = []
-    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia', 'mision_perros']
 
     for ev_id in EVENTS.keys():
         # Filtro de grupo cualificado para legendarios Kanto
@@ -1610,25 +1616,54 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             rarity = get_rarity(pokemon_data['category'], is_shiny)
             # ----------------------------------------
 
-            # --- LÓGICA DE LEGENDARIOS (MISIONES KANTO) ---
-            # Si intenta salir un legendario pero el grupo no ha completado su misión,
-            # lo sustituimos por un Pokémon Común ('C') de Kanto.
-            if pokemon_data['id'] == 144 and not db.is_event_completed(chat_id, 'mision_articuno'):
-                pokemon_data = random.choice(
-                    [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'C' and p['id'] <= 151])
-                rarity = get_rarity('C', is_shiny)
-            if pokemon_data['id'] == 145 and not db.is_event_completed(chat_id, 'mision_zapdos'):
-                pokemon_data = random.choice(
-                    [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'C' and p['id'] <= 151])
-                rarity = get_rarity('C', is_shiny)
-            if pokemon_data['id'] == 146 and not db.is_event_completed(chat_id, 'mision_moltres'):
-                pokemon_data = random.choice(
-                    [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'C' and p['id'] <= 151])
-                rarity = get_rarity('C', is_shiny)
-            if pokemon_data['id'] == 150 and not db.is_event_completed(chat_id, 'mision_mewtwo'):
-                pokemon_data = random.choice(
-                    [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'C' and p['id'] <= 151])
-                rarity = get_rarity('C', is_shiny)
+            # --- LÓGICA INTELIGENTE DE LEGENDARIOS (Rango S) ---
+            # Diccionario que enlaza el ID del Legendario con la misión que necesita para salir
+            LEGENDARY_MISSIONS = {
+                144: 'mision_articuno',
+                145: 'mision_zapdos',
+                146: 'mision_moltres',
+                150: 'mision_mewtwo',
+                249: 'mision_hooh_lugia',
+                250: 'mision_hooh_lugia',
+                243: 'mision_perros',
+                244: 'mision_perros',
+                245: 'mision_perros'
+            }
+
+            if pokemon_data['category'] == 'S':
+                mision_necesaria = LEGENDARY_MISSIONS.get(pokemon_data['id'])
+
+                # Si necesita misión y NO está completada, el Pokémon está BLOQUEADO
+                if mision_necesaria and not db.is_event_completed(chat_id, mision_necesaria):
+
+                    # 1. Buscamos TODOS los Legendarios ('S') de la región actual
+                    if chosen_region == 'Kanto':
+                        region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'S' and p['id'] <= 151]
+                    else:
+                        region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if
+                                         p['category'] == 'S' and 152 <= p['id'] <= 251]
+
+                    # 2. Filtramos dejando SOLO los que están desbloqueados (o los que no necesitan misión como Mew/Celebi)
+                    unlocked_s = []
+                    for p in region_s_pool:
+                        m = LEGENDARY_MISSIONS.get(p['id'])
+                        if not m or db.is_event_completed(chat_id, m):
+                            unlocked_s.append(p)
+
+                    # 3. Si hay algún Legendario libre, elegimos uno de esos
+                    if unlocked_s:
+                        pokemon_data = random.choice(unlocked_s)
+                        # La rareza sigue siendo 'S', no hace falta cambiarla
+
+                    # 4. Si TODOS los Legendarios están bloqueados, damos un Rango 'A' como consolación
+                    else:
+                        if chosen_region == 'Kanto':
+                            pokemon_data = random.choice(
+                                [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'A' and p['id'] <= 151])
+                        else:
+                            pokemon_data = random.choice(
+                                [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'A' and 152 <= p['id'] <= 251])
+                        rarity = get_rarity('A', is_shiny)
             # ----------------------------------------------
 
             # --- TEXTO LIMPIO (HTML) ---
@@ -2042,7 +2077,7 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
 
     available_events = []
-    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo']
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia', 'mision_perros']
 
     for ev_id in EVENTS.keys():
         if not is_qualified and ev_id in legendary_missions:
