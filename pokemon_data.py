@@ -289,7 +289,7 @@ POKEMON_BY_ID = {p['id']: p for p in ALL_POKEMON}
 # --- LISTAS NEGRAS (EXCLUSIONES) ---
 BABY_IDS = [172, 173, 174, 175, 236, 238, 239, 240]
 UNOWN_BASE_ID = [201]
-LEGENDARY_JOHTO_IDS = [243, 244, 245, 249, 250, 251]
+LEGENDARY_JOHTO_IDS = [243, 244, 245]
 
 # Excluimos a los Bebés, al Unown 201 genérico y a las 28 formas Unown de los sobres normales
 EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS)
