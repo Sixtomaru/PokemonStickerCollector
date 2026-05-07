@@ -253,6 +253,8 @@ SHOP_CONFIG = {
                         'hidden': True, 'type_filter': 'Acero', 'emoji': '🔩'},
     'pack_elem_especial': {'name': 'Sobre Especial Kanto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble.',
                            'hidden': True, 'emoji': '✨🔺'},
+    'pack_special_johto': {'name': 'Sobre Especial Johto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble de Johto.',
+                           'hidden': True, 'emoji': '✨🔺'},
 
 # --- SOBRES UNOWN (EVENTO) ---
     'pack_small_unown': {'name': 'Sobre Pequeño Unown', 'price': 0, 'size': 2, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 2 stickers de Unown.', 'emoji': '🎴'},
@@ -3463,13 +3465,26 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_data = random.choice(cat_pool)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
 
-        # 3B. Sobre Especial Unown (Doble probabilidad shiny)
+        # 3B. Sobre Especial Johto (NUEVO - Doble probabilidad shiny)
+        elif item_id == 'pack_special_johto':
+            johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            for _ in range(pack_size):
+                is_shiny = random.random() < (SHINY_CHANCE * 2)  # Doble de probabilidad
+                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                cat_pool = [p for p in johto_pool if p['category'] == cat]
+                if not cat_pool: cat_pool = johto_pool
+                p_data = random.choice(cat_pool)
+                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
+        # 3C. Sobre Especial Unown (Doble probabilidad shiny)
         elif item_id == 'pack_special_unown':
             from pokemon_data import POKEMON_UNOWN
             for _ in range(pack_size):
                 is_shiny = random.random() < (SHINY_CHANCE * 2)
                 p_data = random.choice(POKEMON_UNOWN)
                 pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+
+
 
         # 4. Sobres Elementales
         elif 'type_filter' in pack_config:
