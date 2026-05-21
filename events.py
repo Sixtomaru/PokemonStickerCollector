@@ -2050,49 +2050,52 @@ def evento_mision_hooh_lugia(user, decision_parts, original_text, chat_id, game_
     user_id = user.id
     choice = decision_parts[0]
 
-    # Extraemos la base del texto para ir encadenando la historia
-    base_text = original_text.split("\n\n—")[0]
+    # Extraemos la base del texto acumulado hasta ahora para encadenar la historia
+    base_text = original_text.split("\n\n—")[0] if "\n\n—" in original_text else original_text
+    separator = "\n\n" + "—" * 20 + "\n\n"
 
     if choice == 'pazmental':
         text = (
-            f"<i>ℹ️ Elegiste Paz Mental.</i>\n\n"
+            f"<i>ℹ️ Elegiste la Opción 1: Paz Mental.</i>\n\n"
             f"Corsola se relaja y concentra, pero uno de los Pokémon lanza un ataque que se desvía hacia ellos, causando que quede fuera de combate, deben abandonar la torre. Misión fallida."
         )
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'event_completed': False}
+        return {'text': base_text + separator + text, 'event_completed': False}
 
     elif choice == 'hidropulso':
         text = (
-            f"<i>ℹ️ Elegiste Hidropulso.</i>\n\n"
+            f"<i>ℹ️ Elegiste la Opción 2: Hidropulso.</i>\n\n"
             f"Corsola dirige el ataque hacia uno de los Pokémon, distrayéndole y haciendo que el otro ave le ataque e inicie una intensa pelea entre los dos. Uno de los ataques impacta contra la torre y tienen que evacuar de inmediato. Misión Fallida."
         )
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'event_completed': False}
+        return {'text': base_text + separator + text, 'event_completed': False}
 
     elif choice == 'arena':
         text = (
-            f"<i>ℹ️ Elegiste Tormenta de Arena.</i>\n\n"
+            f"<i>ℹ️ Elegiste la Opción 3: Tormenta de Arena.</i>\n\n"
             f"Corsola desata una tormenta de arena, que afecta a ambos Pokémon; {user.first_name} baja la vista para evitarla, y logra ver una serie de campanas pequeñas justo delante. De pronto, recuerda que la leyenda decía que el tintineo de una campana en concreto, podría calmar a las aves legendarias.\n"
             f"Cada una tiene un nombre, cuál debería hacer sonar?:"
         )
+        # Acumulamos el texto para que la ronda 2 no pierda la historia inicial
+        new_base_text = base_text + separator + text
         keyboard = [[
             {'text': 'Campana Alivio', 'callback_data': 'ev|mision_hooh_lugia|decision|alivio'},
             {'text': 'Campana Clara', 'callback_data': 'ev|mision_hooh_lugia|decision|clara'},
             {'text': 'Campana Cura', 'callback_data': 'ev|mision_hooh_lugia|decision|cura'}
         ]]
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'keyboard': keyboard}
+        return {'text': new_base_text, 'keyboard': keyboard}
 
     elif choice == 'alivio':
         text = (
             f"<i>ℹ️ Elegiste Campana Alivio.</i>\n\n"
             f"{user.first_name} se dirige a la campana y la hace sonar. De pronto, el sonido capta la atención de los Pokémon, y lanzan un ataque en su dirección. {user.first_name} consigue evitarlo, pero todo está destrozado. Rápidamente, se lleva a Corsola en su pokeball y huye del lugar. Misión fallida."
         )
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'event_completed': False}
+        return {'text': base_text + separator + text, 'event_completed': False}
 
     elif choice == 'cura':
         text = (
             f"<i>ℹ️ Elegiste Campana Cura.</i>\n\n"
             f"{user.first_name} se dirige a la campana y la hace sonar. De pronto, el sonido capta la atención de los Pokémon, y lanzan un ataque en su dirección. {user.first_name} consigue evitarlo, pero todo está destrozado. Rápidamente, se lleva a Corsola en su pokeball y huye del lugar. Misión fallida."
         )
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'event_completed': False}
+        return {'text': base_text + separator + text, 'event_completed': False}
 
     elif choice == 'clara':
         db.update_money(user_id, 800)
@@ -2106,8 +2109,7 @@ def evento_mision_hooh_lugia(user, decision_parts, original_text, chat_id, game_
             f"-Pluma arcoíris.\n\n"
             f"🔓 <i>A partir de ahora, Lugia y Ho-oh podrán aparecer salvajes en el grupo.</i>"
         )
-        return {'text': base_text + "\n\n" + "—" * 20 + "\n\n" + text, 'event_completed': True,
-                'event_id': 'mision_hooh_lugia'}
+        return {'text': base_text + separator + text, 'event_completed': True, 'event_id': 'mision_hooh_lugia'}
 
 
 # --- MISIÓN RAIKOU, ENTEI, SUICUNE ---
@@ -2133,8 +2135,8 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
     ronda = decision_parts[1]
     ruta = decision_parts[2]
 
-    # Extraemos la historia original para encadenar
-    base_text = original_text.split("\n\n—")[0]
+    # Extraemos la base del texto para ir encadenando la historia (Incluso si ya hubo separadores previos)
+    base_text = original_text
     separator = "\n\n" + "—" * 20 + "\n\n"
 
     # --- RONDA 1: Pokémon Amarillo (Raikou) ---
@@ -2146,13 +2148,16 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
                 f"🔸Smeargle usó {ataque_nombre}, pero el Pokémon aguantó el ataque y contraatacó ferozmente, haciendo que {user.first_name} tenga que retirarse hacia un centro Pokémon.\n\n"
                 f"Misión fallida."
             )
-            return {'text': base_text + separator + text, 'event_completed': False}
+            # Para fallos, cogemos solo el primer bloque por estética y le pegamos el final
+            clean_base = original_text.split("\n\n—")[0] if "\n\n—" in original_text else original_text
+            return {'text': clean_base + separator + text, 'event_completed': False}
+
         elif choice == 'arenas':
             text = (
                 f"<i>ℹ️ Elegiste Arenas ardientes.</i>\n\n"
                 f"🔸Smeargle usó Arenas ardientes, y parece que no le gustó al Pokémon, ya que se paró en seco y se retiró. Acto seguido, el Pokémon marrón se lanzó contra él. ¿Qué ataque debería utilizar?:"
             )
-            # Para mantener la historia visual, el base_text de la ronda 2 incluye el resumen de la ronda 1
+            # Acumulamos el texto
             new_base_text = base_text + separator + text
             keyboard = [[
                 {'text': 'Salmuera', 'callback_data': f'ev|mision_perros|decision|salmuera|r2|{ruta}'},
@@ -2170,14 +2175,19 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
                 f"🔸Smeargle usó {ataque_nombre}, pero el Pokémon aguantó el ataque y contraatacó ferozmente, haciendo que {user.first_name} tenga que retirarse hacia un centro Pokémon.\n\n"
                 f"Misión fallida."
             )
-            return {'text': base_text + separator + text, 'event_completed': False}
+            # En caso de fallo en rondas avanzadas, borramos la última pregunta para poner la resolución
+            clean_base = original_text.split("¿Qué ataque debería utilizar?:")[0]
+            return {'text': clean_base + text, 'event_completed': False}
+
         elif choice == 'salmuera':
             text = (
                 f"<i>ℹ️ Elegiste Salmuera.</i>\n\n"
                 f"🔸Esta vez empapa al Pokémon con su ataque, lo que hace que se retire también.\n"
                 f"Por último, el Pokémon azul se dirige hacia ellos con agilidad. Smeargle se prepara para actuar ¿Qué ataque debería utilizar?:"
             )
-            new_base_text = base_text + separator + text
+            # Quitamos la pregunta anterior para que no sea repetitivo visualmente
+            clean_base = original_text.split("¿Qué ataque debería utilizar?:")[0]
+            new_base_text = clean_base + text
             keyboard = [[
                 {'text': 'Salmuera', 'callback_data': f'ev|mision_perros|decision|salmuera|r3|{ruta}'},
                 {'text': 'Mazazo', 'callback_data': f'ev|mision_perros|decision|mazazo|r3|{ruta}'},
@@ -2187,6 +2197,8 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
 
     # --- RONDA 3: Pokémon Azul (Suicune) ---
     elif ronda == 'r3':
+        clean_base = original_text.split("¿Qué ataque debería utilizar?:")[0]
+
         if choice in ['salmuera', 'arenas']:
             ataque_nombre = 'Salmuera' if choice == 'salmuera' else 'Arenas ardientes'
             text = (
@@ -2194,7 +2206,8 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
                 f"🔸Smeargle usó {ataque_nombre}, pero el Pokémon aguantó el ataque y contraatacó ferozmente, haciendo que {user.first_name} tenga que retirarse hacia un centro Pokémon.\n\n"
                 f"Misión fallida."
             )
-            return {'text': base_text + separator + text, 'event_completed': False}
+            return {'text': clean_base + text, 'event_completed': False}
+
         elif choice == 'mazazo':
             db.update_money(user_id, 800)
             text = (
@@ -2204,8 +2217,7 @@ def evento_mision_perros(user, decision_parts, original_text, chat_id, game_stat
                 f"Amelia recompensa a {user.first_name} con <b>800₽</b>.\n\n"
                 f"🔓 <i>A partir de ahora, Raikou, Entei y Suicune podrán aparecer salvajes en el grupo.</i>"
             )
-            # Evento Completado = True para que el bot desbloquee los spawns
-            return {'text': base_text + separator + text, 'event_completed': True, 'event_id': 'mision_perros'}
+            return {'text': clean_base + text, 'event_completed': True, 'event_id': 'mision_perros'}
 
 
 
