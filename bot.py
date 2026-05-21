@@ -4623,7 +4623,12 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, msg, 60)
         return
 
-    # 2. Bloqueo de intercambio pendiente
+    # 2. DEFINIR SIEMPRE EL OBJETIVO (Evita el UnboundLocalError)
+    target_user = None
+    if not is_panel:
+        target_user, _ = await _get_target_user_from_command(update, context)
+
+    # 3. Bloqueo de intercambio pendiente
     active_trades = context.chat_data.get('active_trades', {})
     if sender.id in active_trades:
         text = "⛔ Tienes un intercambio pendiente sin finalizar."
@@ -4639,49 +4644,43 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, msg, 60)
         return
 
-        # 3. Obtener objetivo (si lo hay)
-        target_user = None
-        if not is_panel:
-            target_user, _ = await _get_target_user_from_command(update, context)
+    # 4. Bloqueo de auto-intercambio (Avisa y detiene si eres tú mismo)
+    if target_user and target_user.id == sender.id:
+        msg = await message.reply_text("😅 No puedes intercambiar contigo mismo.", disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        return
 
-        # NUEVO: Bloqueo de auto-intercambio (Avisa y detiene)
-        if target_user and target_user.id == sender.id:
-            msg = await message.reply_text("😅 No puedes intercambiar contigo mismo.", disable_notification=True)
-            schedule_message_deletion(context, msg, 10)
-            return
+    # 5. Si NO hay objetivo -> Menú Principal (Ayuda + Buscador)
+    if not target_user or target_user.is_bot:
+        help_text = (
+            "♻ **Intercambios**\n\n"
+            "**¿Cómo funcionan?**\n"
+            "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
+            "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
+            "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
+        )
+        cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
+        keyboard = [[InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender.id}_{cmd_msg_id}")]]
 
-        # 4. Si NO hay objetivo -> Menú Principal (Ayuda + Buscador)
-        if not target_user or target_user.is_bot:
-            help_text = (
-                "♻ **Intercambios**\n\n"
-                "**¿Cómo funcionan?**\n"
-                "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
-                "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
-                "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
-            )
-            cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
-            keyboard = [
-                [InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender.id}_{cmd_msg_id}")]]
+        if is_panel:
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
+                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                                 disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
+        else:
+            msg = await message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard),
+                                           parse_mode='Markdown', disable_notification=True)
+            schedule_message_deletion(context, msg, 60)
+        return
 
-            if is_panel:
-                msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
-                                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                                     disable_notification=True)
-                schedule_message_deletion(context, msg, 60)
-            else:
-                msg = await message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard),
-                                               parse_mode='Markdown', disable_notification=True)
-                schedule_message_deletion(context, msg, 60)
-            return
-
-    # 5. Si SÍ hay objetivo -> Validamos su límite diario y empezamos el intercambio con él
+    # 6. Si SÍ hay objetivo -> Validamos su límite diario y empezamos el intercambio con él
     if not db.check_trade_daily_limit(target_user.id):
         msg = await message.reply_text(f"⛔ {target_user.first_name} ha alcanzado su límite de intercambios hoy.",
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
         return
 
-    # Llamamos al menú de Kanto/Johto dirigido específicamente al Target
+    # 7. Llamamos al menú de Regiones (Kanto/Johto) dirigido al Target
     cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
     await show_trade_region_menu(update, context, target_user.id, sender.id, cmd_msg_id=cmd_msg_id)
 
