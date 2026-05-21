@@ -4613,7 +4613,7 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.effective_message
         if update.message: schedule_message_deletion(context, update.message, 60)
 
-    # 1. Validar límite diario
+    # 1. Validar límite diario del que ejecuta el comando
     if not db.check_trade_daily_limit(sender.id):
         text = "⛔ Has alcanzado tu límite de 2 intercambios diarios."
         if is_panel:
@@ -4623,34 +4623,35 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             schedule_message_deletion(context, msg, 60)
         return
 
-    # 2. Obtener objetivo
-    target_user = None
-    if not is_panel:
-        target_user, _ = await _get_target_user_from_command(update, context)
-
-    # --- CAMBIO: DETECTAR BLOQUEO Y OFRECER SOLUCIÓN ---
+    # 2. Bloqueo de intercambio pendiente
     active_trades = context.chat_data.get('active_trades', {})
     if sender.id in active_trades:
         text = "⛔ Tienes un intercambio pendiente sin finalizar."
-        # Botón de emergencia
         keyboard = [[InlineKeyboardButton("🗑️ Cancelar intercambio anterior", callback_data="trade_force_cancel")]]
 
         if is_panel:
-            # Si viene del panel, mandamos mensaje efímero con el botón
             await query.answer()
             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), disable_notification=True)
             schedule_message_deletion(context, msg, 30)
         else:
             msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), disable_notification=True)
-            # No lo borramos automáticamente rápido para que le de tiempo a pulsar
             schedule_message_deletion(context, msg, 60)
         return
-    # ----------------------------------------------------
 
-    # Si no hay objetivo -> Ayuda
-        # Si no hay objetivo -> Ayuda
-        if not target_user or target_user.id == sender.id or target_user.is_bot:
+        # 3. Obtener objetivo (si lo hay)
+        target_user = None
+        if not is_panel:
+            target_user, _ = await _get_target_user_from_command(update, context)
+
+        # NUEVO: Bloqueo de auto-intercambio (Avisa y detiene)
+        if target_user and target_user.id == sender.id:
+            msg = await message.reply_text("😅 No puedes intercambiar contigo mismo.", disable_notification=True)
+            schedule_message_deletion(context, msg, 10)
+            return
+
+        # 4. Si NO hay objetivo -> Menú Principal (Ayuda + Buscador)
+        if not target_user or target_user.is_bot:
             help_text = (
                 "♻ **Intercambios**\n\n"
                 "**¿Cómo funcionan?**\n"
@@ -4658,8 +4659,9 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
                 "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
             )
-            # AÑADIMOS EL BOTÓN BUSCAR AQUÍ
-            keyboard = [[InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender.id}_")]]
+            cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
+            keyboard = [
+                [InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender.id}_{cmd_msg_id}")]]
 
             if is_panel:
                 msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
@@ -4672,15 +4674,14 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 schedule_message_deletion(context, msg, 60)
             return
 
-    # 3. Validar límite diario del objetivo
+    # 5. Si SÍ hay objetivo -> Validamos su límite diario y empezamos el intercambio con él
     if not db.check_trade_daily_limit(target_user.id):
         msg = await message.reply_text(f"⛔ {target_user.first_name} ha alcanzado su límite de intercambios hoy.",
                                        disable_notification=True)
         schedule_message_deletion(context, msg, 60)
         return
 
-    # 4. Iniciar flujo
-    # Llamamos al nuevo menú de selección de región
+    # Llamamos al menú de Kanto/Johto dirigido específicamente al Target
     cmd_msg_id = update.message.message_id if not is_panel and update.message else ""
     await show_trade_region_menu(update, context, target_user.id, sender.id, cmd_msg_id=cmd_msg_id)
 
@@ -4775,14 +4776,21 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     user_stickers = db.get_all_user_stickers(sender_id)
     owned_species = {pid for pid, shiny in user_stickers}
 
+    # 1. Filtramos la región (Y EXCLUIMOS EL UNOWN 201 BASE PARA QUE NO SALGA EN LA BÚSQUEDA)
     if region == 'kanto':
         pool = [p for p in ALL_POKEMON if p['id'] <= 151]
     elif region == 'johto':
-        pool = [p for p in ALL_POKEMON if (152 <= p['id'] <= 251) or p['id'] > 20000]
+        pool = [p for p in ALL_POKEMON if (152 <= p['id'] <= 251 and p['id'] != 201) or p['id'] > 20000]
 
-    # Filtramos SOLO las especies que no tiene en absoluto (ni normal ni shiny)
+    # 2. Filtramos SOLO las especies que no tiene en absoluto
     missing_species = [p for p in pool if p['id'] not in owned_species]
 
+    # 3. MENSAJE SI NO LE FALTA NADA
+    if not missing_species:
+        await query.answer(f"¡No te falta ningún sticker de {region.capitalize()}!", show_alert=True)
+        return
+
+    # 4. Ordenación
     if sort_mode == 'az':
         missing_species.sort(key=lambda x: x['name'])
     else:
@@ -4797,20 +4805,18 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     keyboard = []
     row = []
     for p in current_list:
-        # Si es un Unown ocultamos el ID por estética, si no, lo mostramos según el orden
         if p['id'] > 20000:
             btn_text = p['name']
         else:
             btn_text = f"#{p['id']:03} {p['name']}" if sort_mode == 'num' else p['name']
 
-        cb_data = f"trade_sstick_{sender_id}_{p['id']}_0_{cmd_msg_id}"
+        cb_data = f"trade_sstick_{sender_id}_{p['id']}_{page}_{cmd_msg_id}"
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
         if len(row) == 2:
             keyboard.append(row)
             row = []
     if row: keyboard.append(row)
 
-    # Botones de ordenación y navegación
     nav_row = []
     if page == 0:
         new_sort = 'num' if sort_mode == 'az' else 'az'
