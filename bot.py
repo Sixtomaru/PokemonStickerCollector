@@ -1405,7 +1405,6 @@ async def refresh_codes_board(bot: Bot, chat_id: int):
     board_msg_id = db.get_codes_board_msg(chat_id)
     if not board_msg_id: return
 
-    # Limpieza automática antes de mostrar
     db.delete_expired_codes()
     all_codes = db.get_all_friend_codes()
 
@@ -1416,7 +1415,11 @@ async def refresh_codes_board(bot: Bot, chat_id: int):
         r = row['region']
         if r not in regions: r = 'Europa'
         days_left = int((row['expiry_timestamp'] - current_time) / 86400)
-        line = f"🔹️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
+
+        # --- SOLUCIÓN: Limpiamos los nombres peligrosos para Markdown ---
+        safe_nick = str(row['game_nick']).replace('_', '').replace('*', '').replace('`', '')
+
+        line = f"🔹️ {safe_nick} - `{row['code']}` ({days_left} días)"
         regions[r].append(line)
 
     text = (
@@ -1426,24 +1429,19 @@ async def refresh_codes_board(bot: Bot, chat_id: int):
     text += "🔶*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "🔶*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
     text += "🔶*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n"
-    text += "ℹ Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Si quieres que el bot te avise cuando tu código esté a punto de caducar, inicia el bot en su chat: @PokeStickerCollectorBot_ \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
+    text += "ℹ Para añadir tu código a la lista, escribe en este chat un mensaje con el siguiente formato:\n\n Nick Región Código\n\n • Ejemplo: Sixtomaru Europa 6T4A2944 \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
 
-
-    # --- CAMBIO: Solo botón Renovar ---
-    # El botón añadir lo dejamos solo para el comando temporal /codigos
     keyboard = [
         [InlineKeyboardButton("🔄 Renovar Código", callback_data="codes_menu_renew")]
     ]
-    # ----------------------------------
 
     try:
         await bot.edit_message_text(chat_id=chat_id, message_id=board_msg_id, text=text,
                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    except BadRequest as e:
+    except Exception as e:
         if "Message to edit not found" in str(e):
-            # Si alguien borró el mensaje a mano, limpiamos la base de datos
             db.query_db("DELETE FROM system_flags WHERE flag_name = ?", (f"codes_board_{chat_id}",))
-        # Si da "Message is not modified", no hacemos nada (ya está actualizado)
+        print(f"Error actualizando tablón de códigos: {e}")
 
 def choose_random_pokemon():
     chosen_category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
@@ -4331,7 +4329,6 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = update.effective_message
         user_id = update.effective_user.id
-        # --- CAMBIO: 900 segundos (15 min) ---
         if update.message:
             schedule_message_deletion(context, update.message, 900)
 
@@ -4346,7 +4343,10 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if r not in regions: r = 'Europa'
         days_left = int((row['expiry_timestamp'] - current_time) / 86400)
 
-        line = f"🔹️ {row['game_nick']} - `{row['code']}` ({days_left} días)"
+        # --- SOLUCIÓN: Limpiamos los nombres peligrosos para Markdown ---
+        safe_nick = str(row['game_nick']).replace('_', '').replace('*', '').replace('`', '')
+
+        line = f"🔹️ {safe_nick} - `{row['code']}` ({days_left} días)"
         regions[r].append(line)
 
     text = (
@@ -4355,23 +4355,24 @@ async def codigos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     text += "*Europa:*\n" + ("\n".join(regions['Europa']) if regions['Europa'] else "_Vacío_") + "\n\n"
     text += "*América:*\n" + ("\n".join(regions['América']) if regions['América'] else "_Vacío_") + "\n\n"
-    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions['Asia'] else "_Vacío_") + "\n\n _Si quieres que el bot te avise cuando tu código esté a punto de caducar, inicia el bot en su chat: @PokeStickerCollectorBot_ \n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
-
+    text += "*Asia:*\n" + ("\n".join(regions['Asia']) if regions[
+        'Asia'] else "_Vacío_") + "\n\n _Para eliminar un código de la lista, escribe /borrarcodigo seguido del código a eliminar, por ejemplo: /borrarcodigo 6T4A2944_"
 
     keyboard = [
         [InlineKeyboardButton("➕ Añadir código", callback_data="codes_menu_add")],
         [InlineKeyboardButton("🔄 Renovar", callback_data="codes_menu_renew")]
     ]
 
-    if query and not is_panel:
-        # --- CAMBIO: 600 segundos ---
-        refresh_deletion_timer(context, message, 600)
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                       disable_notification=True)
-        # --- CAMBIO: 600 segundos ---
-        schedule_message_deletion(context, msg, 600)
+    try:
+        if query and not is_panel:
+            refresh_deletion_timer(context, message, 600)
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            msg = await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                           disable_notification=True)
+            schedule_message_deletion(context, msg, 600)
+    except Exception as e:
+        print(f"Error enviando menú de códigos: {e}")
 
 
 async def delete_code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4648,22 +4649,28 @@ async def intercambio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ----------------------------------------------------
 
     # Si no hay objetivo -> Ayuda
-    if not target_user or target_user.id == sender.id or target_user.is_bot:
-        help_text = (
-            "♻ **Intercambios**\n\n"
-            "**¿Cómo funcionan?**\n"
-            "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
-            "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
-            "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
-        )
-        if is_panel:
-            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
-                                                 parse_mode='Markdown', disable_notification=True)
-            schedule_message_deletion(context, msg, 60)
-        else:
-            msg = await message.reply_text(help_text, parse_mode='Markdown', disable_notification=True)
-            schedule_message_deletion(context, msg, 60)
-        return
+        # Si no hay objetivo -> Ayuda
+        if not target_user or target_user.id == sender.id or target_user.is_bot:
+            help_text = (
+                "♻ **Intercambios**\n\n"
+                "**¿Cómo funcionan?**\n"
+                "Responde a un mensaje que haya escrito la persona con la que quieres intercambiar, y escribe `/intercambio` "
+                "(también puedes mencionarla: `/intercambio @usuario`).\n\n"
+                "Aparecerá un menú donde puedes ver sus repetidos y ofrecer uno de los tuyos."
+            )
+            # AÑADIMOS EL BOTÓN BUSCAR AQUÍ
+            keyboard = [[InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender.id}_")]]
+
+            if is_panel:
+                msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text,
+                                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                                     disable_notification=True)
+                schedule_message_deletion(context, msg, 60)
+            else:
+                msg = await message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard),
+                                               parse_mode='Markdown', disable_notification=True)
+                schedule_message_deletion(context, msg, 60)
+            return
 
     # 3. Validar límite diario del objetivo
     if not db.check_trade_daily_limit(target_user.id):
@@ -4683,6 +4690,7 @@ async def show_trade_region_menu(update: Update, context: ContextTypes.DEFAULT_T
     text = "♻️ Elige la región del Pokémon que quieres recibir:"
 
     keyboard = [
+        [InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender_id}_{cmd_msg_id}")],
         [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_reg_{target_id}_{sender_id}_kanto_{cmd_msg_id}")],
         [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_reg_{target_id}_{sender_id}_johto_{cmd_msg_id}")],
         [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
@@ -4722,6 +4730,206 @@ async def trade_back_reg_handler(update: Update, context: ContextTypes.DEFAULT_T
         return await query.answer("No es tu menú.", show_alert=True)
 
     await show_trade_region_menu(update, context, target_id, sender_id, cmd_msg_id)
+
+
+# ==========================================
+# --- SISTEMA DE BÚSQUEDA DE INTERCAMBIOS ---
+# ==========================================
+
+async def trade_search_start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pantalla 1: Selección de región para buscar."""
+    query = update.callback_query
+    parts = query.data.split('_')
+    sender_id = int(parts[3])
+    cmd_msg_id = parts[4] if len(parts) > 4 else ""
+
+    if query.from_user.id != sender_id:
+        return await query.answer("No es tu menú.", show_alert=True)
+
+    if query.message.chat.type == 'private':
+        return await query.answer("Este buscador solo funciona si usas el comando dentro de un grupo.", show_alert=True)
+
+    text = "🔍 **Elige la región del sticker que quieres conseguir:**"
+    keyboard = [
+        [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
+        [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
+    ]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def trade_search_region_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pantalla 2: Lista de Pokémon que le faltan al jugador."""
+    query = update.callback_query
+    parts = query.data.split('_')
+    sender_id = int(parts[2])
+    region = parts[3]
+    page = int(parts[4])
+    sort_mode = parts[5]
+    cmd_msg_id = parts[6] if len(parts) > 6 else ""
+
+    if query.from_user.id != sender_id:
+        return await query.answer("No es tu menú.", show_alert=True)
+
+    user_stickers = db.get_all_user_stickers(sender_id)
+    owned_species = {pid for pid, shiny in user_stickers}
+
+    if region == 'kanto':
+        pool = [p for p in ALL_POKEMON if p['id'] <= 151]
+    elif region == 'johto':
+        pool = [p for p in ALL_POKEMON if (152 <= p['id'] <= 251) or p['id'] > 20000]
+
+    # Filtramos SOLO las especies que no tiene en absoluto (ni normal ni shiny)
+    missing_species = [p for p in pool if p['id'] not in owned_species]
+
+    if sort_mode == 'az':
+        missing_species.sort(key=lambda x: x['name'])
+    else:
+        missing_species.sort(key=lambda x: x['id'])
+
+    ITEMS_PER_PAGE = 20
+    total_pages = math.ceil(len(missing_species) / ITEMS_PER_PAGE)
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_list = missing_species[start:end]
+
+    keyboard = []
+    row = []
+    for p in current_list:
+        # Si es un Unown ocultamos el ID por estética, si no, lo mostramos según el orden
+        if p['id'] > 20000:
+            btn_text = p['name']
+        else:
+            btn_text = f"#{p['id']:03} {p['name']}" if sort_mode == 'num' else p['name']
+
+        cb_data = f"trade_sstick_{sender_id}_{p['id']}_0_{cmd_msg_id}"
+        row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row: keyboard.append(row)
+
+    # Botones de ordenación y navegación
+    nav_row = []
+    if page == 0:
+        new_sort = 'num' if sort_mode == 'az' else 'az'
+        btn_sort_text = "Orden 🔢" if sort_mode == 'az' else "Orden 🔤"
+        nav_row.append(InlineKeyboardButton(btn_sort_text,
+                                            callback_data=f"trade_sreg_{sender_id}_{region}_0_{new_sort}_{cmd_msg_id}"))
+
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior",
+                                            callback_data=f"trade_sreg_{sender_id}_{region}_{page - 1}_{sort_mode}_{cmd_msg_id}"))
+    if end < len(missing_species):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️",
+                                            callback_data=f"trade_sreg_{sender_id}_{region}_{page + 1}_{sort_mode}_{cmd_msg_id}"))
+
+    if nav_row: keyboard.append(nav_row)
+    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_search_start_{sender_id}_{cmd_msg_id}")])
+
+    text = f"🔍 **Elige el sticker que deseas conseguir ({region.capitalize()}):**"
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pantalla 3: Muestra usuarios del grupo con este Pokémon repetido."""
+    query = update.callback_query
+    parts = query.data.split('_')
+    sender_id = int(parts[2])
+    pokemon_id = int(parts[3])
+    page = int(parts[4])
+    cmd_msg_id = parts[5] if len(parts) > 5 else ""
+
+    if query.from_user.id != sender_id:
+        return await query.answer("No es tu menú.", show_alert=True)
+
+    chat_id = query.message.chat.id
+    group_users = db.get_users_in_group(chat_id)
+    group_users = [u for u in group_users if u != sender_id]  # Excluir al propio buscador
+
+    available_trades = []
+    for uid in group_users:
+        dupes = db.get_user_duplicates(uid)
+        for d_pid, d_shiny in dupes:
+            if d_pid == pokemon_id:
+                available_trades.append((uid, d_shiny))
+
+    if not available_trades:
+        await query.answer("❌ Nadie del grupo tiene ese sticker repetido.", show_alert=True)
+        # Volvemos a la pantalla de selección de región automáticamente
+        text = "🔍 **Elige la región del sticker que deseas conseguir:**"
+        keyboard = [
+            [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
+        ]
+        return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    trade_data = []
+    for uid, is_shiny in available_trades:
+        can_trade = db.check_trade_daily_limit(uid)
+        # Intentar sacar nombre de BD rápido
+        res = db.query_db("SELECT username FROM users WHERE user_id = %s", (uid,), one=True)
+        uname = res[0] if res and res[0] else f"Entrenador"
+
+        trade_data.append({
+            'uid': uid,
+            'name': uname,
+            'is_shiny': is_shiny,
+            'can_trade': can_trade
+        })
+
+    # Ordenar: Los que PUEDEN intercambiar van primero
+    trade_data.sort(key=lambda x: not x['can_trade'])
+
+    ITEMS_PER_PAGE = 10
+    total_pages = math.ceil(len(trade_data) / ITEMS_PER_PAGE)
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_users = trade_data[start:end]
+
+    keyboard = []
+    for t in current_users:
+        icon = "✅" if t['can_trade'] else "❌"
+        shiny_str = " ✨" if t['is_shiny'] else ""
+        btn_text = f"{icon} {t['name']}{shiny_str}"
+
+        if t['can_trade']:
+            # Mágico: Al pinchar, enviamos al usuario DIRECTO a la función 'trade_step2_handler' que ya tenemos programada
+            cb_data = f"trade_step2_{t['uid']}_{sender_id}_{pokemon_id}_{int(t['is_shiny'])}_{cmd_msg_id}"
+        else:
+            cb_data = "trade_suser_err"
+
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
+
+    # Navegación
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior",
+                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page - 1}_{cmd_msg_id}"))
+    if end < len(trade_data):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️",
+                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page + 1}_{cmd_msg_id}"))
+    if nav_row: keyboard.append(nav_row)
+
+    # Deducir región para volver correctamente
+    region = 'kanto' if pokemon_id <= 151 else 'johto'
+    keyboard.append(
+        [InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_sreg_{sender_id}_{region}_0_num_{cmd_msg_id}")])
+
+    p_name = POKEMON_BY_ID[pokemon_id]['name']
+    text = f"🔍 **Usuarios con {p_name} repetido:**\nSelecciona el usuario con el que quieres intercambiar:"
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def trade_search_user_err_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pop-up para cuando se pincha en un usuario sin intercambios diarios."""
+    await update.callback_query.answer("Este usuario no tiene intercambios disponibles.", show_alert=True)
+
+
+# ==========================================
 
 
 async def show_trade_menu_target_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE, target_id, sender_id,
@@ -6055,6 +6263,7 @@ def main():
         CommandHandler("forcespawn", force_spawn_command),
         CommandHandler("regalarobjeto", regalar_objeto_cmd),
 
+
         CommandHandler("resetgroup", admin_reset_group_kanto),
         CommandHandler("checkmoney", admin_check_money),
         CommandHandler("setmoney", admin_set_money),
@@ -6134,6 +6343,10 @@ def main():
         CallbackQueryHandler(tienda_category_handler, pattern="^shop_cat_"),
         CallbackQueryHandler(egg_claim_handler, pattern="^egg_claim_"),
         CallbackQueryHandler(egg_check_handler, pattern="^egg_check_"),
+        CallbackQueryHandler(trade_search_start_handler, pattern="^trade_search_start_"),
+        CallbackQueryHandler(trade_search_region_handler, pattern="^trade_sreg_"),
+        CallbackQueryHandler(trade_search_sticker_handler, pattern="^trade_sstick_"),
+        CallbackQueryHandler(trade_search_user_err_handler, pattern="^trade_suser_err$"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
