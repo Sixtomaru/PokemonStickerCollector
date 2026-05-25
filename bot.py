@@ -4243,7 +4243,52 @@ async def ratio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = f"📊 Tu ratio de captura actual es del *{capture_chance}%*."
 
-    await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+    # Enviamos el mensaje
+    msg = await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+
+    # --- PROGRAMAMOS EL BORRADO EN 60 SEGUNDOS ---
+    schedule_message_deletion(context, msg, 60)
+    if update.message:
+        schedule_message_deletion(context, update.message, 60)
+
+
+async def ranking_mensual_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra el progreso actual del Ranking Mensual del Grupo."""
+    # 1. Validar que se use en un grupo
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        msg = await update.effective_message.reply_text("Este comando solo funciona en grupos.",
+                                                        disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        schedule_message_deletion(context, update.message, 5)
+        return
+
+    chat_id = update.effective_chat.id
+    ranking_data = db.get_group_monthly_ranking(chat_id)
+
+    # 2. Si no hay datos (Nadie ha capturado nada)
+    if not ranking_data:
+        text = "🏆 **Ranking Mensual del Grupo** 🏆\n\n_Aún nadie ha capturado ningún sticker este mes._"
+        msg = await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+        schedule_message_deletion(context, msg, 60)
+        schedule_message_deletion(context, update.message, 60)
+        return
+
+    # 3. Construir la lista visual
+    text = "🏆 **Ranking Mensual (En curso)** 🏆\n\n"
+
+    medals = ["🥇", "🥈", "🥉"]
+    for i, row in enumerate(ranking_data):
+        user_name = row['username'] if isinstance(row, dict) else row[1]
+        count = row['stickers_this_month'] if isinstance(row, dict) else row[2]
+
+        visual_rank = medals[i] if i < 3 else f"{i + 1}."
+        text += f"{visual_rank} {user_name}: {count} stickers\n"
+
+
+    # 4. Enviar el mensaje y programar el borrado de ambos en 60 segundos
+    msg = await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
+    schedule_message_deletion(context, msg, 60)
+    schedule_message_deletion(context, update.message, 60)
 
 
 async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6305,6 +6350,7 @@ def main():
         CommandHandler("menugruposhuffle", menu_grupo_shuffle_cmd),
         CommandHandler("testminijuego", test_minijuego_cmd),
         CommandHandler("cuandodelibird", admin_check_delibird),
+        CommandHandler("rankingmensual", ranking_mensual_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
