@@ -1678,29 +1678,57 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             try:
                 # 1. Enviar Sticker
                 with open(image_path, 'rb') as sticker_file:
-                    sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+                    sticker_msg = await context.bot.send_sticker(
+                        chat_id=chat_id,
+                        sticker=sticker_file,
+                        read_timeout=20,  # Le damos más tiempo a Render para recibir la confirmación
+                        write_timeout=20
+                    )
 
-                # 2. Botón
+                # 2. Preparamos el Botón
                 callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
                 button_text = "¡Capturar! 📷"
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
-                # 3. Enviar Texto (HTML)
-                text_msg = await context.bot.send_message(
-                    chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup
-                )
+                # 3. BUCLE BULLDOG: Intentar enviar el texto a toda costa
+                text_msg = None
+                for intento in range(5):
+                    try:
+                        text_msg = await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=text_message,
+                            parse_mode='HTML',
+                            reply_markup=reply_markup,
+                            read_timeout=20,  # Más tiempo de espera
+                            write_timeout=20
+                        )
+                        break  # ¡Éxito! Salimos del bucle
+                    except Exception as e:
+                        logger.warning(f"Fallo al enviar botón (Intento {intento + 1}/5): {e}")
+                        await asyncio.sleep(1.5)  # Esperamos 1.5 segs y volvemos a golpear la puerta
 
-                # 4. Guardar
+                # 4. Control de Catástrofes: Si fallaron los 5 intentos, borramos el sticker inmediatamente
+                if not text_msg:
+                    logger.error(f"Imposible enviar el botón en {chat_id}. Borrando sticker huérfano.")
+                    try:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg.message_id)
+                    except:
+                        pass
+                    return  # Abortamos el spawn
+
+                # 5. Guardar en memoria RAM si todo fue bien
                 context.chat_data['active_spawns'][text_msg.message_id] = {
                     'sticker_id': sticker_msg.message_id,
                     'text_id': text_msg.message_id,
                     'timestamp': current_time
                 }
+
             except FileNotFoundError:
                 logger.error(f"No se encontró la imagen: {image_path}")
 
-    except Exception as e:
-        logger.error(f"⚠️ Error en el ciclo de spawn para el chat {chat_id}: {e}")
+            except Exception as e:
+                logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
+
         # Limpieza de emergencia si falla el texto (Timed Out)
         if sticker_msg:
             try:
@@ -2965,7 +2993,15 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
     if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=cb_back)])
 
-    text = f"📂 **Sobres de {cat.capitalize()}**\nElige un sobre:"
+    # Obtenemos el dinero actual del usuario
+    user_money = db.get_user_money(owner_id)
+
+    # Formateamos el nombre de la categoría
+    cat_display = "Nacionales" if cat == 'national' else f"de {cat.capitalize()}"
+
+    text = (f"📂 **Sobres {cat_display}**\n"
+            f"Tu saldo: **{format_money(user_money)}₽**\n\n"
+            f"Elige un sobre:")
 
     refresh_deletion_timer(context, query.message, 60)
 
@@ -3058,14 +3094,29 @@ async def confirm_buy_pack_handler(update: Update, context: ContextTypes.DEFAULT
     if user_money >= pack_price:
         db.update_money(owner_id, -pack_price)
         db.add_item_to_inventory(owner_id, item_id, 1)
-        await query.answer(f"✅ ¡Comprado! Tienes un {pack_details['name']} en tu mochila.", show_alert=True)
-        # Volvemos a la tienda automáticamente para que vea su saldo actualizado
-        # Importante: tienda_cmd sabrá leer el ID desde el callback 'confirmbuy...'
-        await tienda_cmd(update, context)
+
+        await query.answer()  # Quitamos el show_alert de aquí para que no moleste
+
+        # --- NUEVO MENÚ PARA PREGUNTAR SI QUIERE ABRIRLO ---
+        text = (f"✅ ¡Has comprado **{pack_details['name']}**!\n\n"
+                f"¿Quieres abrirlo?")
+
+        cb_open = f"openpack_{item_id}_{owner_id}"
+        cb_no = f"shop_refresh_{owner_id}"
+
+        if len(parts) > 3 and parts[-1].isdigit() and parts[-2].isdigit():
+            cb_no += f"_{parts[-1]}"  # Si hay cmd_msg_id, se lo pasamos al botón de NO
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Abrir", callback_data=cb_open),
+             InlineKeyboardButton("❌ No", callback_data=cb_no)]
+        ]
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
     else:
         needed = pack_price - user_money
         await query.answer(f"❌ No tienes suficiente dinero. Te faltan {format_money(needed)}₽.", show_alert=True)
-        # Volvemos a la tienda
         await tienda_cmd(update, context)
 
 async def tienda_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3206,6 +3257,9 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_items and mode != "eggs":
         text += "<i>Bolsillo vacío.</i>"
 
+        # --- AÑADIMOS EL BOTÓN CERRAR AQUÍ ---
+    keyboard_buttons.append([InlineKeyboardButton("❌ Cerrar", callback_data=f"inv_close_{user_id}")])
+
     markup = InlineKeyboardMarkup(keyboard_buttons)
 
     # ENVÍO O EDICIÓN (TODO EN HTML)
@@ -3228,6 +3282,20 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, sent_message, 60)
         if update.message:
             schedule_message_deletion(context, update.message, 5)
+
+
+async def inv_close_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cierra y borra el mensaje de la mochila."""
+    query = update.callback_query
+    try:
+        owner_id = int(query.data.split('_')[2])
+        if query.from_user.id != owner_id:
+            return await query.answer("No es tu mochila.", show_alert=True)
+
+        await query.message.delete()
+        await query.answer()
+    except:
+        await query.answer("Error al cerrar.", show_alert=True)
 
 
 async def egg_check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3357,7 +3425,14 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
             with open(path, 'rb') as f:
                 await context.bot.send_sticker(chat_id=user_id, sticker=f)
 
-            await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
+            # --- AÑADIMOS EL BOTÓN AQUÍ ---
+            keyboard = [[InlineKeyboardButton("Recibir otro 🥚", callback_data=f"egg_claim_{user_id}")]]
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=text,
+                parse_mode='HTML',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         except Exception:
             pass
 
@@ -6398,6 +6473,7 @@ def main():
         CallbackQueryHandler(trade_search_region_handler, pattern="^trade_sreg_"),
         CallbackQueryHandler(trade_search_sticker_handler, pattern="^trade_sstick_"),
         CallbackQueryHandler(trade_search_user_err_handler, pattern="^trade_suser_err$"),
+        CallbackQueryHandler(inv_close_handler, pattern="^inv_close_"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
