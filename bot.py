@@ -2999,7 +2999,7 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
     # Formateamos el nombre de la categoría
     cat_display = "Nacionales" if cat == 'national' else f"de {cat.capitalize()}"
 
-    text = (f"📂 **Sobres {cat_display}**\n"
+    text = (f"📂 **Sobres {cat_display}**\n\n"
             f"Tu saldo: **{format_money(user_money)}₽**\n\n"
             f"Elige un sobre:")
 
