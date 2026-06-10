@@ -1602,7 +1602,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             # Elegimos categoría
             category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
 
-            # Filtramos ALL_POKEMON_SPAWNABLE (Sin bebés ni Unown) por región y categoría
+            # Filtramos ALL_POKEMON_SPAWNABLE (Sin bebés ni Unown ni legendarios bloqueados)
             if chosen_region == 'Kanto':
                 candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and p['id'] <= 151]
             else:  # Johto
@@ -1617,7 +1617,6 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             # ----------------------------------------
 
             # --- LÓGICA INTELIGENTE DE LEGENDARIOS (Rango S) ---
-            # Diccionario que enlaza el ID del Legendario con la misión que necesita para salir
             LEGENDARY_MISSIONS = {
                 144: 'mision_articuno',
                 145: 'mision_zapdos',
@@ -1633,7 +1632,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             if pokemon_data['category'] == 'S':
                 mision_necesaria = LEGENDARY_MISSIONS.get(pokemon_data['id'])
 
-                # Si necesita misión y NO está completada, el Pokémon está BLOQUEADO
+                # Si el Pokémon elegido necesita misión y NO está completada, está BLOQUEADO
                 if mision_necesaria and not db.is_event_completed(chat_id, mision_necesaria):
 
                     # 1. Buscamos TODOS los Legendarios ('S') de la región actual
@@ -1643,28 +1642,16 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                         region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if
                                          p['category'] == 'S' and 152 <= p['id'] <= 251]
 
-                    # 2. Filtramos dejando SOLO los que están desbloqueados (o los que no necesitan misión como Mew/Celebi)
+                    # 2. Filtramos dejando SOLO los que están desbloqueados o libres por defecto (como Mew/Celebi)
                     unlocked_s = []
                     for p in region_s_pool:
                         m = LEGENDARY_MISSIONS.get(p['id'])
                         if not m or db.is_event_completed(chat_id, m):
                             unlocked_s.append(p)
 
-                    # 3. Si hay algún Legendario libre, elegimos uno de esos
-                    if unlocked_s:
-                        pokemon_data = random.choice(unlocked_s)
-                        # La rareza sigue siendo 'S', no hace falta cambiarla
-
-                    # 4. Si TODOS los Legendarios están bloqueados, damos un Rango 'A' como consolación
-                    else:
-                        if chosen_region == 'Kanto':
-                            pokemon_data = random.choice(
-                                [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'A' and p['id'] <= 151])
-                        else:
-                            pokemon_data = random.choice(
-                                [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'A' and 152 <= p['id'] <= 251])
-                        rarity = get_rarity('A', is_shiny)
-            # ----------------------------------------------
+                    # 3. Elegimos uno de los libres (Siempre habrá al menos uno gracias a Mew y Celebi)
+                    pokemon_data = random.choice(unlocked_s)
+            # ----------------------------------------------------
 
             # --- TEXTO LIMPIO (HTML) ---
             # Usamos el nombre base sin Custom Emoji para evitar que el enlace se rompa en texto plano
@@ -1675,48 +1662,36 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             region_folder = "Johto" if pokemon_data['id'] > 151 else "Kanto"
             image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
+            # --- ENVÍO SEGURO CON MICRO-PAUSA ---
             try:
-                # 1. Enviar Sticker
+                # 1. Enviar el Sticker (Subida de archivo)
                 with open(image_path, 'rb') as sticker_file:
                     sticker_msg = await context.bot.send_sticker(
                         chat_id=chat_id,
                         sticker=sticker_file,
-                        read_timeout=20,  # Le damos más tiempo a Render para recibir la confirmación
+                        read_timeout=20,
                         write_timeout=20
                     )
 
-                # 2. Preparamos el Botón
+                # 2. EL "RESPIRO": Damos medio segundo para que la red de Render se desatasque
+                await asyncio.sleep(0.5)
+
+                # 3. Preparamos el Botón
                 callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
                 button_text = "¡Capturar! 📷"
                 reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
-                # 3. BUCLE BULLDOG: Intentar enviar el texto a toda costa
-                text_msg = None
-                for intento in range(5):
-                    try:
-                        text_msg = await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=text_message,
-                            parse_mode='HTML',
-                            reply_markup=reply_markup,
-                            read_timeout=20,  # Más tiempo de espera
-                            write_timeout=20
-                        )
-                        break  # ¡Éxito! Salimos del bucle
-                    except Exception as e:
-                        logger.warning(f"Fallo al enviar botón (Intento {intento + 1}/5): {e}")
-                        await asyncio.sleep(1.5)  # Esperamos 1.5 segs y volvemos a golpear la puerta
+                # 4. Enviar el Texto con el botón
+                text_msg = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text_message,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup,
+                    read_timeout=20,
+                    write_timeout=20
+                )
 
-                # 4. Control de Catástrofes: Si fallaron los 5 intentos, borramos el sticker inmediatamente
-                if not text_msg:
-                    logger.error(f"Imposible enviar el botón en {chat_id}. Borrando sticker huérfano.")
-                    try:
-                        await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg.message_id)
-                    except:
-                        pass
-                    return  # Abortamos el spawn
-
-                # 5. Guardar en memoria RAM si todo fue bien
+                # 5. Guardar en memoria RAM si ambos llegaron bien
                 context.chat_data['active_spawns'][text_msg.message_id] = {
                     'sticker_id': sticker_msg.message_id,
                     'text_id': text_msg.message_id,
@@ -1727,14 +1702,22 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"No se encontró la imagen: {image_path}")
 
             except Exception as e:
-                logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
+                # Si estamos aquí, el Texto/Botón falló y lanzó Timed Out.
+                logger.error(f"⚠️ Cuello de botella en la red para chat {chat_id}: {e}")
 
-        # Limpieza de emergencia si falla el texto (Timed Out)
-        if sticker_msg:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg.message_id)
-            except:
-                pass
+                # SEGURO DE VIDA: Si el sticker se envió pero el texto falló, el sticker queda huérfano.
+                # Delegamos el borrado al Job Queue para que lo borre 15 segundos después,
+                # esquivando así el corte actual de internet.
+                if sticker_msg:
+                    context.job_queue.run_once(
+                        delete_message_job,
+                        15,
+                        data={'chat_id': chat_id, 'message_id': sticker_msg.message_id},
+                        name=f"del_orphan_sticker_{sticker_msg.message_id}"
+                    )
+
+    except Exception as e:
+        logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
 
     finally:
         # Reprogramar siempre
