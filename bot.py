@@ -434,6 +434,107 @@ async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error al borrar mensaje programado: {e}")
 
 
+async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
+    """Resuelve la Lotería de Captura pasados los 60 segundos."""
+    job_data = context.job.data
+    chat_id = job_data['chat_id']
+    text_msg_id = job_data['text_msg_id']
+    sticker_msg_id = job_data['sticker_msg_id']
+    pokemon_id = job_data['pokemon_id']
+    is_shiny = job_data['is_shiny']
+    rarity = job_data['rarity']
+    p_name = job_data['p_name']
+
+    # 1. Borramos el sticker (porque huye)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
+    except:
+        pass
+
+    # 2. Recuperamos a los participantes de la memoria
+    state = context.chat_data.get('safari_spawns', {}).pop(text_msg_id, None)
+
+    # Si nadie jugó
+    if not state or not state['participants']:
+        text = f"El **{p_name}** huyó sin dejar rastro 💨"
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text,
+                                                parse_mode='Markdown')
+        except:
+            pass
+        return
+
+    # 3. Elegir al ganador al azar
+    participants = state['participants']
+    winner = random.choice(participants)
+
+    # Separamos a los perdedores para la lista final
+    losers = [p for p in participants if p['id'] != winner['id']]
+
+    # 4. Entregar el premio (Lógica estándar de captura)
+    user_id = winner['id']
+    first_name = winner['first_name']
+    user_mention = f'<a href="tg://user?id={user_id}">{first_name}</a>'
+
+    db.get_or_create_user(user_id, first_name)
+    if chat_id in db.get_active_groups():
+        db.register_user_in_group(user_id, chat_id)
+        db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)
+        db.increment_group_monthly_stickers(user_id, chat_id)
+        # Check Johto unlock (opcional aquí, por no complicar el async, pero está en el general)
+
+    pokemon_data = POKEMON_BY_ID.get(pokemon_id)
+    p_display = get_formatted_name(pokemon_data, is_shiny)
+    rarity_emoji = RARITY_VISUALS.get(rarity, '')
+
+    status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
+
+    reward_text = ""
+    if status == 'NEW':
+        reward_text = f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de {p_display} {rarity_emoji}. Lo has registrado en tu Álbumdex."
+    elif status == 'DUPLICATE':
+        reward_text = f"♻ ¡Genial, {user_mention}! Conseguiste un sticker de {p_display} {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo."
+    else:
+        money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+        db.update_money(user_id, money)
+        reward_text = f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de {p_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money)}₽</b> 💰."
+
+    # --- Premios Extra (Kanto/Johto Completos) ---
+    if not db.is_kanto_completed_by_user(user_id) and db.get_user_unique_kanto_count(user_id) >= 151:
+        db.set_kanto_completed_by_user(user_id)
+        db.update_money(user_id, 3000)
+        db.add_item_to_inventory(user_id, 'pack_shiny_kanto', 1)
+        reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+
+    if not db.is_johto_completed_by_user(user_id) and db.get_user_unique_johto_count(user_id) >= 100:
+        db.set_johto_completed_by_user(user_id)
+        db.update_money(user_id, 3000)
+        db.add_item_to_inventory(user_id, 'pack_shiny_johto', 1)
+        reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+    # 5. Construir y enviar el texto final
+    final_text = (
+        f"¡El <b>{p_name}</b> ha huido, pero ✔️{first_name} consiguió escanearlo!\n\n"
+        f"{reward_text}\n\n"
+    )
+
+    if losers:
+        final_text += "Han intentado escanearlo:\n"
+        for loser in losers:
+            safe_name = loser['first_name'].replace('<', '').replace('>', '')
+            final_text += f"✖️ {safe_name}\n"
+
+    try:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=text_msg_id,
+            text=final_text,
+            parse_mode='HTML'
+        )
+    except:
+        pass
+
+
 async def check_and_unlock_johto(chat_id, context):
     """Verifica si el grupo ha alcanzado el 75% de Kanto y desbloquea Johto."""
     # Solo si no está desbloqueado ya
@@ -1686,50 +1787,78 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
             # --- TEXTO LIMPIO (HTML) ---
             # Usamos el nombre base sin Custom Emoji para evitar que el enlace se rompa en texto plano
             pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-            text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
 
-            # Ruta de imagen dinámica
             region_folder = "Johto" if pokemon_data['id'] > 151 else "Kanto"
             image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
-            try:
-                # 1. Enviar el archivo de imagen (Sticker)
-                with open(image_path, 'rb') as sticker_file:
-                    sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+            # --- DADOS PARA EVENTO ESPECIAL DE CAZA (10% de probabilidad) ---
+            is_special_hunt = random.random() < 0.10
 
-                # --- 2. LA PAUSA DE SEGURIDAD (1 Segundo) ---
-                # Evita el cuello de botella en Render y crea tensión visual
+            if is_special_hunt:
+                text_message = f"¡Un <b>{pokemon_name}</b> ha aparecido, pero se ha escondido entre la hierba alta!\n<i>Tratad de conseguir una foto antes de que se vaya.</i>"
+                callback_data = f"safari_hunt_{pokemon_data['id']}"  # Callback especial
+            else:
+                text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
+                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"  # Callback normal de dedo rápido
+
+            # --- ENVÍO SEGURO CON MICRO-PAUSA ---
+            try:
+                # 1. Enviar el Sticker
+                with open(image_path, 'rb') as sticker_file:
+                    sticker_msg = await context.bot.send_sticker(
+                        chat_id=chat_id,
+                        sticker=sticker_file,
+                        read_timeout=20, write_timeout=20
+                    )
+
                 await asyncio.sleep(1.0)
 
-                # 3. Preparamos y enviamos el Botón
-                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-                button_text = "¡Capturar! 📷"
-                reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+                # 2. Preparamos el Botón
+                reply_markup = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("¡Capturar! 📷", callback_data=callback_data)]])
 
+                # 3. Enviar el Texto con el botón
                 text_msg = await context.bot.send_message(
-                    chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup
+                    chat_id=chat_id,
+                    text=text_message,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup,
+                    read_timeout=20, write_timeout=20
                 )
 
-                # 4. Guardamos en memoria si todo fue bien
-                context.chat_data['active_spawns'][text_msg.message_id] = {
-                    'sticker_id': sticker_msg.message_id,
-                    'text_id': text_msg.message_id,
-                    'timestamp': current_time
-                }
+                # 4. Guardar y Procesar según el modo
+                if is_special_hunt:
+                    # Guardamos la sala de caza y activamos la bomba de tiempo de 60s
+                    context.chat_data.setdefault('safari_spawns', {})
+                    context.chat_data['safari_spawns'][text_msg.message_id] = {'participants': []}
+
+                    context.job_queue.run_once(
+                        resolve_safari_catch_job,
+                        60,
+                        data={
+                            'chat_id': chat_id,
+                            'text_msg_id': text_msg.message_id,
+                            'sticker_msg_id': sticker_msg.message_id,
+                            'pokemon_id': pokemon_data['id'],
+                            'is_shiny': is_shiny,
+                            'rarity': rarity,
+                            'p_name': pokemon_name
+                        },
+                        name=f"safari_resolve_{chat_id}_{text_msg.message_id}"
+                    )
+                else:
+                    # Guardar en memoria RAM normal si fue spawn rápido
+                    context.chat_data.setdefault('active_spawns', {})
+                    context.chat_data['active_spawns'][text_msg.message_id] = {
+                        'sticker_id': sticker_msg.message_id,
+                        'text_id': text_msg.message_id,
+                        'timestamp': current_time
+                    }
 
             except FileNotFoundError:
                 logger.error(f"No se encontró la imagen: {image_path}")
-
-    except Exception as e:
-        logger.error(f"⚠️ Error total en el ciclo de spawn para el chat {chat_id}: {e}")
-        # Limpieza diferida de 15 segundos si el botón nunca llegó a enviarse
-        if sticker_msg:
-            context.job_queue.run_once(
-                delete_message_job,
-                15,
-                data={'chat_id': chat_id, 'message_id': sticker_msg.message_id},
-                name=f"del_orphan_sticker_{sticker_msg.message_id}"
-            )
+            except Exception as e:
+                logger.error(f"⚠️ Micro-corte en spawn para chat {chat_id}: {e}")
 
     finally:
         # Reprogramar siempre
@@ -2540,6 +2669,31 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         if message.chat.type in ['group', 'supergroup']:
             await check_and_unlock_johto(message.chat.id, context)
+
+
+async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Apunta al jugador en la lotería de captura."""
+    query = update.callback_query
+    user = query.from_user
+    msg_id = query.message.message_id
+
+    # Comprobamos si el evento sigue activo en memoria
+    state = context.chat_data.get('safari_spawns', {}).get(msg_id)
+
+    if not state:
+        return await query.answer("Este Pokémon ya ha huido o el evento ha caducado.", show_alert=True)
+
+    # Comprobamos si ya está inscrito
+    if any(p['id'] == user.id for p in state['participants']):
+        return await query.answer("La energía del Álbumdex se agotó.", show_alert=True)
+
+    # Le apuntamos en la lista
+    state['participants'].append({
+        'id': user.id,
+        'first_name': user.first_name
+    })
+
+    await query.answer("¡Tomaste una foto!", show_alert=True)
 
 
 async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3431,6 +3585,11 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+async def clean_expired_minigames_job(context: ContextTypes.DEFAULT_TYPE):
+    """Tarea nocturna para limpiar minijuegos viejos de Supabase."""
+    db.delete_expired_minigames()
+    logger.info("🧹 Limpieza de minijuegos caducados completada.")
+
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
     for mid in job_data['sticker_ids']:
@@ -3723,9 +3882,9 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args or len(args) < 2:
         msg = await update.message.reply_text(
-            "❌ Uso correcto: `/multisobre <tipodesobre> <cantidad>`\n"
-            "Ejemplo: `/multisobre grandenacional 5`",
-            parse_mode='Markdown', disable_notification=True
+            "❌ Uso correcto: <code>/multisobre &lt;tipodesobre&gt; &lt;cantidad&gt;</code>\n"
+            "Ejemplo: <code>/multisobre grandenacional 5</code>",
+            parse_mode='HTML', disable_notification=True
         )
         schedule_message_deletion(context, msg, 15)
         schedule_message_deletion(context, update.message, 5)
@@ -3776,7 +3935,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Restamos todos los sobres de golpe
     db.remove_item_from_inventory(user.id, item_id, cantidad)
 
-    final_text = f"🎴 **Apertura Múltiple de {user.mention_markdown()}** \n_{cantidad}x {pack_name}_\n\n"
+    final_text = f"🎴 <b>Apertura Múltiple de {user.mention_html()}</b> 🎴\n<i>{cantidad}x {pack_name}</i>\n\n"
 
     user_quantities = db.get_user_collection_quantities(user.id)
 
@@ -3872,7 +4031,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user.id, money)
                 summary_parts.append(f"🔸✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
 
-        final_text += f"**Sobre {i + 1}:**\n" + "\n".join(summary_parts) + "\n\n"
+        final_text += f"<b>Sobre {i + 1}:</b>\n" + "\n".join(summary_parts) + "\n\n"
 
     # 5. Comprobar si completó alguna región durante esta apertura masiva
     premios_extra = ""
@@ -3880,24 +4039,24 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.set_kanto_completed_by_user(user.id)
         db.update_money(user.id, 3000)
         db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
-        premios_extra += f"\n🎊 ¡Felicidades, has completado *Kanto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+        premios_extra += f"\n🎊 ¡Felicidades, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
     if not db.is_johto_completed_by_user(user.id) and db.get_user_unique_johto_count(user.id) >= 100:
         db.set_johto_completed_by_user(user.id)
         db.update_money(user.id, 3000)
         db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
-        premios_extra += f"\n🎊 ¡Felicidades, has completado *Johto*! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+        premios_extra += f"\n🎊 ¡Felicidades, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
     if not db.is_unown_completed_by_user(user.id) and db.get_user_unique_unown_count(user.id) >= 28:
         db.set_unown_completed_by_user(user.id)
         db.update_money(user.id, 2000)
         db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
-        premios_extra += f"\n🎊 ¡Felicidades, has completado el *Álbum Unown*! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+        premios_extra += f"\n🎊 ¡Felicidades, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
     final_text += premios_extra
 
-    # 6. Enviar mensaje final
-    await context.bot.send_message(chat_id, text=final_text, parse_mode='Markdown', disable_notification=True)
+    # 6. Enviar mensaje final (AHORA EN HTML)
+    await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
 async def view_ticket_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -4777,7 +4936,14 @@ async def codigos_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def process_friend_code_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Analiza mensajes de texto para ver si son códigos de amigo."""
-    text = update.message.text
+
+    # --- DEFENSA ANTI-ERRORES ---
+    # Cogemos el mensaje normal o el mensaje editado. Si no hay ninguno, o no hay texto, abortamos.
+    message = update.message or update.edited_message
+    if not message or not message.text:
+        return
+
+    text = message.text
     user = update.effective_user
 
     # Patrón Regex: (Nick) (Region) (Codigo)
@@ -6503,7 +6669,7 @@ def main():
 
     # Limpiador de minijuegos caducados (03:00 AM)
     application.job_queue.run_daily(
-        lambda context: db.delete_expired_minigames(),
+        clean_expired_minigames_job,
         time=dt_time(3, 0, tzinfo=TZ_SPAIN),
         name="clean_expired_minigames"
     )
@@ -6659,6 +6825,7 @@ def main():
         CallbackQueryHandler(trade_search_sticker_handler, pattern="^trade_sstick_"),
         CallbackQueryHandler(trade_search_user_err_handler, pattern="^trade_suser_err$"),
         CallbackQueryHandler(inv_close_handler, pattern="^inv_close_"),
+        CallbackQueryHandler(safari_hunt_btn_handler, pattern="^safari_hunt_"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
