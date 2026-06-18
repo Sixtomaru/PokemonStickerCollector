@@ -446,22 +446,21 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
     p_name = job_data['p_name']
 
     # 1. Borramos el sticker (porque huye)
-    try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
-    except:
-        pass
+    try: await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
+    except: pass
 
-    # 2. Recuperamos a los participantes de la memoria
-    state = context.chat_data.get('safari_spawns', {}).pop(text_msg_id, None)
+    # 2. Recuperamos a los participantes de la memoria DE FORMA SEGURA
+    state = None
+    if context.chat_data is not None:
+        safari_spawns = context.chat_data.get('safari_spawns')
+        if safari_spawns is not None:
+            state = safari_spawns.pop(text_msg_id, None)
 
-    # Si nadie jugó
-    if not state or not state['participants']:
-        text = f"El **{p_name}** huyó sin dejar rastro 💨"
-        try:
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text,
-                                                parse_mode='Markdown')
-        except:
-            pass
+    # Si nadie jugó, la memoria falló, o no hay lista de participantes
+    if not state or not state.get('participants'):
+        text = f"El <b>{p_name}</b> huyó sin dejar rastro 💨"
+        try: await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text, parse_mode='HTML')
+        except: pass
         return
 
     # 3. Elegir al ganador al azar
@@ -2744,6 +2743,12 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "📬 Tienes los siguientes regalos pendientes:\n\n"
     keyboard = []
+
+    # --- NUEVO: BOTÓN RECLAMAR TODO ---
+    if len(mails) > 1:  # Solo lo mostramos si hay más de 1 correo
+        keyboard.append([InlineKeyboardButton("📦 RECLAMAR TODO", callback_data=f"claimall_{owner_user.id}")])
+    # ----------------------------------
+
     for mail in mails:
         button_text = "🎁 Reclamar: "
         if mail['item_type'] == 'money':
@@ -2757,6 +2762,7 @@ async def buzon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"✉️ *De:* Administrador (ID: `{mail['mail_id']}`)\n*Mensaje:* _{mail['message']}_\n\n"
         keyboard.append(
             [InlineKeyboardButton(button_text, callback_data=f"claimmail_{mail['mail_id']}_{owner_user.id}")])
+
     keyboard.append([InlineKeyboardButton("🔄 Actualizar", callback_data=f"buzon_refresh_{owner_user.id}")])
 
     if query and query.data != "panel_buzon":
@@ -2873,6 +2879,89 @@ async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if message_text:
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='Markdown')
+    await buzon(update, context)
+
+
+async def claim_all_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reclama todos los correos del buzón de golpe y muestra un resumen."""
+    query = update.callback_query
+    interactor_user = query.from_user
+
+    try:
+        owner_id = int(query.data.split('_')[1])
+        if interactor_user.id != owner_id:
+            await query.answer("Este buzón no es tuyo.", show_alert=True)
+            return
+    except (ValueError, IndexError):
+        await query.answer("Error en el botón.", show_alert=True)
+        return
+
+    # 1. Recuperamos todos los correos sin leer
+    mails = db.get_user_mail(owner_id)
+    if not mails:
+        await query.answer("Tu buzón ya está vacío.", show_alert=True)
+        return await buzon(update, context)
+
+    total_money = 0
+    items_collected = {}  # Para agrupar los sobres iguales (Ej: 3 Sobre Grande Nacional)
+    stickers_collected = []  # Para listar los Pokémon sueltos
+
+    # 2. Procesamos cada correo
+    for mail in mails:
+        mail_id = mail['mail_id']
+        item_type = mail['item_type']
+        item_details = mail['item_details']
+
+        # Marcamos como leído en la base de datos
+        db.claim_mail_item(mail_id)
+
+        if item_type == 'money':
+            total_money += int(item_details)
+
+        elif item_type == 'inventory_item':
+            db.add_item_to_inventory(owner_id, item_details, 1)
+            item_name = ITEM_NAMES.get(item_details, "Objeto Desconocido")
+            items_collected[item_name] = items_collected.get(item_name, 0) + 1
+
+        elif item_type == 'single_sticker':
+            poke_id, is_shiny_int = map(int, item_details.split('_'))
+            is_shiny = bool(is_shiny_int)
+            pokemon_data = POKEMON_BY_ID.get(poke_id)
+
+            if pokemon_data:
+                p_display = get_formatted_name(pokemon_data, is_shiny)
+                rarity = get_rarity(pokemon_data['category'], is_shiny)
+                r_emoji = RARITY_VISUALS.get(rarity, '')
+
+                status = db.add_sticker_smart(owner_id, poke_id, is_shiny)
+                if status == 'NEW':
+                    stickers_collected.append(f"🔸 🆕 {p_display} {r_emoji}")
+                elif status == 'DUPLICATE':
+                    stickers_collected.append(f"🔸 ♻️ {p_display} {r_emoji}")
+                else:
+                    money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+                    total_money += money
+                    stickers_collected.append(f"🔸 ✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
+
+    # 3. Dar el dinero total acumulado (si hay)
+    if total_money > 0:
+        db.update_money(owner_id, total_money)
+
+    # 4. Construir el Mensaje de Resumen
+    summary_text = f"📦 **¡Buzón Vaciado!**\n{interactor_user.mention_markdown()} ha recogido:\n\n"
+
+    if items_collected:
+        for name, qty in items_collected.items():
+            summary_text += f"- {qty}x {name}\n"
+
+    if stickers_collected:
+        summary_text += "\n**Stickers:**\n" + "\n".join(stickers_collected) + "\n"
+
+    if total_money > 0:
+        summary_text += f"\n💰 **Dinero total recogido:** {format_money(total_money)}₽"
+
+    # 5. Enviar mensaje y recargar buzón
+    await context.bot.send_message(chat_id=query.message.chat_id, text=summary_text, parse_mode='Markdown')
     await buzon(update, context)
 
 
@@ -4057,6 +4146,95 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 6. Enviar mensaje final (AHORA EN HTML)
     await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
+
+
+async def multicompra_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Permite comprar varios sobres de golpe."""
+    user = update.effective_user
+    if not user: return
+    chat_id = update.effective_chat.id
+
+    db.get_or_create_user(user.id, user.first_name)
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, chat_id)
+
+    # 1. Validar Argumentos
+    args = context.args
+    if not args or len(args) < 2:
+        msg = await update.message.reply_text(
+            "❌ Uso correcto: <code>/multicompra &lt;tipodesobre&gt; &lt;cantidad&gt;</code>\n"
+            "Ejemplo: <code>/multicompra pequeñokanto 5</code>",
+            parse_mode='HTML', disable_notification=True
+        )
+        schedule_message_deletion(context, msg, 15)
+        schedule_message_deletion(context, update.message, 5)
+        return
+
+    sobre_input = args[0].lower()
+
+    try:
+        cantidad = int(args[1])
+    except ValueError:
+        msg = await update.message.reply_text("❌ La cantidad debe ser un número entero.")
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    # 2. Validar cantidad máxima (10 de golpe, igual que multisobre)
+    if cantidad < 1 or cantidad > 10:
+        msg = await update.message.reply_text("❌ Puedes comprar entre 1 y 10 sobres a la vez.",
+                                              disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    # 3. Buscar el sobre
+    item_id = MULTISOBRE_IDS.get(sobre_input)
+    if not item_id:
+        msg = await update.message.reply_text("❌ Tipo de sobre no reconocido. Escríbelo todo junto (ej: pequeñokanto).",
+                                              disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    # 4. Validar que el sobre existe y está a la venta
+    pack_details = SHOP_CONFIG.get(item_id)
+    if not pack_details or pack_details.get('hidden', False):
+        msg = await update.message.reply_text("❌ Este sobre no está disponible en la tienda.",
+                                              disable_notification=True)
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    # 5. Comprobar el dinero del jugador
+    precio_unitario = pack_details['price']
+    precio_total = precio_unitario * cantidad
+    user_money = db.get_user_money(user.id)
+
+    if user_money < precio_total:
+        faltante = precio_total - user_money
+        msg = await update.message.reply_text(
+            f"❌ No tienes suficiente dinero.\n"
+            f"Comprar {cantidad}x {pack_details['name']} cuesta **{format_money(precio_total)}₽**.\n"
+            f"Te faltan **{format_money(faltante)}₽**.",
+            parse_mode='Markdown', disable_notification=True
+        )
+        schedule_message_deletion(context, msg, 15)
+        return
+
+    # 6. Cobrar y entregar los sobres
+    db.update_money(user.id, -precio_total)
+    db.add_item_to_inventory(user.id, item_id, cantidad)
+    saldo_restante = user_money - precio_total
+
+    # 7. Mensaje de confirmación
+    success_text = (
+        f"✅ ¡Compra múltiple realizada con éxito!\n\n"
+        f"Has pagado **{format_money(precio_total)}₽** por **{cantidad}x {pack_details['name']}**.\n"
+        f"Se han guardado en tu /mochila.\n"
+        f"Saldo restante: **{format_money(saldo_restante)}₽**"
+    )
+
+    msg = await update.message.reply_text(success_text, parse_mode='Markdown', disable_notification=True)
+    schedule_message_deletion(context, msg, 60)
+    schedule_message_deletion(context, update.message, 15)
+
 
 async def view_ticket_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6777,6 +6955,7 @@ def main():
         CommandHandler("cuandodelibird", admin_check_delibird),
         CommandHandler("rankingmensual", ranking_mensual_cmd),
         CommandHandler("multisobre", multisobre_cmd),
+        CommandHandler("multicompra", multicompra_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -6790,6 +6969,7 @@ def main():
         CallbackQueryHandler(send_sticker_handler, pattern="^sendsticker_"),
         CallbackQueryHandler(claim_button_handler, pattern="^claim_"),
         CallbackQueryHandler(claim_mail_handler, pattern="^claimmail_"),
+        CallbackQueryHandler(claim_all_mail_handler, pattern="^claimall_"),
         CallbackQueryHandler(buzon_refresh_handler, pattern="^buzon_refresh_"),
         CallbackQueryHandler(tombola_claim, pattern="^tombola_claim_"),
         CallbackQueryHandler(open_pack_handler, pattern="^openpack_"),
