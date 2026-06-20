@@ -3988,9 +3988,9 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 10)
         return
 
-    # 2. Validar reglas del comando
-    if cantidad < 1 or cantidad > 10:
-        msg = await update.message.reply_text("❌ Puedes abrir entre 1 y 10 sobres a la vez.", disable_notification=True)
+    # 2. Validar reglas del comando (¡LÍMITE SUBIDO A 20!)
+    if cantidad < 1 or cantidad > 20:
+        msg = await update.message.reply_text("❌ Puedes abrir entre 1 y 20 sobres a la vez.", disable_notification=True)
         schedule_message_deletion(context, msg, 10)
         return
 
@@ -4025,7 +4025,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.remove_item_from_inventory(user.id, item_id, cantidad)
 
     final_text = f"🎴 <b>Apertura Múltiple de {user.mention_html()}</b> 🎴\n<i>{cantidad}x {pack_name}</i>\n\n"
-
     user_quantities = db.get_user_collection_quantities(user.id)
 
     # Iteramos por cada sobre
@@ -4102,7 +4101,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p, s = result['data'], result['is_shiny']
             rarity = get_rarity(p['category'], s)
 
-            # Registrar al grupo y desbloquear Johto si aplica
             if update.effective_chat.type in ['group', 'supergroup']:
                 db.add_pokemon_to_group_pokedex(chat_id, p['id'])
                 await check_and_unlock_johto(chat_id, context)
@@ -4120,9 +4118,16 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user.id, money)
                 summary_parts.append(f"🔸✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
 
-        final_text += f"<b>Sobre {i + 1}:</b>\n" + "\n".join(summary_parts) + "\n\n"
+        pack_summary = f"<b>Sobre {i + 1}:</b>\n" + "\n".join(summary_parts) + "\n\n"
 
-    # 5. Comprobar si completó alguna región durante esta apertura masiva
+        # --- SISTEMA ANTI-LÍMITES DE TELEGRAM ---
+        if len(final_text) + len(pack_summary) > 3800:
+            await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
+            final_text = ""  # Reseteamos para el siguiente mensaje
+
+        final_text += pack_summary
+
+    # 5. Comprobar si completó alguna región
     premios_extra = ""
     if not db.is_kanto_completed_by_user(user.id) and db.get_user_unique_kanto_count(user.id) >= 151:
         db.set_kanto_completed_by_user(user.id)
@@ -4144,8 +4149,9 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     final_text += premios_extra
 
-    # 6. Enviar mensaje final (AHORA EN HTML)
-    await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
+    # 6. Enviar el último mensaje (o único, si cabía todo)
+    if final_text.strip():
+        await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
 
 async def multicompra_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4180,8 +4186,8 @@ async def multicompra_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 2. Validar cantidad máxima (10 de golpe, igual que multisobre)
-    if cantidad < 1 or cantidad > 10:
-        msg = await update.message.reply_text("❌ Puedes comprar entre 1 y 10 sobres a la vez.",
+    if cantidad < 1 or cantidad > 50:
+        msg = await update.message.reply_text("❌ Puedes comprar entre 1 y 50 sobres a la vez.",
                                               disable_notification=True)
         schedule_message_deletion(context, msg, 10)
         return
