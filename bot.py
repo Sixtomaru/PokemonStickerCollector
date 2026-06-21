@@ -534,6 +534,58 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         pass
 
 
+async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
+    """Intenta enviar el botón a un sticker huérfano por culpa de la red."""
+    job_data = context.job.data
+    chat_id = job_data['chat_id']
+    sticker_msg_id = job_data['sticker_msg_id']
+    text_message = job_data['text_message']
+    reply_markup = job_data['reply_markup']
+    current_time = job_data['timestamp']
+    intentos = job_data.get('intentos', 0)
+
+    # Datos extra para la memoria del Safari
+    is_special_hunt = job_data.get('is_special_hunt', False)
+
+    try:
+        text_msg = await context.bot.send_message(
+            chat_id=chat_id, text=text_message, parse_mode='HTML',
+            reply_markup=reply_markup, read_timeout=20, write_timeout=20
+        )
+
+        # ¡Éxito! Lo guardamos en la memoria RAM CORRECTA
+        if is_special_hunt:
+            context.chat_data.setdefault('safari_spawns', {})
+            context.chat_data['safari_spawns'][text_msg.message_id] = {
+                'sticker_id': sticker_msg_id,
+                'pokemon_id': job_data['pokemon_id'],
+                'is_shiny': job_data['is_shiny'],
+                'rarity': job_data['rarity'],
+                'p_name': job_data['p_name'],
+                'participants': [],
+                'job_started': False  # El reloj empieza parado
+            }
+        else:
+            context.chat_data.setdefault('active_spawns', {})
+            context.chat_data['active_spawns'][text_msg.message_id] = {
+                'sticker_id': sticker_msg_id,
+                'text_id': text_msg.message_id,
+                'timestamp': current_time
+            }
+        logger.info(f"✅ ¡Rescate exitoso en {chat_id}!")
+
+    except Exception as e:
+        intentos += 1
+        if intentos < 12:
+            context.job_queue.run_once(rescue_spawn_job, 5, data={**job_data, 'intentos': intentos},
+                                       name=f"rescue_{chat_id}_{sticker_msg_id}")
+        else:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
+            except:
+                pass
+
+
 async def check_and_unlock_johto(chat_id, context):
     """Verifica si el grupo ha alcanzado el 75% de Kanto y desbloquea Johto."""
     # Solo si no está desbloqueado ya
@@ -1783,8 +1835,6 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                     pokemon_data = random.choice(unlocked_s)
             # ----------------------------------------------------
 
-            # --- TEXTO LIMPIO (HTML) ---
-            # Usamos el nombre base sin Custom Emoji para evitar que el enlace se rompa en texto plano
             pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
 
             region_folder = "Johto" if pokemon_data['id'] > 151 else "Kanto"
@@ -1795,58 +1845,41 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
             if is_special_hunt:
                 text_message = f"¡Un <b>{pokemon_name}</b> ha aparecido, pero se ha escondido entre la hierba alta!\n<i>Tratad de conseguir una foto antes de que se vaya.</i>"
-                callback_data = f"safari_hunt_{pokemon_data['id']}"  # Callback especial
+                callback_data = f"safari_hunt_{pokemon_data['id']}"
             else:
                 text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
-                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"  # Callback normal de dedo rápido
+                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
 
-            # --- ENVÍO SEGURO CON MICRO-PAUSA ---
+            # --- ENVÍO CON AGENTE DE RESCATE ---
             try:
-                # 1. Enviar el Sticker
                 with open(image_path, 'rb') as sticker_file:
-                    sticker_msg = await context.bot.send_sticker(
-                        chat_id=chat_id,
-                        sticker=sticker_file,
-                        read_timeout=20, write_timeout=20
-                    )
+                    sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file, read_timeout=20,
+                                                                 write_timeout=20)
 
+                # Pausa mágica de 1 segundo para desatascar la red
                 await asyncio.sleep(1.0)
 
-                # 2. Preparamos el Botón
                 reply_markup = InlineKeyboardMarkup(
                     [[InlineKeyboardButton("¡Capturar! 📷", callback_data=callback_data)]])
 
-                # 3. Enviar el Texto con el botón
                 text_msg = await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=text_message,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup,
-                    read_timeout=20, write_timeout=20
+                    chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup, read_timeout=20,
+                    write_timeout=20
                 )
 
-                # 4. Guardar y Procesar según el modo
                 if is_special_hunt:
-                    # Guardamos la sala de caza y activamos la bomba de tiempo de 60s
+                    # Guardamos la sala de caza pero NO encendemos el reloj aún
                     context.chat_data.setdefault('safari_spawns', {})
-                    context.chat_data['safari_spawns'][text_msg.message_id] = {'participants': []}
-
-                    context.job_queue.run_once(
-                        resolve_safari_catch_job,
-                        60,
-                        data={
-                            'chat_id': chat_id,
-                            'text_msg_id': text_msg.message_id,
-                            'sticker_msg_id': sticker_msg.message_id,
-                            'pokemon_id': pokemon_data['id'],
-                            'is_shiny': is_shiny,
-                            'rarity': rarity,
-                            'p_name': pokemon_name
-                        },
-                        name=f"safari_resolve_{chat_id}_{text_msg.message_id}"
-                    )
+                    context.chat_data['safari_spawns'][text_msg.message_id] = {
+                        'sticker_id': sticker_msg.message_id,
+                        'pokemon_id': pokemon_data['id'],
+                        'is_shiny': is_shiny,
+                        'rarity': rarity,
+                        'p_name': pokemon_name,
+                        'participants': [],
+                        'job_started': False  # El reloj empieza apagado
+                    }
                 else:
-                    # Guardar en memoria RAM normal si fue spawn rápido
                     context.chat_data.setdefault('active_spawns', {})
                     context.chat_data['active_spawns'][text_msg.message_id] = {
                         'sticker_id': sticker_msg.message_id,
@@ -1856,8 +1889,30 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
             except FileNotFoundError:
                 logger.error(f"No se encontró la imagen: {image_path}")
+
             except Exception as e:
                 logger.error(f"⚠️ Micro-corte en spawn para chat {chat_id}: {e}")
+                if sticker_msg:
+                    context.job_queue.run_once(
+                        rescue_spawn_job,
+                        2,
+                        data={
+                            'chat_id': chat_id,
+                            'sticker_msg_id': sticker_msg.message_id,
+                            'text_message': text_message,
+                            'reply_markup': reply_markup,
+                            'timestamp': current_time,
+                            'is_special_hunt': is_special_hunt,  # Chivato para el Agente
+                            'pokemon_id': pokemon_data['id'],
+                            'is_shiny': is_shiny,
+                            'rarity': rarity,
+                            'p_name': pokemon_name
+                        },
+                        name=f"rescue_start_{chat_id}"
+                    )
+
+    except Exception as e:
+        logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
 
     finally:
         # Reprogramar siempre
@@ -2671,26 +2726,44 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Apunta al jugador en la lotería de captura."""
+    """Apunta al jugador en la lotería de captura y arranca el reloj si es el primero."""
     query = update.callback_query
     user = query.from_user
+    chat_id = query.message.chat_id
     msg_id = query.message.message_id
 
-    # Comprobamos si el evento sigue activo en memoria
     state = context.chat_data.get('safari_spawns', {}).get(msg_id)
 
     if not state:
         return await query.answer("Este Pokémon ya ha huido o el evento ha caducado.", show_alert=True)
 
-    # Comprobamos si ya está inscrito
     if any(p['id'] == user.id for p in state['participants']):
         return await query.answer("La energía del Álbumdex se agotó.", show_alert=True)
 
-    # Le apuntamos en la lista
+    # Apuntamos al jugador
     state['participants'].append({
         'id': user.id,
         'first_name': user.first_name
     })
+
+    # SI ES EL PRIMERO EN PULSAR, ARRANCAMOS EL RELOJ DE 60 SEGUNDOS
+    if not state.get('job_started'):
+        state['job_started'] = True
+
+        context.job_queue.run_once(
+            resolve_safari_catch_job,
+            60,
+            data={
+                'chat_id': chat_id,
+                'text_msg_id': msg_id,
+                'sticker_msg_id': state['sticker_id'],
+                'pokemon_id': state['pokemon_id'],
+                'is_shiny': state['is_shiny'],
+                'rarity': state['rarity'],
+                'p_name': state['p_name']
+            },
+            name=f"safari_resolve_{chat_id}_{msg_id}"
+        )
 
     await query.answer("¡Tomaste una foto!", show_alert=True)
 
