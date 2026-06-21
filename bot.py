@@ -446,21 +446,22 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
     p_name = job_data['p_name']
 
     # 1. Borramos el sticker (porque huye)
-    try: await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
-    except: pass
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
+    except:
+        pass
 
-    # 2. Recuperamos a los participantes de la memoria DE FORMA SEGURA
-    state = None
-    if context.chat_data is not None:
-        safari_spawns = context.chat_data.get('safari_spawns')
-        if safari_spawns is not None:
-            state = safari_spawns.pop(text_msg_id, None)
+    # 2. Recuperamos a los participantes usando la ruta de la aplicación central (Infalible)
+    chat_data = context.application.chat_data.get(chat_id, {})
+    state = chat_data.get('safari_spawns', {}).pop(text_msg_id, None)
 
-    # Si nadie jugó, la memoria falló, o no hay lista de participantes
+    # Si nadie jugó o falló la memoria
     if not state or not state.get('participants'):
         text = f"El <b>{p_name}</b> huyó sin dejar rastro 💨"
-        try: await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text, parse_mode='HTML')
-        except: pass
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text, parse_mode='HTML')
+        except:
+            pass
         return
 
     # 3. Elegir al ganador al azar
@@ -480,7 +481,6 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.register_user_in_group(user_id, chat_id)
         db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)
         db.increment_group_monthly_stickers(user_id, chat_id)
-        # Check Johto unlock (opcional aquí, por no complicar el async, pero está en el general)
 
     pokemon_data = POKEMON_BY_ID.get(pokemon_id)
     p_display = get_formatted_name(pokemon_data, is_shiny)
@@ -511,6 +511,12 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.add_item_to_inventory(user_id, 'pack_shiny_johto', 1)
         reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
+    if not db.is_unown_completed_by_user(user_id) and db.get_user_unique_unown_count(user_id) >= 28:
+        db.set_unown_completed_by_user(user_id)
+        db.update_money(user_id, 2000)
+        db.add_item_to_inventory(user_id, 'pack_shiny_unown', 1)
+        reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+
     # 5. Construir y enviar el texto final
     final_text = (
         f"¡El <b>{p_name}</b> ha huido, pero ✔️{first_name} consiguió escanearlo!\n\n"
@@ -530,8 +536,8 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
             text=final_text,
             parse_mode='HTML'
         )
-    except:
-        pass
+    except Exception as e:
+        logger.error(f"Fallo al resolver Safari: {e}")
 
 
 async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
@@ -2753,6 +2759,7 @@ async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_
         context.job_queue.run_once(
             resolve_safari_catch_job,
             60,
+            chat_id=chat_id,  # <--- ¡ESTA ERA LA LÍNEA MÁGICA QUE FALTABA!
             data={
                 'chat_id': chat_id,
                 'text_msg_id': msg_id,
