@@ -864,6 +864,40 @@ def get_user_unique_johto_count(user_id):
 
     return count
 
+# --- TÓMBOLA Y SPAWNS PERSISTENTES ---
+
+def get_tombola_state(chat_id):
+    res = query_db("SELECT msg_id, winners FROM tombola_state WHERE chat_id = %s", (chat_id,), one=True, dict_cursor=True)
+    if res:
+        res['winners'] = json.loads(res['winners']) if res['winners'] else []
+        return res
+    return None
+
+
+def set_tombola_state(chat_id, msg_id, winners):
+    winners_json = json.dumps(winners)
+    sql = """
+        INSERT INTO tombola_state (chat_id, msg_id, winners) VALUES (%s, %s, %s)
+        ON CONFLICT (chat_id) DO UPDATE SET msg_id = EXCLUDED.msg_id, winners = EXCLUDED.winners
+    """
+    query_db(sql, (chat_id, msg_id, winners_json))
+
+def add_active_spawn(message_id, chat_id, sticker_id, spawn_time):
+    sql = "INSERT INTO active_spawns (message_id, chat_id, sticker_id, spawn_time) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING"
+    query_db(sql, (message_id, chat_id, sticker_id, spawn_time))
+
+def get_active_spawn(message_id):
+    return query_db("SELECT sticker_id, chat_id FROM active_spawns WHERE message_id = %s", (message_id,), one=True, dict_cursor=True)
+
+def remove_active_spawn(message_id):
+    query_db("DELETE FROM active_spawns WHERE message_id = %s", (message_id,))
+
+def clean_old_spawns():
+    import time
+    limit = time.time() - 259200 # Borra los Pokémon de hace 3 días
+    query_db("DELETE FROM active_spawns WHERE spawn_time < %s", (limit,))
+
+
 # --- SISTEMA DE GUARDERÍA (HUEVOS) ---
 
 def add_egg_to_incubator(user_id, hatch_time, pokemon_id, is_shiny):
