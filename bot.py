@@ -158,9 +158,6 @@ TZ_SPAIN = pytz.timezone('Europe/Madrid')
 # --- Probabilidad del 15% ---
 EVENT_CHANCE = 0.15
 
-# --- ALMACÉN DE LA TÓMBOLA (GLOBAL) ---
-# Estructura: { chat_id: {'msg_id': 123, 'winners': []} }
-TOMBOLA_STATE = {}
 # --- ESTADOS GLOBALES ---
 DELIBIRD_STATE = {}
 MIN_SPAWN_TIME = 7200  # 2 horas
@@ -554,13 +551,15 @@ async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
     is_special_hunt = job_data.get('is_special_hunt', False)
 
     try:
+        # Intentamos enviar el texto con botón
         text_msg = await context.bot.send_message(
             chat_id=chat_id, text=text_message, parse_mode='HTML',
             reply_markup=reply_markup, read_timeout=20, write_timeout=20
         )
 
-        # ¡Éxito! Lo guardamos en la memoria RAM CORRECTA
+        # ¡Éxito! Lo guardamos donde le corresponde
         if is_special_hunt:
+            # Los Safaris van a la memoria RAM (El reloj sigue parado)
             context.chat_data.setdefault('safari_spawns', {})
             context.chat_data['safari_spawns'][text_msg.message_id] = {
                 'sticker_id': sticker_msg_id,
@@ -569,23 +568,28 @@ async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
                 'rarity': job_data['rarity'],
                 'p_name': job_data['p_name'],
                 'participants': [],
-                'job_started': False  # El reloj empieza parado
+                'job_started': False
             }
         else:
-            context.chat_data.setdefault('active_spawns', {})
-            context.chat_data['active_spawns'][text_msg.message_id] = {
-                'sticker_id': sticker_msg_id,
-                'text_id': text_msg.message_id,
-                'timestamp': current_time
-            }
+            # Los Pokémon normales van a la Base de Datos (Supabase)
+            db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg_id, current_time)
+
         logger.info(f"✅ ¡Rescate exitoso en {chat_id}!")
 
     except Exception as e:
         intentos += 1
         if intentos < 12:
-            context.job_queue.run_once(rescue_spawn_job, 5, data={**job_data, 'intentos': intentos},
-                                       name=f"rescue_{chat_id}_{sticker_msg_id}")
+            # Insistimos durante 1 minuto (12 intentos x 5 segundos)
+            logger.warning(f"Rescate fallido (Intento {intentos}/12). Reintentando en 5s...")
+            context.job_queue.run_once(
+                rescue_spawn_job,
+                5,
+                data={**job_data, 'intentos': intentos},
+                name=f"rescue_{chat_id}_{sticker_msg_id}"
+            )
         else:
+            # Misión Imposible. Borramos el sticker para que no ensucie el chat.
+            logger.error(f"❌ Rescate imposible tras 1 minuto. Borrando sticker en {chat_id}.")
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
             except:
@@ -1755,21 +1759,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
         # 2. Pokémon (si no hubo evento)
         if not spawned_something:
-            context.chat_data.setdefault('active_spawns', {})
             current_time = time.time()
-
-            # Limpieza (3 días)
-            TIMEOUT_SECONDS = 259200
-
-            for msg_id in list(context.chat_data.get('active_spawns', {}).keys()):
-                if current_time - context.chat_data['active_spawns'][msg_id].get('timestamp', 0) > TIMEOUT_SECONDS:
-                    spawn_data = context.chat_data['active_spawns'].pop(msg_id, None)
-                    if spawn_data:
-                        for key in ['sticker_id', 'text_id']:
-                            try:
-                                await context.bot.delete_message(chat_id=chat_id, message_id=spawn_data[key])
-                            except BadRequest:
-                                pass
 
             # --- SELECCIÓN DE REGIÓN INTELIGENTE ---
             today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
@@ -1843,6 +1833,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
             pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
 
+            # Ruta de imagen dinámica (Los Unown están en Johto)
             region_folder = "Johto" if pokemon_data['id'] > 151 else "Kanto"
             image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
 
@@ -1858,23 +1849,26 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
 
             # --- ENVÍO CON AGENTE DE RESCATE ---
             try:
+                # 1. Enviar el Sticker
                 with open(image_path, 'rb') as sticker_file:
                     sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file, read_timeout=20,
                                                                  write_timeout=20)
 
-                # Pausa mágica de 1 segundo para desatascar la red
+                # 2. Pausa mágica de 1 segundo para desatascar la red y generar tensión
                 await asyncio.sleep(1.0)
 
                 reply_markup = InlineKeyboardMarkup(
                     [[InlineKeyboardButton("¡Capturar! 📷", callback_data=callback_data)]])
 
+                # 3. Enviar el texto con botón
                 text_msg = await context.bot.send_message(
                     chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup, read_timeout=20,
                     write_timeout=20
                 )
 
+                # 4. Guardamos la aparición según su tipo
                 if is_special_hunt:
-                    # Guardamos la sala de caza pero NO encendemos el reloj aún
+                    # Guardamos la sala de Safari en RAM (El reloj empieza apagado)
                     context.chat_data.setdefault('safari_spawns', {})
                     context.chat_data['safari_spawns'][text_msg.message_id] = {
                         'sticker_id': sticker_msg.message_id,
@@ -1883,21 +1877,19 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                         'rarity': rarity,
                         'p_name': pokemon_name,
                         'participants': [],
-                        'job_started': False  # El reloj empieza apagado
+                        'job_started': False
                     }
                 else:
-                    context.chat_data.setdefault('active_spawns', {})
-                    context.chat_data['active_spawns'][text_msg.message_id] = {
-                        'sticker_id': sticker_msg.message_id,
-                        'text_id': text_msg.message_id,
-                        'timestamp': current_time
-                    }
+                    # Guardamos la captura normal en SUPABASE para que sobreviva a reinicios
+                    db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, current_time)
 
             except FileNotFoundError:
                 logger.error(f"No se encontró la imagen: {image_path}")
 
             except Exception as e:
                 logger.error(f"⚠️ Micro-corte en spawn para chat {chat_id}: {e}")
+
+                # PLAN DE RESCATE: Activa al agente si falla el texto
                 if sticker_msg:
                     context.job_queue.run_once(
                         rescue_spawn_job,
@@ -1908,7 +1900,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                             'text_message': text_message,
                             'reply_markup': reply_markup,
                             'timestamp': current_time,
-                            'is_special_hunt': is_special_hunt,  # Chivato para el Agente
+                            'is_special_hunt': is_special_hunt,
                             'pokemon_id': pokemon_data['id'],
                             'is_shiny': is_shiny,
                             'rarity': rarity,
@@ -1921,7 +1913,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
 
     finally:
-        # Reprogramar siempre
+        # Reprogramar siempre el bucle infinito
         try:
             if chat_id in db.get_active_groups():
                 next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
@@ -2386,49 +2378,53 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer()
         return
 
-    context.chat_data.setdefault('active_spawns', {})
+    # BUSCAMOS EL POKÉMON EN LA BASE DE DATOS PERSISTENTE (Supabase)
+    spawn_data = db.get_active_spawn(msg_id)
 
-    if msg_id not in context.chat_data['active_spawns']:
+    if not spawn_data:
         await query.answer("¡Alguien ha sido más rápido que tú! 💨", show_alert=True)
         return
 
-    spawn_data = context.chat_data['active_spawns'].get(msg_id)
-    if spawn_data:
-        user_cooldowns = spawn_data.get('cooldowns', {})
-        last_attempt_time = user_cooldowns.get(user.id, 0)
-        current_time = time.time()
+    # Gestionamos los enfriamientos en RAM (solo duran 30s)
+    context.chat_data.setdefault('spawn_cooldowns', {})
+    if msg_id not in context.chat_data['spawn_cooldowns']:
+        context.chat_data['spawn_cooldowns'][msg_id] = {}
 
-        cooldown_duration = 30
-        if current_time - last_attempt_time < cooldown_duration:
-            time_left = math.ceil(cooldown_duration - (current_time - last_attempt_time))
-            await query.answer(
-                f"Espera unos {time_left} segundos a que se recargue la energía del Álbumdex antes de intentarlo de nuevo.",
-                show_alert=True)
-            return
+    user_cooldowns = context.chat_data['spawn_cooldowns'][msg_id]
+    last_attempt_time = user_cooldowns.get(user.id, 0)
+    current_time = time.time()
+
+    cooldown_duration = 30
+    if current_time - last_attempt_time < cooldown_duration:
+        time_left = math.ceil(cooldown_duration - (current_time - last_attempt_time))
+        await query.answer(
+            f"Espera {time_left} segundos a que se recargue la energía del Álbumdex antes de intentarlo de nuevo.",
+            show_alert=True)
+        return
 
     current_chance = db.get_user_capture_chance(user.id)
 
     if random.randint(1, 100) <= current_chance:
-        claimed_spawn = context.chat_data['active_spawns'].pop(msg_id, None)
-        if not claimed_spawn:
-            await query.answer("¡Alguien ha sido más rápido que tú! 💨", show_alert=True)
-            return
+        # --- ¡ATRAPADO EXITOSAMENTE! ---
+
+        # 1. Lo borramos de la base de datos para que nadie más pueda cogerlo
+        db.remove_active_spawn(msg_id)
 
         await query.answer()
 
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        # --- RANKING LOCAL (Sumar puntos al grupo) ---
+        # 2. Sumar al ranking local (Puntos para el grupo)
         if message.chat.type in ['group', 'supergroup']:
             db.increment_group_monthly_stickers(user.id, message.chat.id)
-        # ---------------------------------------------
 
-        for key in ['sticker_id', 'text_id']:
-            try:
-                await context.bot.delete_message(chat_id=message.chat_id, message_id=claimed_spawn[key])
-            except BadRequest:
-                pass
+        # 3. Borramos los mensajes en Telegram (Sticker y Texto)
+        try:
+            await context.bot.delete_message(chat_id=message.chat_id, message_id=msg_id)
+            await context.bot.delete_message(chat_id=message.chat_id, message_id=spawn_data['sticker_id'])
+        except BadRequest:
+            pass  # Ignoramos el error si alguien lo borró manualmente
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
 
@@ -2437,7 +2433,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
         user_link = user.mention_html()
 
-        # --- LÓGICA SMART (Captura) ---
+        # 4. LÓGICA SMART (Añadir a la colección)
         status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
         message_text = ""
 
@@ -2450,12 +2446,12 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             db.update_money(user.id, money_earned)
             message_text = f"✔️ ¡Genial, {user_link}! Conseguiste un sticker de {pokemon_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money_earned)}₽</b> 💰."
 
-        # --- RETO GRUPAL & DESBLOQUEO JOHTO ---
+        # 5. RETO GRUPAL & DESBLOQUEO JOHTO
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
             await check_and_unlock_johto(message.chat.id, context)
 
-        # --- PREMIOS INDIVIDUALES ---
+        # 6. PREMIOS INDIVIDUALES (Álbumes completos)
 
         # Kanto (151)
         if not db.is_kanto_completed_by_user(user.id):
@@ -2465,7 +2461,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
-        # Johto (91)
+        # Johto (100)
         if not db.is_johto_completed_by_user(user.id):
             if db.get_user_unique_johto_count(user.id) >= 100:
                 db.set_johto_completed_by_user(user.id)
@@ -2473,7 +2469,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
-        # --- PREMIOS RETOS GRUPALES (ESTO AHORA ESTÁ FUERA DE LOS IFs INDIVIDUALES) ---
+        # 7. PREMIOS RETOS GRUPALES
         is_qualified = await is_group_qualified(message.chat.id, context)
         chat_id = message.chat.id
 
@@ -2511,15 +2507,14 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
     else:
+        # --- FALLO AL INTENTAR CAPTURAR (Foto Movida) ---
         await query.answer()
-        # Fallo
+
         new_chance = min(100, current_chance + 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        spawn_data = context.chat_data['active_spawns'].get(msg_id)
-        if spawn_data:
-            if 'cooldowns' not in spawn_data: spawn_data['cooldowns'] = {}
-            spawn_data['cooldowns'][user.id] = time.time()
+        # Aplicamos el cooldown por fallar
+        context.chat_data['spawn_cooldowns'][msg_id][user.id] = current_time
 
         fail_message = await context.bot.send_message(
             chat_id=message.chat_id,
@@ -3140,60 +3135,49 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
         alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
 
-    # --- ACTUALIZAR LISTA USANDO VARIABLE GLOBAL ---
+        # --- ACTUALIZAR LISTA USANDO SUPABASE ---
+        state = db.get_tombola_state(chat_id)
+        if not state:
+            state = {'msg_id': None, 'winners': []}
 
-    # Aseguramos que existe el registro para este chat
-    if chat_id not in TOMBOLA_STATE:
-        TOMBOLA_STATE[chat_id] = {'msg_id': None, 'winners': []}
+        state['winners'].append(list_line)
 
+        base_header = (
+            "🎟️ *Tómbola Diaria* 🎟️\n\n"
+            "¡Prueba suerte una vez al día!\n Estos son los premios, dependiendo de la bola que saques:\n"
+            "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
+        )
 
-    # Añadimos ganador
-    TOMBOLA_STATE[chat_id]['winners'].append(list_line)
+        full_text = base_header + "\n\nResultados:\n" + "\n".join(state['winners'])
+        daily_msg_id = state['msg_id']
+        keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
-    base_header = (
-        "🎟️ *Tómbola Diaria* 🎟️\n\n"
-        "¡Prueba suerte una vez al día!\n Estos son los premios, dependiendo de la bola que saques:\n"
-        "🟤 100₽ | 🟢 200₽ | 🔵 400₽ | 🟡 ¡Sobre Mágico!"
-    )
-
-    full_text = base_header + "\n\nResultados:\n" + "\n".join(TOMBOLA_STATE[chat_id]['winners'])
-
-    # Recuperamos la ID del mensaje oficial
-    daily_msg_id = TOMBOLA_STATE[chat_id]['msg_id']
-    keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
-
-    # Intentar editar el mensaje oficial
-    if daily_msg_id:
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=daily_msg_id,
-                text=full_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        except BadRequest:
-            # Si falla (ej: mensaje borrado), enviamos uno nuevo y actualizamos la ID
+        if daily_msg_id:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id, message_id=daily_msg_id, text=full_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
+                )
+                db.set_tombola_state(chat_id, daily_msg_id, state['winners'])
+            except BadRequest:
+                msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
+                                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                                                     disable_notification=True)
+                db.set_tombola_state(chat_id, msg.message_id, state['winners'])
+        else:
             msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
                                                  disable_notification=True)
-            TOMBOLA_STATE[chat_id]['msg_id'] = msg.message_id
-    else:
-        # Si no había ID registrada (ej: reinicio), enviamos uno nuevo
-        msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
-                                             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                             disable_notification=True)
-        TOMBOLA_STATE[chat_id]['msg_id'] = msg.message_id
+            db.set_tombola_state(chat_id, msg.message_id, state['winners'])
 
-    # Limpieza comando personal
-    if not is_public and not is_panel:
-        try:
-            await message.delete()
-            if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
-        except BadRequest:
-            pass
+        if not is_public and not is_panel:
+            try:
+                await message.delete()
+                if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
+            except BadRequest:
+                pass
 
-    await query.answer(alert_text, show_alert=True)
+        await query.answer(alert_text, show_alert=True)
 
 
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3757,7 +3741,8 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
 async def clean_expired_minigames_job(context: ContextTypes.DEFAULT_TYPE):
     """Tarea nocturna para limpiar minijuegos viejos de Supabase."""
     db.delete_expired_minigames()
-    logger.info("🧹 Limpieza de minijuegos caducados completada.")
+    db.clean_old_spawns()
+    logger.info("🧹 Limpieza de minijuegos y pokémon caducados completada.")
 
 async def delete_pack_stickers(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
@@ -6481,7 +6466,7 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # --- 3. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
     if db.check_delibird_claimed_this_week(user.id):
-        await query.answer("¡Ya has cogido un sobre esta semana!", show_alert=True)
+        await query.answer("¡Ya has reclamado un sobre esta semana!", show_alert=True)
         return
     # -----------------------------------------------
 
@@ -6852,15 +6837,9 @@ async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
     active_groups = db.get_active_groups()
     for chat_id in active_groups:
         try:
-            # Enviamos el mensaje
             msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode='Markdown')
-
-            # GUARDAMOS EN LA VARIABLE GLOBAL (INFALIBLE)
-            TOMBOLA_STATE[chat_id] = {
-                'msg_id': msg.message_id,
-                'winners': []
-            }
-
+            # Guardamos la tómbola en Supabase
+            db.set_tombola_state(chat_id, msg.message_id, [])
         except Exception as e:
             logger.error(f"No se pudo enviar la tómbola al chat {chat_id}: {e}")
 
