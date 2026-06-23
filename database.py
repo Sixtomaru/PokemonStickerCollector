@@ -897,6 +897,39 @@ def clean_old_spawns():
     limit = time.time() - 259200 # Borra los Pokémon de hace 3 días
     query_db("DELETE FROM active_spawns WHERE spawn_time < %s", (limit,))
 
+# --- EVENTOS PERSISTENTES ---
+def add_active_event(message_id, chat_id, event_id, event_time):
+    sql = "INSERT INTO active_events (message_id, chat_id, event_id, event_time) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING"
+    query_db(sql, (message_id, chat_id, event_id, event_time))
+
+def get_active_event(message_id):
+    return query_db("SELECT * FROM active_events WHERE message_id = %s", (message_id,), one=True, dict_cursor=True)
+
+def remove_active_event(message_id):
+    query_db("DELETE FROM active_events WHERE message_id = %s", (message_id,))
+
+# --- SAFARIS PERSISTENTES ---
+def add_active_safari(message_id, chat_id, sticker_id, pokemon_id, is_shiny, rarity, p_name, spawn_time):
+    sql = """
+        INSERT INTO active_safaris (message_id, chat_id, sticker_id, pokemon_id, is_shiny, rarity, p_name, spawn_time) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING
+    """
+    query_db(sql, (message_id, chat_id, sticker_id, pokemon_id, is_shiny, rarity, p_name, spawn_time))
+
+def get_active_safari(message_id):
+    res = query_db("SELECT * FROM active_safaris WHERE message_id = %s", (message_id,), one=True, dict_cursor=True)
+    if res:
+        res['participants'] = json.loads(res['participants'])
+        res['job_started'] = bool(res['job_started'])
+    return res
+
+def update_safari_participants(message_id, participants, job_started):
+    sql = "UPDATE active_safaris SET participants = %s, job_started = %s WHERE message_id = %s"
+    query_db(sql, (json.dumps(participants), int(job_started), message_id))
+
+def remove_active_safari(message_id):
+    query_db("DELETE FROM active_safaris WHERE message_id = %s", (message_id,))
+
 
 # --- SISTEMA DE GUARDERÍA (HUEVOS) ---
 
