@@ -523,7 +523,7 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.set_unown_completed_by_user(user_id)
         db.update_money(user_id, 2000)
         db.add_item_to_inventory(user_id, 'pack_shiny_unown', 1)
-        premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+        reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
     # 6. Construir texto final
     final_text = (
@@ -1936,6 +1936,9 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         with open(image_path, 'rb') as sticker_file:
             sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
 
+        # Micro-pausa de seguridad para no saturar la red
+        await asyncio.sleep(0.5)
+
         callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
         button_text = "¡Capturar! 📷"
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
@@ -1947,12 +1950,10 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=reply_markup
         )
 
-        context.chat_data.setdefault('active_spawns', {})
-        context.chat_data['active_spawns'][text_msg.message_id] = {
-            'sticker_id': sticker_msg.message_id,
-            'text_id': text_msg.message_id,
-            'timestamp': time.time()
-        }
+        # --- GUARDADO PERSISTENTE EN SUPABASE (¡NUEVO!) ---
+        # Guardamos el spawn manual en la base de datos para que sobreviva a reinicios
+        db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, time.time())
+
         await update.message.delete()
 
     except FileNotFoundError:
