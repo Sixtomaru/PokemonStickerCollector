@@ -442,33 +442,44 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
     rarity = job_data['rarity']
     p_name = job_data['p_name']
 
-    # 1. Borramos el sticker (porque huye)
+    # 1. Borramos el sticker de Telegram (porque huye)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=sticker_msg_id)
     except:
         pass
 
-    # 2. Recuperamos a los participantes usando la ruta de la aplicación central (Infalible)
-    chat_data = context.application.chat_data.get(chat_id, {})
-    state = chat_data.get('safari_spawns', {}).pop(text_msg_id, None)
+    # 2. Recuperamos los datos del Safari de SUPABASE
+    state = db.get_active_safari(text_msg_id)
 
-    # Si nadie jugó o falló la memoria
+    # Si nadie jugó, la base de datos no tiene el registro o está vacío
     if not state or not state.get('participants'):
+        # Borramos el rastro en Supabase
+        db.remove_active_safari(text_msg_id)
+
         text = f"El <b>{p_name}</b> huyó sin dejar rastro 💨"
         try:
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=text_msg_id, text=text, parse_mode='HTML')
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=text_msg_id,
+                text=text,
+                parse_mode='HTML'
+            )
         except:
             pass
         return
 
-    # 3. Elegir al ganador al azar
+    # 3. Borramos el registro en Supabase porque ya tenemos los ganadores en la RAM local (state)
+    # Esto previene cualquier doble ejecución accidental
+    db.remove_active_safari(text_msg_id)
+
+    # 4. Elegir al ganador al azar
     participants = state['participants']
     winner = random.choice(participants)
 
-    # Separamos a los perdedores para la lista final
+    # Separamos a los perdedores para la lista final de curiosos
     losers = [p for p in participants if p['id'] != winner['id']]
 
-    # 4. Entregar el premio (Lógica estándar de captura)
+    # 5. Entregar el premio (Lógica estándar de captura)
     user_id = winner['id']
     first_name = winner['first_name']
     user_mention = f'<a href="tg://user?id={user_id}">{first_name}</a>'
@@ -495,7 +506,7 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.update_money(user_id, money)
         reward_text = f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de {p_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money)}₽</b> 💰."
 
-    # --- Premios Extra (Kanto/Johto Completos) ---
+    # --- Premios Extra (Kanto, Johto, Unown) ---
     if not db.is_kanto_completed_by_user(user_id) and db.get_user_unique_kanto_count(user_id) >= 151:
         db.set_kanto_completed_by_user(user_id)
         db.update_money(user_id, 3000)
@@ -512,9 +523,9 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.set_unown_completed_by_user(user_id)
         db.update_money(user_id, 2000)
         db.add_item_to_inventory(user_id, 'pack_shiny_unown', 1)
-        reward_text += f"\n\n🎊 ¡Felicidades {user_mention}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+        premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
-    # 5. Construir y enviar el texto final
+    # 6. Construir texto final
     final_text = (
         f"¡El <b>{p_name}</b> ha huido, pero ✔️{first_name} consiguió escanearlo!\n\n"
         f"{reward_text}\n\n"
@@ -1644,18 +1655,10 @@ def choose_random_pokemon():
 
 async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
-    context.chat_data.setdefault('active_events', {})
 
-    # Limpieza de eventos viejos (3 días = 259200 segundos)
-    current_time = time.time()
-    TIMEOUT_SECONDS = 259200
-    for msg_id, data in list(context.chat_data['active_events'].items()):
-        if current_time - data.get('timestamp', 0) > TIMEOUT_SECONDS:
-            del context.chat_data['active_events'][msg_id]
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except BadRequest:
-                pass
+    # Limpieza de eventos de historia viejos (3 días = 259200 segundos) de Supabase
+    # (Lo ideal sería poner esto también en tu job nocturno de limpieza)
+    db.query_db("DELETE FROM active_events WHERE event_time < %s", (time.time() - 259200,))
 
     is_qualified = await is_group_qualified(chat_id, context)
     johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
@@ -1666,10 +1669,11 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
     # ----------------------------------------
 
     available_events = []
-    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia', 'mision_perros']
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia',
+                          'mision_perros']
 
     for ev_id in EVENTS.keys():
-        # Filtro de grupo cualificado para legendarios Kanto
+        # Filtro de grupo cualificado para legendarios
         if not is_qualified and ev_id in legendary_missions:
             continue
 
@@ -1696,27 +1700,27 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
     event_id = random.choice(available_events)
 
-    # Texto especial si es un evento doble
     # --- CASO ESPECIAL: ES UN MINIJUEGO ---
     if event_id == 'minijuego_unown':
         msg = await context.bot.send_message(chat_id=chat_id, text="Generando minijuego...", disable_notification=True)
 
-        # URL DE TU WEB (La misma que usaste en testminijuego)
-        base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
+        # URL DE TU WEB (Asegúrate de poner la tuya real)
+        base_web_url = "https://pokemonstickercollector.onrender.com"
         full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
 
         bot_username = context.bot.username
         deep_link = f"https://t.me/{bot_username}?start=game_{chat_id}_{msg.message_id}"
 
+        # Guardamos el minijuego en Supabase
         db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
 
         text = (
-            "🎲 **¡Un Minijuego ha aparecido!**\n"
-            "Resuelve el puzzle de las Ruinas Alfa.\n\n"
+            "🎲 **¡Un Minijuego ha aparecido!**\n\n"
+            "Resuelve el puzzle de las Ruinas Alfa para conseguir un sobre de Unown.\n\n"
             "**Resultados:**\n_Aún nadie ha jugado_"
         )
 
-        keyboard = [[InlineKeyboardButton("Ir al juego ↗", url=deep_link)]]
+        keyboard = [[InlineKeyboardButton("Jugar 🧩", url=deep_link)]]
 
         await context.bot.edit_message_text(
             chat_id=chat_id,
@@ -1725,7 +1729,7 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
-        return  # Terminamos aquí porque el minijuego va por su propio camino
+        return  # Terminamos aquí porque el minijuego va por su propio camino en Supabase
 
     # --- CASO NORMAL: EVENTOS DE HISTORIA ---
     if event_id.startswith("doble_"):
@@ -1738,12 +1742,8 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
     msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='HTML')
 
-    # Guardamos el evento con la hora actual
-    context.chat_data['active_events'][msg.message_id] = {
-        'event_id': event_id,
-        'claimed_by': None,
-        'timestamp': time.time()
-    }
+    # --- GUARDAR EN LA BASE DE DATOS PERSISTENTE (SUPABASE) ---
+    db.add_active_event(msg.message_id, chat_id, event_id, time.time())
 
 # --- VERSIÓN CORREGIDA Y ROBUSTA DE SPAWN_POKEMON ---
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
@@ -1854,33 +1854,28 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                     sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file, read_timeout=20,
                                                                  write_timeout=20)
 
-                # 2. Pausa mágica de 1 segundo para desatascar la red y generar tensión
+                # Pausa mágica de 1 segundo para desatascar la red y crear tensión
                 await asyncio.sleep(1.0)
 
-                reply_markup = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("¡Capturar! 📷", callback_data=callback_data)]])
+                # 2. Preparamos el Botón
+                reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+                    "¡Capturar! 📷" if is_special_hunt else "¡Capturar! 📷", callback_data=callback_data)]])
 
-                # 3. Enviar el texto con botón
+                # 3. Enviar el Texto con el botón
                 text_msg = await context.bot.send_message(
                     chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup, read_timeout=20,
                     write_timeout=20
                 )
 
-                # 4. Guardamos la aparición según su tipo
+                # 4. Guardamos el Spawn en Base de Datos
                 if is_special_hunt:
-                    # Guardamos la sala de Safari en RAM (El reloj empieza apagado)
-                    context.chat_data.setdefault('safari_spawns', {})
-                    context.chat_data['safari_spawns'][text_msg.message_id] = {
-                        'sticker_id': sticker_msg.message_id,
-                        'pokemon_id': pokemon_data['id'],
-                        'is_shiny': is_shiny,
-                        'rarity': rarity,
-                        'p_name': pokemon_name,
-                        'participants': [],
-                        'job_started': False
-                    }
+                    # Si es Safari Especial (El reloj empieza apagado, job_started = False)
+                    db.add_active_safari(
+                        text_msg.message_id, chat_id, sticker_msg.message_id,
+                        pokemon_data['id'], is_shiny, rarity, pokemon_name, current_time
+                    )
                 else:
-                    # Guardamos la captura normal en SUPABASE para que sobreviva a reinicios
+                    # Si es Spawn normal de Dedo Rápido
                     db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, current_time)
 
             except FileNotFoundError:
@@ -1900,7 +1895,7 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                             'text_message': text_message,
                             'reply_markup': reply_markup,
                             'timestamp': current_time,
-                            'is_special_hunt': is_special_hunt,
+                            'is_special_hunt': is_special_hunt,  # Chivato para el Agente
                             'pokemon_id': pokemon_data['id'],
                             'is_shiny': is_shiny,
                             'rarity': rarity,
@@ -2265,6 +2260,7 @@ async def admin_check_delibird(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.message.reply_text(text, parse_mode='Markdown', disable_notification=True)
 
+
 async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fuerza la aparición de un Evento de Historia en el grupo actual."""
     if update.effective_user.id != ADMIN_USER_ID:
@@ -2281,7 +2277,8 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     johto_unlocked = db.is_event_completed(chat_id, 'amelia_johto_unlock')
 
     available_events = []
-    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia', 'mision_perros']
+    legendary_missions = ['mision_moltres', 'mision_zapdos', 'mision_articuno', 'mision_mewtwo', 'mision_hooh_lugia',
+                          'mision_perros']
 
     for ev_id in EVENTS.keys():
         if not is_qualified and ev_id in legendary_missions:
@@ -2289,7 +2286,7 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if ev_id in legendary_missions and db.is_event_completed(chat_id, ev_id):
             continue
 
-        # Filtro Johto (usamos la lista oficial de claves que hemos creado)
+        # Filtro Johto
         if ev_id in JOHTO_EVENT_KEYS and not johto_unlocked:
             continue
 
@@ -2306,23 +2303,23 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if event_id == 'minijuego_unown':
         msg = await context.bot.send_message(chat_id=chat_id, text="Generando minijuego...", disable_notification=True)
 
-        # ---> PON TU ENLACE DE RENDER AQUÍ (EL DE TU WEB EN REACT/VERCEL) <---
-        base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
+        # URL DE TU WEB (Asegúrate de poner la tuya real)
+        base_web_url = "https://pokemonstickercollector.onrender.com"
         full_url = f"{base_web_url}/?c={chat_id}&m={msg.message_id}"
 
         bot_username = context.bot.username
         deep_link = f"https://t.me/{bot_username}?start=game_{chat_id}_{msg.message_id}"
 
-        # Guardamos en la base de datos
+        # Guardamos el minijuego en Supabase
         db.create_minigame(chat_id, msg.message_id, full_url, deep_link)
 
         text = (
-            "🎲 **¡Un Minijuego ha aparecido!**\n"
-            "Resuelve el puzzle de las Ruinas Alfa.\n\n"
+            "🎲 **¡Un Minijuego ha aparecido!**\n\n"
+            "Resuelve el puzzle de las Ruinas Alfa para conseguir un sobre de Unown.\n\n"
             "**Resultados:**\n_Aún nadie ha jugado_"
         )
 
-        keyboard = [[InlineKeyboardButton("Ir al juego ↗", url=deep_link)]]
+        keyboard = [[InlineKeyboardButton("Jugar 🧩", url=deep_link)]]
 
         await context.bot.edit_message_text(
             chat_id=chat_id,
@@ -2338,7 +2335,7 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if event_id.startswith("doble_"):
         text = "👥 <b>¡Ha aparecido un Evento Doble!</b>\n"
     else:
-        text = "👤 <b>¡Un Evento ha aparecido!</b>"
+        text = "¡Un Evento ha aparecido!"
 
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔍 Aceptar evento", callback_data=f"event_claim_{event_id}")]])
@@ -2346,12 +2343,8 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Usamos HTML igual que en el original
     msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard, parse_mode='HTML')
 
-    context.chat_data.setdefault('active_events', {})
-    context.chat_data['active_events'][msg.message_id] = {
-        'event_id': event_id,
-        'claimed_by': None,
-        'timestamp': time.time()
-    }
+    # --- GUARDAR EN LA BASE DE DATOS PERSISTENTE (SUPABASE) ---
+    db.add_active_event(msg.message_id, chat_id, event_id, time.time())
 
     # Borrar el comando del admin para que no ensucie
     await update.message.delete()
@@ -2532,8 +2525,9 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not message: return await query.answer()
 
     message_id = message.message_id
-    context.chat_data.setdefault('active_events', {})
-    event_info = context.chat_data['active_events'].get(message_id)
+
+    # LEEMOS DE SUPABASE EN LUGAR DE RAM
+    event_info = db.get_active_event(message_id)
 
     if not event_info:
         await query.answer("Este evento ya no está disponible.", show_alert=True)
@@ -2542,10 +2536,24 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     event_id = event_info['event_id']
     is_double = event_id.startswith("doble_")
 
-    if 'participants' not in event_info:
-        event_info['participants'] = []
+    # Si es evento individual, lo borramos de la BD inmediatamente para que nadie más entre
+    if not is_double:
+        db.remove_active_event(message_id)
 
-    participants = event_info['participants']
+    # --- LÓGICA DE MEMORIA RAM PARA LAS DECISIONES Y PARTICIPANTES ---
+    # Una vez aceptado el evento, la historia fluye por la memoria RAM
+    # (Si se reinicia el bot a mitad de historia se perdería, pero dura muy pocos segundos)
+    context.chat_data.setdefault('active_events', {})
+
+    if message_id not in context.chat_data['active_events']:
+        context.chat_data['active_events'][message_id] = {
+            'event_id': event_id,
+            'participants': [],
+            'timestamp': time.time()
+        }
+
+    ram_event_info = context.chat_data['active_events'][message_id]
+    participants = ram_event_info['participants']
 
     if any(p['id'] == user.id for p in participants):
         await query.answer("¡Ya te has unido al evento!", show_alert=True)
@@ -2564,12 +2572,15 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     # CASO 2: Ya estamos todos (o es evento simple)
+    # Si es el segundo jugador de un evento doble, ahora sí lo borramos de la BD
+    if is_double:
+        db.remove_active_event(message_id)
+
     await query.answer("¡El evento comienza!")
 
-    # --- CAMBIO IMPORTANTE: Inicializamos memoria de votos ---
+    # Inicializamos memoria de votos si es doble
     if is_double:
-        event_info['votes'] = {}  # Creamos el diccionario vacío para guardar elecciones
-    # ---------------------------------------------------------
+        ram_event_info['votes'] = {}
 
     event_data = EVENTS[event_id]
     step_data = event_data['steps']['start']
@@ -2592,8 +2603,7 @@ async def claim_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     reply_markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
 
-    # --- CAMBIO IMPORTANTE: EDITAMOS (NO BORRAMOS) ---
-    # Al editar, mantenemos el mismo message_id, así la memoria no se pierde.
+    # EDITAMOS (NO BORRAMOS) para mantener la historia
     await message.edit_text(
         text=text,
         reply_markup=reply_markup,
@@ -2727,13 +2737,13 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Apunta al jugador en la lotería de captura y arranca el reloj si es el primero."""
     query = update.callback_query
     user = query.from_user
     chat_id = query.message.chat_id
     msg_id = query.message.message_id
 
-    state = context.chat_data.get('safari_spawns', {}).get(msg_id)
+    # LEEMOS DE SUPABASE
+    state = db.get_active_safari(msg_id)
 
     if not state:
         return await query.answer("Este Pokémon ya ha huido o el evento ha caducado.", show_alert=True)
@@ -2747,14 +2757,14 @@ async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_
         'first_name': user.first_name
     })
 
-    # SI ES EL PRIMERO EN PULSAR, ARRANCAMOS EL RELOJ DE 60 SEGUNDOS
-    if not state.get('job_started'):
-        state['job_started'] = True
-
+    # Si es el primero, arrancamos el reloj
+    job_started = state['job_started']
+    if not job_started:
+        job_started = True
         context.job_queue.run_once(
             resolve_safari_catch_job,
             60,
-            chat_id=chat_id,  # <--- ¡ESTA ERA LA LÍNEA MÁGICA QUE FALTABA!
+            chat_id=chat_id,
             data={
                 'chat_id': chat_id,
                 'text_msg_id': msg_id,
@@ -2767,6 +2777,8 @@ async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_
             name=f"safari_resolve_{chat_id}_{msg_id}"
         )
 
+    # GUARDAMOS LOS CAMBIOS EN SUPABASE
+    db.update_safari_participants(msg_id, state['participants'], job_started)
     await query.answer("¡Tomaste una foto!", show_alert=True)
 
 
