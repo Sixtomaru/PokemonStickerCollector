@@ -3,6 +3,7 @@ import psycopg2
 from psycopg2.pool import ThreadedConnectionPool # <--- CAMBIO IMPORTANTE AQUI
 from psycopg2.extras import RealDictCursor
 import sqlite3
+import json
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -27,8 +28,6 @@ def get_connection():
         return sqlite3.connect("pokesticker.db")
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-
-import json  # Asegúrate de que import json está arriba del todo en database.py
 
 
 def create_minigame(chat_id, msg_id, web_url, group_btn_url):
