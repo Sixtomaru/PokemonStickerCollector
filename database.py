@@ -866,9 +866,16 @@ def get_user_unique_johto_count(user_id):
 # --- TÓMBOLA Y SPAWNS PERSISTENTES ---
 
 def get_tombola_state(chat_id):
-    res = query_db("SELECT msg_id, winners FROM tombola_state WHERE chat_id = %s", (chat_id,), one=True, dict_cursor=True)
+    res = query_db("SELECT msg_id, winners FROM tombola_state WHERE chat_id = %s", (chat_id,), one=True,
+                   dict_cursor=True)
     if res:
-        res['winners'] = json.loads(res['winners']) if res['winners'] else []
+        try:
+            # Intentamos leer la lista de ganadores. Si hay algo raro guardado en Supabase (None, "", etc.)
+            # el except lo cazará y pondrá una lista vacía en lugar de colgar el bot.
+            res['winners'] = json.loads(res['winners']) if res['winners'] else []
+        except Exception:
+            res['winners'] = []
+
         return res
     return None
 
