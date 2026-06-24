@@ -568,29 +568,34 @@ async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup, read_timeout=20, write_timeout=20
         )
 
-        # ¡Éxito! Lo guardamos donde le corresponde
-        if is_special_hunt:
-            # Los Safaris van a la memoria RAM (El reloj sigue parado)
-            context.chat_data.setdefault('safari_spawns', {})
-            context.chat_data['safari_spawns'][text_msg.message_id] = {
-                'sticker_id': sticker_msg_id,
-                'pokemon_id': job_data['pokemon_id'],
-                'is_shiny': job_data['is_shiny'],
-                'rarity': job_data['rarity'],
-                'p_name': job_data['p_name'],
-                'participants': [],
-                'job_started': False
-            }
-        else:
-            # Los Pokémon normales van a la Base de Datos (Supabase)
-            db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg_id, current_time)
+        # ¡El mensaje se envió! Ahora intentamos guardar los datos
+        try:
+            if is_special_hunt:
+                # Los Safaris van a Supabase (Con la conversión int ya corregida en database.py)
+                db.add_active_safari(
+                    text_msg.message_id, chat_id, sticker_msg_id,
+                    job_data['pokemon_id'], job_data['is_shiny'], job_data['rarity'], job_data['p_name'], current_time
+                )
+            else:
+                # Los Pokémon normales van a Supabase
+                db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg_id, current_time)
 
-        logger.info(f"✅ ¡Rescate exitoso en {chat_id}!")
+            logger.info(f"✅ ¡Rescate exitoso en {chat_id}!")
+
+        except Exception as db_error:
+            # Si el mensaje se envió a Telegram pero falló la base de datos,
+            # NO REINTENTAMOS. Borramos el mensaje falso para evitar spam.
+            logger.error(f"❌ Error al guardar el rescate en BD: {db_error}")
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=text_msg.message_id)
+            except:
+                pass
+            raise db_error  # Forzamos el salto al except general
 
     except Exception as e:
         intentos += 1
         if intentos < 12:
-            # Insistimos durante 1 minuto (12 intentos x 5 segundos)
+            # Solo insistimos si el problema fue el envío original a Telegram (corte de red)
             logger.warning(f"Rescate fallido (Intento {intentos}/12). Reintentando en 5s...")
             context.job_queue.run_once(
                 rescue_spawn_job,
