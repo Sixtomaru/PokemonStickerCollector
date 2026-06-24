@@ -913,7 +913,7 @@ def add_active_safari(message_id, chat_id, sticker_id, pokemon_id, is_shiny, rar
         INSERT INTO active_safaris (message_id, chat_id, sticker_id, pokemon_id, is_shiny, rarity, p_name, spawn_time) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING
     """
-    query_db(sql, (message_id, chat_id, sticker_id, pokemon_id, is_shiny, rarity, p_name, spawn_time))
+    query_db(sql, (message_id, chat_id, sticker_id, pokemon_id, int(is_shiny), rarity, p_name, spawn_time))
 
 def get_active_safari(message_id):
     res = query_db("SELECT * FROM active_safaris WHERE message_id = %s", (message_id,), one=True, dict_cursor=True)
