@@ -3098,60 +3098,60 @@ async def tombola_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- MODIFICADO: Lógica de Tómbola Pública ---
 async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    interactor_user = query.from_user
-    message = update.effective_message
-    chat_id = message.chat_id
 
-    db.get_or_create_user(interactor_user.id, interactor_user.first_name)
+    try:
+        interactor_user = query.from_user
+        message = update.effective_message
+        chat_id = message.chat_id
 
-    is_public = (query.data == "tombola_claim_public")
-    is_panel = (query.data == "panel_tombola")
+        db.get_or_create_user(interactor_user.id, interactor_user.first_name)
 
-    owner_id = interactor_user.id
-    user_cmd_msg_id = None
+        is_public = (query.data == "tombola_claim_public")
+        is_panel = (query.data == "panel_tombola")
 
-    if not is_public and not is_panel:
-        try:
-            parts = query.data.split('_')
-            owner_id = int(parts[2])
-            if len(parts) > 3: user_cmd_msg_id = int(parts[3])
+        owner_id = interactor_user.id
+        user_cmd_msg_id = None
 
-            if interactor_user.id != owner_id:
-                await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
-                return
-        except (ValueError, IndexError):
-            await query.answer("Error en el botón.", show_alert=True)
-            return
-
-    # Verificar si ya jugó hoy
-    today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
-    if db.get_last_daily_claim(owner_id) == today_str:
-        await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
         if not is_public and not is_panel:
             try:
-                await message.delete()
-                if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
-            except BadRequest:
-                pass
-        return
+                parts = query.data.split('_')
+                owner_id = int(parts[2])
+                if len(parts) > 3: user_cmd_msg_id = int(parts[3])
 
-    # Dar premio
-    db.update_last_daily_claim(owner_id, today_str)
-    prize = random.choices(DAILY_PRIZES, weights=DAILY_WEIGHTS, k=1)[0]
+                if interactor_user.id != owner_id:
+                    return await query.answer("No puedes reclamar la tómbola de otra persona.", show_alert=True)
+            except (ValueError, IndexError):
+                return await query.answer("Error en el botón.", show_alert=True)
 
-    list_line = ""
-    alert_text = ""
+        # Verificar si ya jugó hoy
+        today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
+        if db.get_last_daily_claim(owner_id) == today_str:
+            await query.answer("⏳ Ya has probado suerte hoy. ¡Vuelve mañana!", show_alert=True)
+            if not is_public and not is_panel:
+                try:
+                    await message.delete()
+                    if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
+                except BadRequest:
+                    pass
+            return
 
-    if prize['type'] == 'money':
-        db.update_money(owner_id, prize['value'])
-        safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
-        list_line = f"- {safe_name}: {prize['emoji']} {prize['value']}₽"
-        alert_text = f"¡{prize['emoji']} Has ganado {prize['value']}₽!"
-    else:
-        db.add_item_to_inventory(owner_id, prize['value'])
-        safe_name = interactor_user.first_name.replace('*', '').replace('_', '')
-        list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
-        alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
+        # Dar premio
+        db.update_last_daily_claim(owner_id, today_str)
+        prize = random.choices(DAILY_PRIZES, weights=DAILY_WEIGHTS, k=1)[0]
+
+        # Sanitizar nombre (Evita que nombres con símbolos rompan el Markdown de Telegram)
+        safe_name = interactor_user.first_name.replace('*', '').replace('_', '').replace('[', '').replace('`', '')
+        list_line = ""
+        alert_text = ""
+
+        if prize['type'] == 'money':
+            db.update_money(owner_id, prize['value'])
+            list_line = f"- {safe_name}: {prize['emoji']} {prize['value']}₽"
+            alert_text = f"¡{prize['emoji']} Has ganado {prize['value']}₽!"
+        else:
+            db.add_item_to_inventory(owner_id, prize['value'], 1)
+            list_line = f"- {safe_name}: {prize['emoji']} Sobre Mágico"
+            alert_text = f"¡{prize['emoji']} PREMIO GORDO! Un Sobre Mágico."
 
         # --- ACTUALIZAR LISTA USANDO SUPABASE ---
         state = db.get_tombola_state(chat_id)
@@ -3170,32 +3170,45 @@ async def tombola_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         daily_msg_id = state['msg_id']
         keyboard = [[InlineKeyboardButton("Probar Suerte ✨", callback_data="tombola_claim_public")]]
 
+        msg_updated = False
         if daily_msg_id:
             try:
+                # Intentamos editar el mensaje existente (Con red_timeout para evitar cuelgues)
                 await context.bot.edit_message_text(
                     chat_id=chat_id, message_id=daily_msg_id, text=full_text,
-                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
+                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                    read_timeout=20, write_timeout=20
                 )
                 db.set_tombola_state(chat_id, daily_msg_id, state['winners'])
+                msg_updated = True
             except BadRequest:
-                msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
-                                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                                     disable_notification=True)
-                db.set_tombola_state(chat_id, msg.message_id, state['winners'])
-        else:
-            msg = await context.bot.send_message(chat_id=chat_id, text=full_text,
-                                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
-                                                 disable_notification=True)
+                pass  # Si el mensaje se borró, forzamos crear uno nuevo
+            except Exception as e:
+                logger.warning(f"Micro-corte al editar tómbola: {e}")
+
+        # Si falló la edición o no existía, creamos un mensaje nuevo
+        if not msg_updated:
+            msg = await context.bot.send_message(
+                chat_id=chat_id, text=full_text,
+                reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown',
+                disable_notification=True, read_timeout=20, write_timeout=20
+            )
             db.set_tombola_state(chat_id, msg.message_id, state['winners'])
 
+        # Limpieza de comandos privados
         if not is_public and not is_panel:
             try:
                 await message.delete()
                 if user_cmd_msg_id: await context.bot.delete_message(chat_id=chat_id, message_id=user_cmd_msg_id)
-            except BadRequest:
+            except:
                 pass
 
+        # RESPUESTA FINAL AL BOTÓN (Para que deje de girar)
         await query.answer(alert_text, show_alert=True)
+
+    except Exception as e:
+        logger.error(f"❌ Error crítico en tombola_claim: {e}")
+        await query.answer("Hubo un error al procesar tu tirada.", show_alert=True)
 
 
 async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
