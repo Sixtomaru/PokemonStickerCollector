@@ -2045,7 +2045,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.get_or_create_user(user.id, user.first_name)
     # -----------------------------------------------------------------
     # RECOGER JUGADORES DEL MINIJUEGO
-    # RECOGER JUGADORES DEL MINIJUEGO
     if context.args and context.args[0].startswith("game_"):
         parts = context.args[0].split("_")
         if len(parts) == 3:
@@ -2053,9 +2052,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c_id, m_id = int(parts[1]), int(parts[2])
                 state = db.get_minigame(c_id, m_id)  # Leer de BD
                 if state:
-                    keyboard = [[InlineKeyboardButton("Jugar", web_app=WebAppInfo(url=state['web_url']))]]
+                    # --- SOLUCIÓN: RECONSTRUCCIÓN DINÁMICA DE LA URL ---
+                    # No nos fiamos de state['web_url']. La fabricamos aquí perfecta y limpia.
+                    base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
+                    safe_url = f"{base_web_url}/?c={c_id}&m={m_id}"
+
+                    keyboard = [[InlineKeyboardButton("Abrir Puzzle 🧩", web_app=WebAppInfo(url=safe_url))]]
                     await update.message.reply_text(
-                        "Minijuego de las Ruinas Alfa.",
+                        "¡Aquí tienes el minijuego de las Ruinas Alfa! Haz clic abajo para jugar:",
                         reply_markup=InlineKeyboardMarkup(keyboard))
                     return
                 else:
@@ -2321,7 +2325,7 @@ async def force_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         text = (
             "🎲 **¡Un Minijuego ha aparecido!**\n\n"
-            "Resuelve el puzzle de las Ruinas Alfa para conseguir un sobre de Unown.\n\n"
+            "Resuelve el puzzle de las Ruinas Alfa.\n\n"
             "**Resultados:**\n_Aún nadie ha jugado_"
         )
 
@@ -2397,7 +2401,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if current_time - last_attempt_time < cooldown_duration:
         time_left = math.ceil(cooldown_duration - (current_time - last_attempt_time))
         await query.answer(
-            f"Espera {time_left} segundos a que se recargue la energía del Álbumdex antes de intentarlo de nuevo.",
+            f"Espera unos {time_left} segundos a que se recargue la energía del Álbumdex antes de intentarlo de nuevo.",
             show_alert=True)
         return
 
@@ -2409,16 +2413,21 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         # 1. Lo borramos de la base de datos para que nadie más pueda cogerlo
         db.remove_active_spawn(msg_id)
 
-        await query.answer()
+        # 2. EL TRUCO DEL CAMARERO: Respondemos a Telegram AL INSTANTE para evitar el error "Query too old"
+        try:
+            await query.answer()
+        except Exception:
+            pass  # Si falla por latencia de red, lo ignoramos y seguimos dando el premio
 
+        # 3. Cálculos matemáticos con calma
         new_chance = max(80, current_chance - 5)
         db.update_user_capture_chance(user.id, new_chance)
 
-        # 2. Sumar al ranking local (Puntos para el grupo)
+        # 4. Sumar al ranking local (Puntos para el grupo)
         if message.chat.type in ['group', 'supergroup']:
             db.increment_group_monthly_stickers(user.id, message.chat.id)
 
-        # 3. Borramos los mensajes en Telegram (Sticker y Texto)
+        # 5. Borramos los mensajes en Telegram (Sticker y Texto)
         try:
             await context.bot.delete_message(chat_id=message.chat_id, message_id=msg_id)
             await context.bot.delete_message(chat_id=message.chat_id, message_id=spawn_data['sticker_id'])
@@ -2432,7 +2441,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
         user_link = user.mention_html()
 
-        # 4. LÓGICA SMART (Añadir a la colección)
+        # 6. LÓGICA SMART (Añadir a la colección)
         status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
         message_text = ""
 
@@ -2445,12 +2454,12 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             db.update_money(user.id, money_earned)
             message_text = f"✔️ ¡Genial, {user_link}! Conseguiste un sticker de {pokemon_display} {rarity_emoji}. Como ya lo tienes repetido, se convierte en <b>{format_money(money_earned)}₽</b> 💰."
 
-        # 5. RETO GRUPAL & DESBLOQUEO JOHTO
+        # 7. RETO GRUPAL & DESBLOQUEO JOHTO
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
             await check_and_unlock_johto(message.chat.id, context)
 
-        # 6. PREMIOS INDIVIDUALES (Álbumes completos)
+        # 8. PREMIOS INDIVIDUALES (Álbumes completos)
 
         # Kanto (151)
         if not db.is_kanto_completed_by_user(user.id):
@@ -2468,7 +2477,15 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
-        # 7. PREMIOS RETOS GRUPALES
+        # Unown (28)
+        if not db.is_unown_completed_by_user(user.id):
+            if db.get_user_unique_unown_count(user.id) >= 28:
+                db.set_unown_completed_by_user(user.id)
+                db.update_money(user.id, 2000)
+                db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
+                message_text += f"\n\n🎊 ¡Felicidades {user_link}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+
+        # 9. PREMIOS RETOS GRUPALES
         is_qualified = await is_group_qualified(message.chat.id, context)
         chat_id = message.chat.id
 
@@ -2507,7 +2524,10 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     else:
         # --- FALLO AL INTENTAR CAPTURAR (Foto Movida) ---
-        await query.answer()
+        try:
+            await query.answer()
+        except Exception:
+            pass  # Si falla por latencia de red, lo ignoramos
 
         new_chance = min(100, current_chance + 5)
         db.update_user_capture_chance(user.id, new_chance)
