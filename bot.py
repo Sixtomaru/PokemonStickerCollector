@@ -816,7 +816,7 @@ async def check_and_unlock_regions(chat_id, context):
                 "¡Vamos a seguir así, a por todas!💥"
             )
 
-            keyboard = [[InlineKeyboardButton("Escanear Inicial 📷", callback_data="claim_hoenn_starter")]]
+            keyboard = [[InlineKeyboardButton("Escanear Inicial 📷", callback_data="hoenn_starter_claim")]]
 
             try:
                 await context.bot.send_message(
@@ -7520,7 +7520,7 @@ async def force_hoenn_unlock_cmd(update: Update, context: ContextTypes.DEFAULT_T
         "¡Vamos a seguir así, a por todas!💥"
     )
 
-    keyboard = [[InlineKeyboardButton("Escanear Inicial 🎁", callback_data="claim_hoenn_starter")]]
+    keyboard = [[InlineKeyboardButton("Escanear Inicial 📷", callback_data="hoenn_starter_claim")]]
 
     await context.bot.send_message(
         chat_id=chat_id,
@@ -7810,7 +7810,7 @@ def main():
         CallbackQueryHandler(trade_search_user_err_handler, pattern="^trade_suser_err$"),
         CallbackQueryHandler(inv_close_handler, pattern="^inv_close_"),
         CallbackQueryHandler(safari_hunt_btn_handler, pattern="^safari_hunt_"),
-        CallbackQueryHandler(claim_hoenn_starter_handler, pattern="^claim_hoenn_starter$"),
+        CallbackQueryHandler(claim_hoenn_starter_handler, pattern="^hoenn_starter_claim$"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
