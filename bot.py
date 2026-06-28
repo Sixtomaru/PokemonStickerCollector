@@ -207,6 +207,24 @@ SHOP_CONFIG = {
     'pack_magic_large_johto': {'name': 'Sobre Mágico Gra. Johto', 'price': 2500, 'size': 5, 'is_magic': True,
                                'region_filter': 'Johto', 'desc': 'Contiene 5 stickers que no tienes de Johto.'},
 
+# HOENN
+    'pack_small_hoenn': {'name': 'Sobre Pequeño Hoenn', 'price': 1000, 'size': 3, 'region_filter': 'Hoenn',
+                         'desc': 'Contiene 3 stickers al azar de Hoenn.'},
+    'pack_medium_hoenn': {'name': 'Sobre Mediano Hoenn', 'price': 1500, 'size': 5, 'region_filter': 'Hoenn',
+                          'desc': 'Contiene 5 stickers al azar de Hoenn.'},
+    'pack_large_hoenn': {'name': 'Sobre Grande Hoenn', 'price': 1900, 'size': 7, 'region_filter': 'Hoenn',
+                         'desc': 'Contiene 7 stickers al azar de Hoenn.'},
+    'pack_magic_small_hoenn': {'name': 'Sobre Mágico Peq. Hoenn', 'price': 1600, 'size': 1, 'is_magic': True,
+                               'region_filter': 'Hoenn', 'desc': 'Contiene 1 sticker que no tienes de Hoenn.'},
+    'pack_magic_medium_hoenn': {'name': 'Sobre Mágico Med. Hoenn', 'price': 2100, 'size': 3, 'is_magic': True,
+                                'region_filter': 'Hoenn', 'desc': 'Contiene 3 stickers que no tienes de Hoenn.'},
+    'pack_magic_large_hoenn': {'name': 'Sobre Mágico Gra. Hoenn', 'price': 2500, 'size': 5, 'is_magic': True,
+                               'region_filter': 'Hoenn', 'desc': 'Contiene 5 stickers que no tienes de Hoenn.'},
+
+    # SOBRE BRILLANTE HOENN (OCULTO)
+    'pack_shiny_hoenn': {'name': 'Sobre Brillante Hoenn', 'price': 0, 'size': 1, 'is_magic': False,
+                         'desc': 'Garantiza 1 Shiny Hoenn.', 'hidden': True},
+
     # --- SOBRES DE EVENTO (OCULTOS) ---
     'pack_shiny_kanto': {'name': 'Sobre Brillante Kanto', 'price': 0, 'size': 1, 'is_magic': False,
                          'desc': 'Garantiza 1 Shiny.', 'hidden': True},
@@ -214,44 +232,63 @@ SHOP_CONFIG = {
 
     # Sobres Elementales
     'pack_elem_fuego': {'name': 'Sobre Fuego Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Fuego.',
-                        'hidden': True, 'type_filter': 'Fuego', 'emoji': '🔥'},
+                        'hidden': True, 'type_filter': 'Fuego', 'region_filter': 'Kanto', 'emoji': '🔥'},
     'pack_elem_agua': {'name': 'Sobre Agua Kanto', 'price': 0, 'size': 7, 'desc': '7 Pokémon de tipo Agua.',
-                       'hidden': True, 'type_filter': 'Agua', 'emoji': '💧'},
+                       'hidden': True, 'type_filter': 'Agua', 'region_filter': 'Kanto', 'emoji': '💧'},
     'pack_elem_planta': {'name': 'Sobre Planta Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Planta.',
-                         'hidden': True, 'type_filter': 'Planta', 'emoji': '🌱'},
+                         'hidden': True, 'type_filter': 'Planta', 'region_filter': 'Kanto', 'emoji': '🌱'},
     'pack_elem_electrico': {'name': 'Sobre Eléctrico Kanto', 'price': 0, 'size': 3,
-                            'desc': '3 Pokémon de tipo Eléctrico.', 'hidden': True, 'type_filter': 'Eléctrico',
+                            'desc': '3 Pokémon de tipo Eléctrico.', 'hidden': True, 'type_filter': 'Eléctrico', 'region_filter': 'Kanto',
                             'emoji': '⚡'},
     'pack_elem_hielo': {'name': 'Sobre Hielo Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Hielo.',
-                        'hidden': True, 'type_filter': 'Hielo', 'emoji': '❄️'},
+                        'hidden': True, 'type_filter': 'Hielo', 'region_filter': 'Kanto', 'emoji': '❄️'},
     'pack_elem_lucha': {'name': 'Sobre Lucha Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Lucha.',
-                        'hidden': True, 'type_filter': 'Lucha', 'emoji': '👊'},
+                        'hidden': True, 'type_filter': 'Lucha', 'region_filter': 'Kanto', 'emoji': '👊'},
     'pack_elem_veneno': {'name': 'Sobre Veneno Kanto', 'price': 0, 'size': 7, 'desc': '7 Pokémon de tipo Veneno.',
-                         'hidden': True, 'type_filter': 'Veneno', 'emoji': '☠️'},
+                         'hidden': True, 'type_filter': 'Veneno', 'region_filter': 'Kanto', 'emoji': '☠️'},
     'pack_elem_tierra': {'name': 'Sobre Tierra Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Tierra.',
-                         'hidden': True, 'type_filter': 'Tierra', 'emoji': '⛰️'},
+                         'hidden': True, 'type_filter': 'Tierra', 'region_filter': 'Kanto', 'emoji': '⛰️'},
     'pack_elem_roca': {'name': 'Sobre Roca Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Roca.',
-                       'hidden': True, 'type_filter': 'Roca', 'emoji': '🪨'},
+                       'hidden': True, 'type_filter': 'Roca', 'region_filter': 'Kanto', 'emoji': '🪨'},
     'pack_elem_volador': {'name': 'Sobre Volador Kanto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Volador.',
-                          'hidden': True, 'type_filter': 'Volador', 'emoji': '🦅'},
+                          'hidden': True, 'type_filter': 'Volador', 'region_filter': 'Kanto', 'emoji': '🦅'},
     'pack_elem_psiquico': {'name': 'Sobre Psíquico Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Psíquico.',
-                           'hidden': True, 'type_filter': 'Psíquico', 'emoji': '🔮'},
+                           'hidden': True, 'type_filter': 'Psíquico', 'region_filter': 'Kanto', 'emoji': '🔮'},
     'pack_elem_fantasma': {'name': 'Sobre Fantasma Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Fantasma.',
-                           'hidden': True, 'type_filter': 'Fantasma', 'emoji': '👻'},
+                           'hidden': True, 'type_filter': 'Fantasma', 'region_filter': 'Kanto', 'emoji': '👻'},
     'pack_elem_bicho': {'name': 'Sobre Bicho Kanto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Bicho.',
-                        'hidden': True, 'type_filter': 'Bicho', 'emoji': '🐛'},
+                        'hidden': True, 'type_filter': 'Bicho', 'region_filter': 'Kanto', 'emoji': '🐛'},
     'pack_elem_normal': {'name': 'Sobre Normal Kanto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Normal.',
-                         'hidden': True, 'type_filter': 'Normal', 'emoji': '⚪'},
+                         'hidden': True, 'type_filter': 'Normal', 'region_filter': 'Kanto', 'emoji': '⚪'},
     'pack_elem_dragon': {'name': 'Sobre Dragón Kanto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Dragón.',
-                         'hidden': True, 'type_filter': 'Dragón', 'emoji': '🐉'},
+                         'hidden': True, 'type_filter': 'Dragón', 'region_filter': 'Kanto', 'emoji': '🐉'},
     'pack_elem_hada': {'name': 'Sobre Hada Kanto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Hada.',
-                       'hidden': True, 'type_filter': 'Hada', 'emoji': '🧚'},
+                       'hidden': True, 'type_filter': 'Hada', 'region_filter': 'Kanto', 'emoji': '🧚'},
     'pack_elem_acero': {'name': 'Sobre Acero Kanto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Acero.',
-                        'hidden': True, 'type_filter': 'Acero', 'emoji': '🔩'},
-    'pack_elem_especial': {'name': 'Sobre Especial Kanto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble.',
+                        'hidden': True, 'type_filter': 'Acero', 'region_filter': 'Kanto', 'emoji': '🔩'},
+    'pack_elem_especial': {'name': 'Sobre Especial Kanto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble.', 'region_filter': 'Kanto',
                            'hidden': True, 'emoji': '✨🔺'},
-    'pack_special_johto': {'name': 'Sobre Especial Johto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble de Johto.',
+    'pack_special_johto': {'name': 'Sobre Especial Johto', 'price': 0, 'size': 7, 'desc': 'Probabilidad shiny doble de Johto.', 'region_filter': 'Johto',
                            'hidden': True, 'emoji': '✨🔺'},
+
+# SOBRES ELEMENTALES JOHTO (Ocultos para Pelipper o eventos)
+    'pack_elem_fuego_j': {'name': 'Sobre Fuego Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Fuego.', 'hidden': True, 'type_filter': 'Fuego', 'region_filter': 'Johto', 'emoji': '🔥'},
+    'pack_elem_agua_j': {'name': 'Sobre Agua Johto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Agua.', 'hidden': True, 'type_filter': 'Agua', 'region_filter': 'Johto', 'emoji': '💧'},
+    'pack_elem_planta_j': {'name': 'Sobre Planta Johto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Planta.', 'hidden': True, 'type_filter': 'Planta', 'region_filter': 'Johto', 'emoji': '🌱'},
+    'pack_elem_electrico_j': {'name': 'Sobre Eléctrico Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Eléctrico.', 'hidden': True, 'type_filter': 'Eléctrico', 'region_filter': 'Johto', 'emoji': '⚡'},
+    'pack_elem_hielo_j': {'name': 'Sobre Hielo Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Hielo.', 'hidden': True, 'type_filter': 'Hielo', 'region_filter': 'Johto', 'emoji': '❄️'},
+    'pack_elem_lucha_j': {'name': 'Sobre Lucha Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Lucha.', 'hidden': True, 'type_filter': 'Lucha', 'region_filter': 'Johto', 'emoji': '👊'},
+    'pack_elem_veneno_j': {'name': 'Sobre Veneno Johto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Veneno.', 'hidden': True, 'type_filter': 'Veneno', 'region_filter': 'Johto', 'emoji': '☠️'},
+    'pack_elem_tierra_j': {'name': 'Sobre Tierra Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Tierra.', 'hidden': True, 'type_filter': 'Tierra', 'region_filter': 'Johto', 'emoji': '⛰️'},
+    'pack_elem_roca_j': {'name': 'Sobre Roca Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Roca.', 'hidden': True, 'type_filter': 'Roca', 'region_filter': 'Johto', 'emoji': '🪨'},
+    'pack_elem_volador_j': {'name': 'Sobre Volador Johto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Volador.', 'hidden': True, 'type_filter': 'Volador', 'region_filter': 'Johto', 'emoji': '🦅'},
+    'pack_elem_psiquico_j': {'name': 'Sobre Psíquico Johto', 'price': 0, 'size': 4, 'desc': '4 Pokémon de tipo Psíquico.', 'hidden': True, 'type_filter': 'Psíquico', 'region_filter': 'Johto', 'emoji': '🔮'},
+    'pack_elem_fantasma_j': {'name': 'Sobre Fantasma Johto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Fantasma.', 'hidden': True, 'type_filter': 'Fantasma', 'region_filter': 'Johto', 'emoji': '👻'},
+    'pack_elem_bicho_j': {'name': 'Sobre Bicho Johto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Bicho.', 'hidden': True, 'type_filter': 'Bicho', 'region_filter': 'Johto', 'emoji': '🐛'},
+    'pack_elem_normal_j': {'name': 'Sobre Normal Johto', 'price': 0, 'size': 5, 'desc': '5 Pokémon de tipo Normal.', 'hidden': True, 'type_filter': 'Normal', 'region_filter': 'Johto', 'emoji': '⚪'},
+    'pack_elem_dragon_j': {'name': 'Sobre Dragón Johto', 'price': 0, 'size': 2, 'desc': '2 Pokémon de tipo Dragón.', 'hidden': True, 'type_filter': 'Dragón', 'region_filter': 'Johto', 'emoji': '🐉'},
+    'pack_elem_hada_j': {'name': 'Sobre Hada Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Hada.', 'hidden': True, 'type_filter': 'Hada', 'region_filter': 'Johto', 'emoji': '🧚'},
+    'pack_elem_acero_j': {'name': 'Sobre Acero Johto', 'price': 0, 'size': 3, 'desc': '3 Pokémon de tipo Acero.', 'hidden': True, 'type_filter': 'Acero', 'region_filter': 'Johto', 'emoji': '🔩'},
 
 # --- SOBRES UNOWN (EVENTO) ---
     'pack_small_unown': {'name': 'Sobre Pequeño Unown', 'price': 0, 'size': 2, 'hidden': True, 'region_filter': 'Unown', 'desc': 'Contiene 2 stickers de Unown.', 'emoji': '🎴'},
@@ -387,6 +424,46 @@ for pokemon_item in ALL_POKEMON:
 POKEMON_PER_PAGE = 52
 PACK_OPEN_COOLDOWN = 30
 
+# --- SISTEMA DE FORMAS MULTIPLES (Hoenn) ---
+# Mapeo: Forma A (0,1), Forma B (2,3), Forma C (4,5), Forma D (6,7)
+POKEMON_FORMS = {
+    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nublado')},
+    352: {0: ('A', 'Normal'), 2: ('B', 'Camuflaje')},
+    386: {0: ('A', 'Normal'), 2: ('B', 'Ataque'), 4: ('C', 'Defensa'), 6: ('D', 'Velocidad')}
+}
+
+
+def get_form_offset(pokemon_id):
+    """Devuelve un 'desplazamiento' aleatorio (0, 2, 4, 6) si el Pokémon tiene formas."""
+    if pokemon_id in POKEMON_FORMS:
+        return random.choice(list(POKEMON_FORMS[pokemon_id].keys()))
+    return 0
+
+def get_image_path(pokemon_id, is_shiny_value, form=None):
+    """Genera la ruta de la imagen leyendo el valor exacto guardado (0 al 7) o la forma directamente."""
+    if pokemon_id > 20000:
+        region = "Unown"
+    elif pokemon_id > 251:
+        region = "Hoenn"
+    elif pokemon_id > 151:
+        region = "Johto"
+    else:
+        region = "Kanto"
+
+    is_true_shiny = (is_shiny_value % 2 != 0)  # Si es impar (1, 3, 5, 7) es Shiny
+    base_form_val = is_shiny_value - 1 if is_true_shiny else is_shiny_value
+
+    shiny_str = 'Shiny/' if is_true_shiny else ''
+    s_suffix = 's' if is_true_shiny else ''
+
+    if pokemon_id in POKEMON_FORMS:
+        if form:
+            form_letter = form
+        else:
+            form_letter = POKEMON_FORMS[pokemon_id].get(base_form_val, ('A', ''))[0]
+        return f"Stickers/{region}/{shiny_str}{pokemon_id}{form_letter}{s_suffix}.png"
+
+    return f"Stickers/{region}/{shiny_str}{pokemon_id}{s_suffix}.png"
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -548,6 +625,34 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Fallo al resolver Safari: {e}")
 
 
+async def claim_hoenn_starter_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+
+    # 1. Comprobamos en la base de datos si ya ha pulsado el botón
+    if db.check_event_button_claim(chat_id, 'amelia_hoenn_unlock', user.id):
+        return await query.answer("¡Ya has escaneado a tu inicial de Hoenn!", show_alert=True)
+
+    # 2. Damos el premio
+    pokemon_id = random.choice([252, 255, 258])  # Treecko, Torchic, Mudkip
+    is_shiny = random.random() < 0.02  # 2% de probabilidad
+
+    # 3. Registramos en la base de datos que ya lo ha cogido
+    db.add_event_button_claim(chat_id, 'amelia_hoenn_unlock', user.id)
+
+    # 4. Guardamos el sticker
+    status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
+    p_data = POKEMON_BY_ID[pokemon_id]
+    p_name = f"{p_data['name']}{' brillante ✨' if is_shiny else ''}"
+
+    if status == 'MAX':
+        money = DUPLICATE_MONEY_VALUES.get('C', 100)
+        db.update_money(user.id, money)
+
+    await query.answer(f"¡Has escaneado un {p_name} 📸!", show_alert=True)
+
+
 async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
     """Intenta enviar el botón a un sticker huérfano por culpa de la red."""
     job_data = context.job.data
@@ -612,9 +717,9 @@ async def rescue_spawn_job(context: ContextTypes.DEFAULT_TYPE):
                 pass
 
 
-async def check_and_unlock_johto(chat_id, context):
-    """Verifica si el grupo ha alcanzado el 75% de Kanto y desbloquea Johto."""
-    # Solo si no está desbloqueado ya
+async def check_and_unlock_regions(chat_id, context):
+    """Verifica el progreso del grupo y va desbloqueando regiones."""
+    # 1. DESBLOQUEO DE JOHTO (75% de Kanto = 113)
     if not db.is_event_completed(chat_id, 'amelia_johto_unlock'):
         group_unique_kanto = db.get_group_unique_kanto_ids(chat_id)
         if len(group_unique_kanto) >= 113:
@@ -628,6 +733,41 @@ async def check_and_unlock_johto(chat_id, context):
             )
             try:
                 await context.bot.send_message(chat_id=chat_id, text=amelia_text, parse_mode='HTML')
+            except:
+                pass
+
+    # 2. DESBLOQUEO DE HOENN (75% de Johto = 68 aprox, 91 * 0.75)
+    # NOTA: Usamos 68 como el 75% del reto grupal de 91
+    if not db.is_event_completed(chat_id, 'amelia_hoenn_unlock'):
+        raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+        excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+        valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+
+        if len(valid_johto_ids) >= 68:
+            db.mark_event_completed(chat_id, 'amelia_hoenn_unlock')
+
+            amelia_text = (
+                "💬 Amelia: <b>¡Hola a tod@s! soy yo, Amelia.</b>\n"
+                "¿Escucháis eso?, ¿no son trompetas lo que se oye a lo lejos?🎺\n\n"
+                "💬 ????: <b>¡Sí, sí, es un alumno mío, que ensaya en sus ratos libres!</b>\n\n"
+                "💬 Amelia: <b>¡Uy, pues no lo hace mal!</b>\n"
+                "Por cierto, por si no lo habéis notado: ¡¡estoy en Hoenn!!💥 concretamente en Villa Raíz, junto al profesor Abedul, nada más y nada menos. ¡Salude, profesor!\n\n"
+                "💬 Abedul: <b>¡Holaaa!👋🏼</b>\n\n"
+                "💬 Amelia: <b>No sabéis lo bien que se respira aquí y el buen tiempo que hace, tenéis que venir a explorar la región. Nos vendrá bien para expandir el negocio y seguir ayudando a la gente. Además, el profesor dice que quien venga al laboratorio, ¡podrá escanear a uno de sus iniciales!</b>\n\n"
+                "💬 Abedul: <b>¿Eh?, no recuerdo hab...</b>\n\n"
+                "💬 Amelia: <b>¡Además, Devon S. A., la empresa de Ciudad Férrica que se dedica al desarrollo de nuevas tecnologías para entrenadores Pokémon, se ha interesado en nuestro Álbumdex! después de hablarle largo y tendido sobre él. Así que, muy pronto podréis usar vuestro dispositivo como algo más que un escáner de Pokémon.</b>\n\n"
+                "¡Vamos a seguir así, a por todas!💥"
+            )
+
+            keyboard = [[InlineKeyboardButton("Escanear Inicial 📷", callback_data="claim_hoenn_starter")]]
+
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=amelia_text,
+                    parse_mode='HTML',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
             except:
                 pass
 
@@ -1460,32 +1600,106 @@ async def missing_sticker_handler(update: Update, _context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer("No tienes este sticker.", show_alert=True)
 
-
 async def choose_sticker_version_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    interactor_user = query.from_user
-    try:
-        parts = query.data.split('_')
-        # showsticker_REGION_PAGE_POKEMONID_OWNERID_MSGID
-        region_name = parts[1]
-        page_str = parts[2]
-        pokemon_id_str = parts[3]
-        owner_id_str = parts[4]
-        cmd_msg_id_str = parts[5] if len(parts) > 5 else None
+        query = update.callback_query
+        interactor_user = query.from_user
+        try:
+            parts = query.data.split('_')
+            # Format: showsticker_REGION_PAGE_POKEMONID_OWNERID_[MSGID]
+            region_name = parts[1]
+            page_str = parts[2]
+            pokemon_id_str = parts[3]
+            owner_id_str = parts[4]
+            cmd_msg_id_str = parts[5] if len(parts) > 5 else None
 
-        pokemon_id, owner_id = int(pokemon_id_str), int(owner_id_str)
-        if interactor_user.id != owner_id:
-            await query.answer("Este menú no es tuyo.", show_alert=True)
+            pokemon_id, owner_id = int(pokemon_id_str), int(owner_id_str)
+            if interactor_user.id != owner_id:
+                await query.answer("Este menú no es tuyo.", show_alert=True)
+                return
+        except (ValueError, IndexError):
+            await query.answer("Error al obtener el sticker.", show_alert=True)
             return
-    except (ValueError, IndexError):
-        await query.answer("Error al obtener el sticker.", show_alert=True)
-        return
 
         # --- NUEVO: INTERCEPTOR DEL UNOWN #201 EN JOHTO ---
-    if pokemon_id == 201:
-        text = "Para ver los Unown que tienes y sus versiones (Normal/Brillante), visita su propia sección en el **Álbumdex Nacional**."
+        if pokemon_id == 201:
+            text = "Para ver los Unown disponibles y sus versiones (Normal/Brillante), visita su propia sección en el **Álbumdex Nacional**."
+
+            keyboard = []
+            back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
+            if cmd_msg_id_str:
+                back_cb_data += f"_{cmd_msg_id_str}"
+            back_cb_data += "_num"
+
+            keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
+
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            return
+        # --------------------------------------------------
+
+        refresh_deletion_timer(context, query.message, 60)
+        user_collection = db.get_all_user_stickers(owner_id)
+        pokemon_name = POKEMON_BY_ID.get(pokemon_id, {}).get("name", "Desconocido")
 
         keyboard = []
+
+        # --- LÓGICA DE MULTI-FORMAS (Castform, Kecleon, Deoxys) ---
+        if pokemon_id in POKEMON_FORMS:
+            forms = POKEMON_FORMS[pokemon_id]
+
+            # --- HUEVO DE PASCUA KECLEON (2x1 y sin Shinys en la cuenta) ---
+            if pokemon_id == 352:
+                # Kecleon normal desbloquea la forma B automáticamente.
+                has_any_normal = any((352, val) in user_collection for val in [0, 2])
+                has_any_shiny = any((352, val) in user_collection for val in [1, 3])
+
+                # El total de formas es 2 (Normal y Camuflaje, obviando los shinys)
+                owned_forms_count = 2 if has_any_normal else 0
+                total_forms = 2
+
+                text = f"Elige qué versión de *Kecleon* quieres mostrar:"
+
+                for base_val, (f_letter, f_name) in forms.items():
+                    row_forms = []
+                    if has_any_normal:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} ⚪",
+                                                              callback_data=f"sendsticker_{pokemon_id}_{base_val}_{owner_id}"))
+                    if has_any_shiny:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} ✨",
+                                                              callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
+                    if row_forms: keyboard.append(row_forms)
+
+            # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS (Conteo X/4, pero mostrando botones Shiny) ---
+            else:
+                # El total de formas base es 4 (excluyendo los shinys de la cuenta)
+                total_forms = len(forms)
+                # Contamos cuántas formas normales (valores pares: 0, 2, 4, 6) tiene en la colección
+                owned_forms_count = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
+
+                text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: ({owned_forms_count}/{total_forms})"
+
+                for base_val, (f_letter, f_name) in forms.items():
+                    row_forms = []
+                    # Si tiene el normal, mostramos botón normal
+                    if (pokemon_id, base_val) in user_collection:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} ⚪",
+                                                              callback_data=f"sendsticker_{pokemon_id}_{base_val}_{owner_id}"))
+                    # Si tiene el shiny, mostramos botón shiny (pero no suma en el contador)
+                    if (pokemon_id, base_val + 1) in user_collection:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} ✨",
+                                                              callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
+                    if row_forms: keyboard.append(row_forms)
+
+        # --- POKÉMON ESTÁNDAR ---
+        else:
+            text = f"Elige qué versión de *{pokemon_name}* quieres mostrar:"
+            row = []
+            if (pokemon_id, 0) in user_collection:
+                row.append(InlineKeyboardButton("Normal", callback_data=f"sendsticker_{pokemon_id}_0_{owner_id}"))
+            if (pokemon_id, 1) in user_collection:
+                row.append(InlineKeyboardButton("Brillante ✨", callback_data=f"sendsticker_{pokemon_id}_1_{owner_id}"))
+            keyboard.append(row)
+
+        # --- BOTÓN VOLVER ---
         back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
         if cmd_msg_id_str:
             back_cb_data += f"_{cmd_msg_id_str}"
@@ -1494,118 +1708,114 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
         keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
 
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        return
-
-    refresh_deletion_timer(context, query.message, 60)
-    user_collection = db.get_all_user_stickers(owner_id)
-    has_normal = (pokemon_id, 0) in user_collection
-    has_shiny = (pokemon_id, 1) in user_collection
-    pokemon_name = POKEMON_BY_ID.get(pokemon_id, {}).get("name", "Desconocido")
-    text = f"Elige qué versión de *{pokemon_name}* quieres mostrar:"
-
-    keyboard, row = [], []
-    if has_normal:
-        row.append(InlineKeyboardButton("Normal", callback_data=f"sendsticker_{pokemon_id}_0_{owner_id}"))
-    if has_shiny:
-        row.append(InlineKeyboardButton("Brillante ✨", callback_data=f"sendsticker_{pokemon_id}_1_{owner_id}"))
-    keyboard.append(row)
-
-    # --- BOTÓN VOLVER ---
-    # Al volver, por defecto volvemos al modo numérico ('num') para evitar complicaciones
-    back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
-    if cmd_msg_id_str:
-        back_cb_data += f"_{cmd_msg_id_str}"
-
-    # Añadimos '_num' explícito al final para que album_region_handler lo entienda
-    back_cb_data += "_num"
-
-    keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=back_cb_data)])
-
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
 
 async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    interactor_user = query.from_user
-    message = cast(Message, query.message)
+        query = update.callback_query
+        interactor_user = query.from_user
+        message = cast(Message, query.message)
 
-    if not message:
-        await query.answer("El mensaje original no está disponible.", show_alert=True)
-        return
-
-    # --- LÓGICA DE COOLDOWN (2 veces cada 30 min) ---
-    now = time.time()
-    COOLDOWN_SECONDS = 1800
-    MAX_SHOWS = 2
-
-    if 'show_history' not in context.user_data:
-        context.user_data['show_history'] = []
-
-    context.user_data['show_history'] = [
-        t for t in context.user_data['show_history']
-        if now - t < COOLDOWN_SECONDS
-    ]
-
-    if len(context.user_data['show_history']) >= MAX_SHOWS:
-        oldest_time = context.user_data['show_history'][0]
-        wait_time = int(COOLDOWN_SECONDS - (now - oldest_time))
-        minutes = wait_time // 60
-        seconds = wait_time % 60
-        await query.answer(
-            f"⛔ Límite alcanzado (2/30min).\nEspera: {minutes}m {seconds}s.",
-            show_alert=True
-        )
-        return
-    # ------------------------------------------------
-
-    image_path = ""
-    try:
-        _, pokemon_id_str, is_shiny_str, owner_id_str = query.data.split('_')
-        pokemon_id, is_shiny, owner_id = int(pokemon_id_str), bool(int(is_shiny_str)), int(owner_id_str)
-
-        if interactor_user.id != owner_id:
-            await query.answer("No puedes enviar un sticker desde el álbum de otro usuario.", show_alert=True)
+        if not message:
+            await query.answer("El mensaje original no está disponible.", show_alert=True)
             return
 
-        pokemon_data = POKEMON_BY_ID.get(pokemon_id)
-        if not pokemon_data:
-            await query.answer("No se encontraron los datos de este Pokémon.", show_alert=True)
+        # --- LÓGICA DE COOLDOWN (2 veces cada 30 min) ---
+        now = time.time()
+        COOLDOWN_SECONDS = 1800
+        MAX_SHOWS = 2
+
+        if 'show_history' not in context.user_data:
+            context.user_data['show_history'] = []
+
+        context.user_data['show_history'] = [
+            t for t in context.user_data['show_history']
+            if now - t < COOLDOWN_SECONDS
+        ]
+
+        if len(context.user_data['show_history']) >= MAX_SHOWS:
+            oldest_time = context.user_data['show_history'][0]
+            wait_time = int(COOLDOWN_SECONDS - (now - oldest_time))
+            minutes = wait_time // 60
+            seconds = wait_time % 60
+            await query.answer(
+                f"⛔ Límite alcanzado (Máximo 2 cada 30min).\nEspera: {minutes}m {seconds}s.",
+                show_alert=True
+            )
             return
+        # ------------------------------------------------
 
-        context.user_data['show_history'].append(now)
+        try:
+            parts = query.data.split('_')
+            # Formato: sendsticker_pokeid_isshinyvalue_ownerid
+            pokemon_id = int(parts[1])
+            is_shiny_val = int(parts[2])
+            owner_id = int(parts[3])
 
-        # Formato HTML y Emoji
-        pokemon_display = get_formatted_name(pokemon_data, is_shiny)
-        final_rarity = get_rarity(pokemon_data['category'], is_shiny)
-        rarity_emoji = RARITY_VISUALS.get(final_rarity, "")
+            if interactor_user.id != owner_id:
+                await query.answer("No puedes enviar un sticker desde el álbum de otro usuario.", show_alert=True)
+                return
 
-        message_text = f"{interactor_user.first_name} mostró su {pokemon_display} {rarity_emoji}"
+            pokemon_data = POKEMON_BY_ID.get(pokemon_id)
+            if not pokemon_data:
+                await query.answer("No se encontraron los datos de este Pokémon.", show_alert=True)
+                return
 
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=message_text,
-            parse_mode='HTML',
-            disable_notification=True
-        )
+            # --- COMPROBACIÓN DE SEGURIDAD (CON PASE VIP KECLEON) ---
+            user_collection = db.get_all_user_stickers(owner_id)
 
-        # --- RUTA DINÁMICA KANTO / JOHTO ---
-        region_folder = "Johto" if pokemon_id > 151 else "Kanto"
-        image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+            if pokemon_id == 352:
+                # Si quiere mandar un normal, comprobamos si tiene CUALQUIER Kecleon normal (0 o 2)
+                if is_shiny_val in [0, 2] and not any((352, v) in user_collection for v in [0, 2]):
+                    return await query.answer("¡Eh! No tienes a este Pokémon.", show_alert=True)
+                # Si quiere mandar un shiny, comprobamos si tiene CUALQUIER Kecleon shiny (1 o 3)
+                elif is_shiny_val in [1, 3] and not any((352, v) in user_collection for v in [1, 3]):
+                    return await query.answer("¡Eh! No tienes a este Pokémon.", show_alert=True)
 
-        with open(image_path, 'rb') as sticker_file:
-            await context.bot.send_sticker(
+            # Para el resto de Pokémon (Deben tener la forma exacta en su BD)
+            elif (pokemon_id, is_shiny_val) not in user_collection:
+                return await query.answer("No tienes esta forma del Pokémon.", show_alert=True)
+            # ---------------------------------------------------------
+
+            context.user_data['show_history'].append(now)
+
+            # Detectamos si es shiny de verdad para el formato visual (Valores impares)
+            is_true_shiny = (is_shiny_val % 2 != 0)
+            pokemon_display = get_formatted_name(pokemon_data, is_true_shiny)
+            final_rarity = get_rarity(pokemon_data['category'], is_true_shiny)
+            rarity_emoji = RARITY_VISUALS.get(final_rarity, "")
+
+            # Formateamos el nombre de la forma si la tiene
+            form_name = ""
+            if pokemon_id in POKEMON_FORMS:
+                # Obtenemos el valor base (0, 2, 4, 6) restando 1 si es impar (shiny)
+                base_val = is_shiny_val - 1 if is_true_shiny else is_shiny_val
+                form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+
+            message_text = f"{interactor_user.first_name} mostró su {pokemon_display}{form_name} {rarity_emoji}"
+
+            await context.bot.send_message(
                 chat_id=message.chat_id,
-                sticker=sticker_file,
+                text=message_text,
+                parse_mode='HTML',
                 disable_notification=True
             )
 
-        await query.answer()
+            # Generamos la ruta usando la fábrica inteligente de rutas
+            image_path = get_image_path(pokemon_id, is_shiny_val)
 
-    except (ValueError, IndexError):
-        await query.answer("Error al procesar la solicitud.", show_alert=True)
-    except FileNotFoundError:
-        logger.error(f"Sticker no encontrado: {image_path}")
-        await query.answer("¡Uy! No encuentro la imagen de ese sticker.", show_alert=True)
+            with open(image_path, 'rb') as sticker_file:
+                await context.bot.send_sticker(
+                    chat_id=message.chat_id,
+                    sticker=sticker_file,
+                    disable_notification=True
+                )
+
+            await query.answer()
+
+        except (ValueError, IndexError):
+            await query.answer("Error al procesar la solicitud.", show_alert=True)
+        except FileNotFoundError:
+            logger.error(f"Sticker no encontrado: {image_path}")
+            await query.answer("¡Uy! No encuentro la imagen de ese sticker.", show_alert=True)
 
 
 async def refresh_codes_board(bot: Bot, chat_id: int):
@@ -1752,217 +1962,231 @@ async def spawn_event(context: ContextTypes.DEFAULT_TYPE):
 
 # --- VERSIÓN CORREGIDA Y ROBUSTA DE SPAWN_POKEMON ---
 async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id
-    spawned_something = False
-    sticker_msg = None
+        chat_id = context.job.chat_id
+        spawned_something = False
+        sticker_msg = None
 
-    try:
-        # 1. Evento
-        if random.random() < EVENT_CHANCE:
-            await spawn_event(context)
-            spawned_something = True
-
-        # 2. Pokémon (si no hubo evento)
-        if not spawned_something:
-            current_time = time.time()
-
-            # --- SELECCIÓN DE REGIÓN INTELIGENTE ---
-            today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
-            active_regional_event = db.get_scheduled_event(today_str)
-
-            chosen_region = 'Kanto'  # Valor por defecto seguro
-
-            if active_regional_event:
-                # Si hay evento forzado, usamos esa región
-                chosen_region = active_regional_event
-            else:
-                # Flujo normal: Kanto siempre, Johto si está desbloqueado
-                available_regions = ['Kanto']
-                if db.is_event_completed(chat_id, 'amelia_johto_unlock'):
-                    available_regions.append('Johto')
-                chosen_region = random.choice(available_regions)
-
-            # Elegimos categoría
-            category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-
-            # Filtramos ALL_POKEMON_SPAWNABLE (Sin bebés ni Unown ni legendarios bloqueados)
-            if chosen_region == 'Kanto':
-                candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and p['id'] <= 151]
-            else:  # Johto
-                candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and 152 <= p['id'] <= 251]
-
-            if not candidates:
-                candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category]  # Fallback global
-
-            pokemon_data = random.choice(candidates)
-            is_shiny = random.random() < SHINY_CHANCE
-            rarity = get_rarity(pokemon_data['category'], is_shiny)
-            # ----------------------------------------
-
-            # --- LÓGICA INTELIGENTE DE LEGENDARIOS (Rango S) ---
-            LEGENDARY_MISSIONS = {
-                144: 'mision_articuno',
-                145: 'mision_zapdos',
-                146: 'mision_moltres',
-                150: 'mision_mewtwo',
-                249: 'mision_hooh_lugia',
-                250: 'mision_hooh_lugia',
-                243: 'mision_perros',
-                244: 'mision_perros',
-                245: 'mision_perros'
-            }
-
-            if pokemon_data['category'] == 'S':
-                mision_necesaria = LEGENDARY_MISSIONS.get(pokemon_data['id'])
-
-                # Si el Pokémon elegido necesita misión y NO está completada, está BLOQUEADO
-                if mision_necesaria and not db.is_event_completed(chat_id, mision_necesaria):
-
-                    # 1. Buscamos TODOS los Legendarios ('S') de la región actual
-                    if chosen_region == 'Kanto':
-                        region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'S' and p['id'] <= 151]
-                    else:
-                        region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if
-                                         p['category'] == 'S' and 152 <= p['id'] <= 251]
-
-                    # 2. Filtramos dejando SOLO los que están desbloqueados o libres por defecto (como Mew/Celebi)
-                    unlocked_s = []
-                    for p in region_s_pool:
-                        m = LEGENDARY_MISSIONS.get(p['id'])
-                        if not m or db.is_event_completed(chat_id, m):
-                            unlocked_s.append(p)
-
-                    # 3. Elegimos uno de los libres (Siempre habrá al menos uno gracias a Mew y Celebi)
-                    pokemon_data = random.choice(unlocked_s)
-            # ----------------------------------------------------
-
-            pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-
-            # Ruta de imagen dinámica (Los Unown están en Johto)
-            region_folder = "Johto" if pokemon_data['id'] > 151 else "Kanto"
-            image_path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
-
-            # --- DADOS PARA EVENTO ESPECIAL DE CAZA (10% de probabilidad) ---
-            is_special_hunt = random.random() < 0.10
-
-            if is_special_hunt:
-                text_message = f"¡Un <b>{pokemon_name}</b> ha aparecido, pero se ha escondido entre la hierba alta!\n<i>Tratad de conseguir una foto antes de que se vaya.</i>"
-                callback_data = f"safari_hunt_{pokemon_data['id']}"
-            else:
-                text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
-                callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-
-            # --- ENVÍO CON AGENTE DE RESCATE ---
-            try:
-                # 1. Enviar el Sticker
-                with open(image_path, 'rb') as sticker_file:
-                    sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file, read_timeout=20,
-                                                                 write_timeout=20)
-
-                # Pausa mágica de 1 segundo para desatascar la red y crear tensión
-                await asyncio.sleep(1.0)
-
-                # 2. Preparamos el Botón
-                reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "¡Capturar! 📷" if is_special_hunt else "¡Capturar! 📷", callback_data=callback_data)]])
-
-                # 3. Enviar el Texto con el botón
-                text_msg = await context.bot.send_message(
-                    chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup, read_timeout=20,
-                    write_timeout=20
-                )
-
-                # 4. Guardamos el Spawn en Base de Datos
-                if is_special_hunt:
-                    # Si es Safari Especial (El reloj empieza apagado, job_started = False)
-                    db.add_active_safari(
-                        text_msg.message_id, chat_id, sticker_msg.message_id,
-                        pokemon_data['id'], is_shiny, rarity, pokemon_name, current_time
-                    )
-                else:
-                    # Si es Spawn normal de Dedo Rápido
-                    db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, current_time)
-
-            except FileNotFoundError:
-                logger.error(f"No se encontró la imagen: {image_path}")
-
-            except Exception as e:
-                logger.error(f"⚠️ Micro-corte en spawn para chat {chat_id}: {e}")
-
-                # PLAN DE RESCATE: Activa al agente si falla el texto
-                if sticker_msg:
-                    context.job_queue.run_once(
-                        rescue_spawn_job,
-                        2,
-                        data={
-                            'chat_id': chat_id,
-                            'sticker_msg_id': sticker_msg.message_id,
-                            'text_message': text_message,
-                            'reply_markup': reply_markup,
-                            'timestamp': current_time,
-                            'is_special_hunt': is_special_hunt,  # Chivato para el Agente
-                            'pokemon_id': pokemon_data['id'],
-                            'is_shiny': is_shiny,
-                            'rarity': rarity,
-                            'p_name': pokemon_name
-                        },
-                        name=f"rescue_start_{chat_id}"
-                    )
-
-    except Exception as e:
-        logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
-
-    finally:
-        # Reprogramar siempre el bucle infinito
         try:
-            if chat_id in db.get_active_groups():
-                next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
-                context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
-                logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
+            # 1. Evento
+            if random.random() < EVENT_CHANCE:
+                await spawn_event(context)
+                spawned_something = True
+
+            # 2. Pokémon (si no hubo evento)
+            if not spawned_something:
+                current_time = time.time()
+
+                # --- SELECCIÓN DE REGIÓN INTELIGENTE ---
+                today_str = datetime.now(TZ_SPAIN).strftime('%Y-%m-%d')
+                active_regional_event = db.get_scheduled_event(today_str)
+
+                chosen_region = 'Kanto'  # Valor por defecto seguro
+
+                if active_regional_event:
+                    # Si hay evento forzado, usamos esa región
+                    chosen_region = active_regional_event
+                else:
+                    # Flujo normal: Kanto siempre, Johto si está desbloqueado
+                    available_regions = ['Kanto']
+                    if db.is_event_completed(chat_id, 'amelia_johto_unlock'):
+                        available_regions.append('Johto')
+                    chosen_region = random.choice(available_regions)
+
+                # Elegimos categoría
+                category = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+
+                # Filtramos ALL_POKEMON_SPAWNABLE (Sin bebés ni Unown ni legendarios bloqueados)
+                if chosen_region == 'Kanto':
+                    candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and p['id'] <= 151]
+                else:  # Johto (Se usará Hoenn también aquí cuando lo liberes con el evento)
+                    candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category and p['id'] > 151]
+
+                if not candidates:
+                    candidates = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == category]  # Fallback global
+
+                pokemon_data = random.choice(candidates)
+
+                # --- GENERACIÓN DE FORMAS Y SHINYS ---
+                is_shiny_bool = random.random() < SHINY_CHANCE
+                form_offset = get_form_offset(pokemon_data['id'])
+
+                # Calculamos el valor exacto que se guardará en la base de datos (0-7)
+                is_shiny_val = form_offset + (1 if is_shiny_bool else 0)
+                rarity = get_rarity(pokemon_data['category'], is_shiny_bool)
+                # ----------------------------------------
+
+                # --- LÓGICA INTELIGENTE DE LEGENDARIOS (Rango S) ---
+                LEGENDARY_MISSIONS = {
+                    144: 'mision_articuno',
+                    145: 'mision_zapdos',
+                    146: 'mision_moltres',
+                    150: 'mision_mewtwo',
+                    249: 'mision_hooh_lugia',
+                    250: 'mision_hooh_lugia',
+                    243: 'mision_perros',
+                    244: 'mision_perros',
+                    245: 'mision_perros'
+                }
+
+                if pokemon_data['category'] == 'S':
+                    mision_necesaria = LEGENDARY_MISSIONS.get(pokemon_data['id'])
+
+                    # Si el Pokémon elegido necesita misión y NO está completada, está BLOQUEADO
+                    if mision_necesaria and not db.is_event_completed(chat_id, mision_necesaria):
+
+                        # 1. Buscamos TODOS los Legendarios ('S') de la región actual
+                        if chosen_region == 'Kanto':
+                            region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if
+                                             p['category'] == 'S' and p['id'] <= 151]
+                        else:
+                            region_s_pool = [p for p in ALL_POKEMON_SPAWNABLE if p['category'] == 'S' and p['id'] > 151]
+
+                        # 2. Filtramos dejando SOLO los que están desbloqueados o libres por defecto
+                        unlocked_s = []
+                        for p in region_s_pool:
+                            m = LEGENDARY_MISSIONS.get(p['id'])
+                            if not m or db.is_event_completed(chat_id, m):
+                                unlocked_s.append(p)
+
+                        # 3. Elegimos uno de los libres y volvemos a tirar los dados de forma
+                        if unlocked_s:
+                            pokemon_data = random.choice(unlocked_s)
+                            form_offset = get_form_offset(pokemon_data['id'])
+                            is_shiny_val = form_offset + (1 if is_shiny_bool else 0)
+                # ----------------------------------------------------
+
+                pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny_bool else ''}"
+
+                # Usamos nuestra nueva fábrica de rutas
+                image_path = get_image_path(pokemon_data['id'], is_shiny_val)
+
+                # --- DADOS PARA EVENTO ESPECIAL DE CAZA (10% de probabilidad) ---
+                is_special_hunt = random.random() < 0.10
+
+                if is_special_hunt:
+                    text_message = f"¡Un <b>{pokemon_name}</b> ha aparecido, pero se ha escondido entre la hierba alta!\n<i>Tratad de conseguir una foto antes de que se vaya.</i>"
+                    # Le pasamos el valor de la forma en el callback del Safari
+                    callback_data = f"safari_hunt_{pokemon_data['id']}_{is_shiny_val}_{rarity}"
+                else:
+                    text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
+                    callback_data = f"claim_0_{pokemon_data['id']}_{is_shiny_val}_{rarity}"
+
+                # --- ENVÍO CON AGENTE DE RESCATE ---
+                try:
+                    # 1. Enviar el Sticker
+                    with open(image_path, 'rb') as sticker_file:
+                        sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file,
+                                                                     read_timeout=20, write_timeout=20)
+
+                    # Pausa mágica de 1 segundo para desatascar la red y crear tensión
+                    await asyncio.sleep(1.0)
+
+                    reply_markup = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("¡Capturar! 📷", callback_data=callback_data)]])
+
+                    # 2. Enviar el Texto con el botón
+                    text_msg = await context.bot.send_message(
+                        chat_id=chat_id, text=text_message, parse_mode='HTML', reply_markup=reply_markup,
+                        read_timeout=20, write_timeout=20
+                    )
+
+                    # 3. Guardamos el Spawn en Base de Datos o RAM
+                    if is_special_hunt:
+                        # Si es Safari Especial (El reloj empieza apagado)
+                        # NOTA: Ojo, en tu DB de Safaris 'is_shiny' ahora guarda la Forma (0-7)
+                        db.add_active_safari(
+                            text_msg.message_id, chat_id, sticker_msg.message_id,
+                            pokemon_data['id'], is_shiny_val, rarity, pokemon_name, current_time
+                        )
+                    else:
+                        # Si es Spawn normal de Dedo Rápido
+                        db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, current_time)
+
+                except FileNotFoundError:
+                    logger.error(f"No se encontró la imagen: {image_path}")
+
+                except Exception as e:
+                    logger.error(f"⚠️ Micro-corte en spawn para chat {chat_id}: {e}")
+
+                    # PLAN DE RESCATE: Activa al agente si falla el texto
+                    if sticker_msg:
+                        context.job_queue.run_once(
+                            rescue_spawn_job,
+                            2,
+                            data={
+                                'chat_id': chat_id,
+                                'sticker_msg_id': sticker_msg.message_id,
+                                'text_message': text_message,
+                                'reply_markup': reply_markup,
+                                'timestamp': current_time,
+                                'is_special_hunt': is_special_hunt,
+                                'pokemon_id': pokemon_data['id'],
+                                'is_shiny': is_shiny_val,
+                                'rarity': rarity,
+                                'p_name': pokemon_name
+                            },
+                            name=f"rescue_start_{chat_id}"
+                        )
+
         except Exception as e:
-            logger.error(f"Error crítico reprogramando spawn: {e}")
+            logger.error(f"⚠️ Error crítico en el ciclo de spawn para el chat {chat_id}: {e}")
+
+        finally:
+            # Reprogramar siempre el bucle infinito
+            try:
+                if chat_id in db.get_active_groups():
+                    next_delay = random.randint(MIN_SPAWN_TIME, MAX_SPAWN_TIME)
+                    context.job_queue.run_once(spawn_pokemon, next_delay, chat_id=chat_id, name=f"spawn_{chat_id}")
+                    logger.info(f"Próximo spawn en chat {chat_id} en {next_delay} segundos.")
+            except Exception as e:
+                logger.error(f"Error crítico reprogramando spawn: {e}")
 
 
 # --- COMANDO SECRETO PARA EL ADMIN: FORZAR APARICIÓN ---
 async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_USER_ID:
-        return
+        if update.effective_user.id != ADMIN_USER_ID:
+            return
 
-    chat_id = update.effective_chat.id
-    pokemon_data, is_shiny, rarity = choose_random_pokemon()
+        chat_id = update.effective_chat.id
+        pokemon_data, is_shiny_bool, rarity = choose_random_pokemon()
 
-    # Usamos nombre limpio (Sin Emoji) y formato HTML
-    pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny else ''}"
-    text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
+        # --- GENERACIÓN DE FORMAS Y SHINYS (Para Admin) ---
+        # Calculamos el desplazamiento de la forma (0, 2, 4, 6) y le sumamos 1 si es shiny
+        form_offset = get_form_offset(pokemon_data['id'])
+        is_shiny_val = form_offset + (1 if is_shiny_bool else 0)
 
-    image_path = f"Stickers/Kanto/{'Shiny/' if is_shiny else ''}{pokemon_data['id']}{'s' if is_shiny else ''}.png"
+        pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny_bool else ''}"
+        text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
 
-    try:
-        with open(image_path, 'rb') as sticker_file:
-            sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
+        # Usamos nuestra nueva fábrica de rutas
+        image_path = get_image_path(pokemon_data['id'], is_shiny_val)
 
-        # Micro-pausa de seguridad para no saturar la red
-        await asyncio.sleep(0.5)
+        try:
+            with open(image_path, 'rb') as sticker_file:
+                sticker_msg = await context.bot.send_sticker(chat_id=chat_id, sticker=sticker_file)
 
-        callback_data = f"claim_0_{pokemon_data['id']}_{int(is_shiny)}_{rarity}"
-        button_text = "¡Capturar! 📷"
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
+            # Micro-pausa de seguridad para no saturar la red y dar holgura a Render
+            await asyncio.sleep(0.5)
 
-        text_msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=text_message,
-            parse_mode='HTML',
-            reply_markup=reply_markup
-        )
+            callback_data = f"claim_0_{pokemon_data['id']}_{is_shiny_val}_{rarity}"
+            button_text = "¡Capturar! 📷"
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
 
-        # --- GUARDADO PERSISTENTE EN SUPABASE (¡NUEVO!) ---
-        # Guardamos el spawn manual en la base de datos para que sobreviva a reinicios
-        db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, time.time())
+            text_msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text=text_message,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
 
-        await update.message.delete()
+            # --- GUARDADO PERSISTENTE EN SUPABASE ---
+            # Guardamos el spawn manual en la base de datos para que sobreviva a cualquier reinicio
+            db.add_active_spawn(text_msg.message_id, chat_id, sticker_msg.message_id, time.time())
 
-    except FileNotFoundError:
-        logger.error(f"No se encontró la imagen: {image_path}")
+            await update.message.delete()
+
+        except FileNotFoundError:
+            logger.error(f"No se encontró la imagen: {image_path}")
 
 # --- PANEL DE CONTROL / MENÚ FIJO ---
 
@@ -2057,9 +2281,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     base_web_url = "https://minijuegos-pokestickercollector.netlify.app/"
                     safe_url = f"{base_web_url}/?c={c_id}&m={m_id}"
 
-                    keyboard = [[InlineKeyboardButton("Abrir Puzzle 🧩", web_app=WebAppInfo(url=safe_url))]]
+                    keyboard = [[InlineKeyboardButton("Investigar", web_app=WebAppInfo(url=safe_url))]]
                     await update.message.reply_text(
-                        "¡Aquí tienes el minijuego de las Ruinas Alfa! Haz clic abajo para jugar:",
+                        "Entras en una cueva, y al fondo ves un panel envejecido por el paso de los siglos",
                         reply_markup=InlineKeyboardMarkup(keyboard))
                     return
                 else:
@@ -2194,28 +2418,36 @@ async def admin_regional_event(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def admin_regalo_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Regala un sobre aleatorio de Delibird a un usuario directo a la mochila."""
+    """Regala un sobre de evento semanal a un usuario directo a la mochila."""
     if update.effective_user.id != ADMIN_USER_ID: return
 
-    # Obtener objetivo
     target_user, _ = await _get_target_user_from_command(update, context)
     if not target_user:
         return await update.message.reply_text("Uso: Responde a un usuario o menciónalo: `/regalodelibird @usuario`",
                                                disable_notification=True)
 
-    # 1. Seleccionar premio aleatorio (Como hace Delibird)
-    possible_packs = [k for k in SHOP_CONFIG.keys() if k.startswith('pack_elem_')]
+    chat_id = update.effective_chat.id
+
+    # Comprobamos si el grupo ha llegado a Hoenn
+    is_hoenn = db.is_event_completed(chat_id, 'amelia_hoenn_unlock') if update.effective_chat.type in ['group',
+                                                                                                       'supergroup'] else False
+
+    if is_hoenn:
+        possible_packs = [k for k in SHOP_CONFIG.keys() if k.endswith('_j')] + ['pack_special_johto']
+        mensajero = "Pelipper"
+    else:
+        possible_packs = [k for k in SHOP_CONFIG.keys() if
+                          k.startswith('pack_elem_') and not k.endswith('_j') and k != 'pack_special_johto']
+        mensajero = "Delibird"
+
     prize_id = random.choice(possible_packs)
     prize_info = SHOP_CONFIG[prize_id]
 
     db.get_or_create_user(target_user.id, target_user.first_name)
-
-    # 2. Guardar DIRECTAMENTE en mochila
     db.add_item_to_inventory(target_user.id, prize_id, 1)
 
-    # 3. Mensaje público en el grupo
     await update.message.reply_text(
-        f"✅ {target_user.first_name} ha recibido un sobre de Delibird ({prize_info['name']}), se ha guardado en su /mochila.",
+        f"✅ {target_user.first_name} ha recibido un sobre de {mensajero} ({prize_info['name']}), se ha guardado en su /mochila.",
         disable_notification=True
     )
 
@@ -2457,7 +2689,7 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         # 7. RETO GRUPAL & DESBLOQUEO JOHTO
         if message.chat.type in ['group', 'supergroup']:
             db.add_pokemon_to_group_pokedex(message.chat.id, pokemon_id)
-            await check_and_unlock_johto(message.chat.id, context)
+            await check_and_unlock_regions(message.chat.id, context)
 
         # 8. PREMIOS INDIVIDUALES (Álbumes completos)
 
@@ -2519,6 +2751,30 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                         message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
                     else:
                         message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
+
+            # 3. RETO HOENN (133)
+            excluded_hoenn = {298, 360}
+            if not db.is_event_completed(chat_id, 'hoenn_group_challenge'):
+                # Usamos una query directa para ser más eficientes
+                raw_hoenn_ids = db.query_db(
+                    'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
+                    (chat_id,))
+                group_ids_hoenn = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
+
+                valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
+
+                if len(valid_hoenn_ids) >= 133:
+                    db.mark_event_completed(chat_id, 'hoenn_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Hoenn")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_hoenn',
+                                        "Premio Reto Grupal: Hoenn")
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Hoenn en su buzón."
+                    else:
+                        message_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>!"
+
 
         await context.bot.send_message(chat_id=message.chat_id, text=message_text, parse_mode='HTML')
 
@@ -2759,7 +3015,7 @@ async def event_step_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.answer()
 
         if message.chat.type in ['group', 'supergroup']:
-            await check_and_unlock_johto(message.chat.id, context)
+            await check_and_unlock_regions(message.chat.id, context)
 
 
 async def safari_hunt_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3263,7 +3519,10 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.get_or_create_user(owner_user.id, owner_user.first_name)
     user_money = db.get_user_money(owner_user.id)
 
-    text = (f"🏪 *Tienda de Sobres* 🏪\n\n"
+    # NUEVO: Diseño de la "factura"
+    safe_name = owner_user.first_name.replace('*', '').replace('_', '').replace('`', '')
+    text = (f"🏪 *Tienda de Sobres* 🏪\n"
+            f"Cliente: *{safe_name}*\n\n"
             f"Tu saldo: **{format_money(user_money)}₽**\n\n"
             "Selecciona una categoría:")
 
@@ -3275,6 +3534,7 @@ async def tienda_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗾 Sobres Nacionales", callback_data=f"shop_cat_national{suffix}")],
         [InlineKeyboardButton("🔸 Sobres Kanto", callback_data=f"shop_cat_kanto{suffix}")],
         [InlineKeyboardButton("🔹 Sobres Johto", callback_data=f"shop_cat_johto{suffix}")],
+        [InlineKeyboardButton("🔸 Sobres Hoenn", callback_data=f"shop_cat_hoenn{suffix}")],
         [InlineKeyboardButton("❌ Salir", callback_data=f"shop_close{suffix}")]
     ]
 
@@ -3324,6 +3584,10 @@ async def tienda_category_handler(update: Update, context: ContextTypes.DEFAULT_
 
         # Filtro Johto
         elif cat == 'johto' and region == 'Johto':
+            filtered_items.append((item_id, details))
+
+        # Filtro Hoenn
+        elif cat == 'hoenn' and region == 'Hoenn':
             filtered_items.append((item_id, details))
 
     # --- CORRECCIÓN DE ORDEN ---
@@ -3552,7 +3816,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- MODO HUEVOS ---
     if mode == "eggs":
-        text = "🎒 <b>Mochila - Huevos</b>\n\n"
+        text = f"🎒 <b>Mochila de {update.effective_user.first_name} - Huevos</b>\n\n"
         egg = db.get_user_egg(user_id)
 
         if egg:
@@ -3571,7 +3835,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # --- MODO SOBRES ---
     elif mode == "packs":
-        text = "🎒 <b>Mochila - Sobres</b>\n\n"
+        text = f"🎒 <b>Mochila de {update.effective_user.first_name} - Sobres</b>\n\n"
         for item in items:
             item_id = item['item_id']
             qty = item['quantity']
@@ -3586,7 +3850,7 @@ async def inventory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- MODO ESPECIALES ---
     else:
-        text = "🎒 <b>Mochila - Objetos Especiales</b>\n\n"
+        text = f"🎒 <b>Mochila de {update.effective_user.first_name} - Otros Objetos</b>\n\n"
         for item in items:
             item_id = item['item_id']
             qty = item['quantity']
@@ -3768,12 +4032,7 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
         # 5. Notificar
         try:
             # Ruta de imagen dinámica
-            if pokemon_id > 20000:
-                region_folder = "Unown"
-            else:
-                region_folder = "Johto" if pokemon_id > 151 else "Kanto"
-
-            path = f"Stickers/{region_folder}/{'Shiny/' if is_shiny else ''}{pokemon_id}{'s' if is_shiny else ''}.png"
+            path = get_image_path(pokemon_id, is_shiny)
 
             with open(path, 'rb') as f:
                 await context.bot.send_sticker(chat_id=user_id, sticker=f)
@@ -3868,67 +4127,86 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- LÓGICA DE GENERACIÓN ---
 
-        # 1. Sobre Brillante Kanto
+        # 1. Sobres Brillantes
         if item_id == 'pack_shiny_kanto':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             p_data = random.choice(kanto_pool)
-            pack_results.append({'data': p_data, 'is_shiny': True})
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
 
-        # 2. Sobre Brillante Johto
         elif item_id == 'pack_shiny_johto':
             johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
             p_data = random.choice(johto_pool)
-            pack_results.append({'data': p_data, 'is_shiny': True})
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
 
-        # 2B. Sobre Brillante Unown (NUEVO)
+        elif item_id == 'pack_shiny_hoenn':
+            hoenn_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            p_data = random.choice(hoenn_pool)
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
+
         elif item_id == 'pack_shiny_unown':
             from pokemon_data import POKEMON_UNOWN
             p_data = random.choice(POKEMON_UNOWN)
-            pack_results.append({'data': p_data, 'is_shiny': True})
+            pack_results.append({'data': p_data, 'is_shiny': 1})
 
-        # 3. Sobre Especial Kanto (Doble probabilidad shiny)
+        # 2. Sobres Especiales (Doble probabilidad shiny)
         elif item_id == 'pack_elem_especial':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
-                is_shiny = random.random() < (SHINY_CHANCE * 2)
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 cat_pool = [p for p in kanto_pool if p['category'] == cat]
-                if not cat_pool: cat_pool = kanto_pool
-                p_data = random.choice(cat_pool)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+                p_data = random.choice(cat_pool if cat_pool else kanto_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
 
-        # 3B. Sobre Especial Johto (NUEVO - Doble probabilidad shiny)
         elif item_id == 'pack_special_johto':
             johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
             for _ in range(pack_size):
-                is_shiny = random.random() < (SHINY_CHANCE * 2)  # Doble de probabilidad
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 cat_pool = [p for p in johto_pool if p['category'] == cat]
-                if not cat_pool: cat_pool = johto_pool
-                p_data = random.choice(cat_pool)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+                p_data = random.choice(cat_pool if cat_pool else johto_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
 
-        # 3C. Sobre Especial Unown (Doble probabilidad shiny)
         elif item_id == 'pack_special_unown':
             from pokemon_data import POKEMON_UNOWN
             for _ in range(pack_size):
-                is_shiny = random.random() < (SHINY_CHANCE * 2)
-                p_data = random.choice(POKEMON_UNOWN)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
+                pack_results.append({'data': random.choice(POKEMON_UNOWN), 'is_shiny': 1 if is_shiny_bool else 0})
 
-
-
-        # 4. Sobres Elementales
+        # 3. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
-            type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] <= 151]
-            if not type_pool: type_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
-            for _ in range(pack_size):
-                p_data = random.choice(type_pool)
-                is_shiny = random.random() < SHINY_CHANCE
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+            region_filter = pack_config.get('region_filter')
 
-        # 5. Sobres Mágicos
+            if region_filter == 'Kanto':
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] <= 151]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif region_filter == 'Johto':
+                type_pool = [p for p in ALL_POKEMON_PACKS if
+                             target_type in p.get('types', []) and 152 <= p['id'] <= 251]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] > 251]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            else:
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', [])]
+                fallback_pool = ALL_POKEMON_PACKS
+
+            for _ in range(pack_size):
+                is_shiny_bool = random.random() < SHINY_CHANCE
+                p_data = random.choice(type_pool if type_pool else fallback_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
+
+        # 4. Sobres Mágicos
         elif is_magic:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
@@ -3937,6 +4215,8 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
             elif region_filter == 'Unown':
                 from pokemon_data import POKEMON_UNOWN
                 base_pool = POKEMON_UNOWN
@@ -3944,33 +4224,36 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_quantities = db.get_user_collection_quantities(user.id)
 
             for _ in range(pack_size):
-                s = random.random() < SHINY_CHANCE
+                is_shiny_bool = random.random() < SHINY_CHANCE
+
                 missing_pool = []
                 one_qty_pool = []
 
                 for p in base_pool:
-                    qty = user_quantities.get((p['id'], s), 0)
+                    form_off = get_form_offset(p['id'])
+                    s_v = form_off + (1 if is_shiny_bool else 0)
+
+                    qty = user_quantities.get((p['id'], s_v), 0)
                     if qty == 0:
-                        missing_pool.append(p)
+                        missing_pool.append((p, s_v))
                     elif qty == 1:
-                        one_qty_pool.append(p)
+                        one_qty_pool.append((p, s_v))
 
                 if missing_pool:
-                    p_data = random.choice(missing_pool)
+                    p_data, final_s_val = random.choice(missing_pool)
                 elif one_qty_pool:
-                    p_data = random.choice(one_qty_pool)
+                    p_data, final_s_val = random.choice(one_qty_pool)
                 else:
-                    pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-                    for p in base_pool: pool_by_cat[p['category']].append(p)
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
-                    possible = pool_by_cat[cat]
-                    if not possible: possible = base_pool
-                    p_data = random.choice(possible)
+                    possible = [p for p in base_pool if p['category'] == cat]
+                    p_data = random.choice(possible if possible else base_pool)
+                    form_off = get_form_offset(p_data['id'])
+                    final_s_val = form_off + (1 if is_shiny_bool else 0)
 
-                pack_results.append({'data': p_data, 'is_shiny': s})
-                user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
+                pack_results.append({'data': p_data, 'is_shiny': final_s_val})
+                user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
 
-        # 6. Sobres Normales (REPARADO)
+        # 5. Sobres Normales
         else:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
@@ -3979,37 +4262,37 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
             elif region_filter == 'Unown':
                 from pokemon_data import POKEMON_UNOWN
                 base_pool = POKEMON_UNOWN
 
             pool_by_cat = {'C': [], 'B': [], 'A': [], 'S': []}
-            for p in base_pool:
-                pool_by_cat[p['category']].append(p)
+            for p in base_pool: pool_by_cat[p['category']].append(p)
 
             for _ in range(pack_size):
-                is_shiny = random.random() < SHINY_CHANCE
+                is_shiny_bool = random.random() < SHINY_CHANCE
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 possible = pool_by_cat[cat]
-                if not possible: possible = base_pool
-                p_data = random.choice(possible)
-                pack_results.append({'data': p_data, 'is_shiny': is_shiny})
+                p_data = random.choice(possible if possible else base_pool)
 
-        # --- PROCESAMIENTO DE RESULTADOS ---
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
+
+        # --- EVALUAR LOS RESULTADOS DEL SOBRE ACTUAL ---
         summary_parts = []
 
         for result in pack_results:
-            p, s = result['data'], result['is_shiny']
-            rarity = get_rarity(p['category'], s)
+            p, s_val = result['data'], result['is_shiny']
+            is_true_shiny = (s_val % 2 != 0)
+            rarity = get_rarity(p['category'], is_true_shiny)
 
             try:
-                # Ruta dinámica (Los Unown con IDs de 5 cifras viven en Johto)
-                if p['id'] > 20000:
-                    region_folder = "Johto"
-                else:
-                    region_folder = "Johto" if p['id'] > 151 else "Kanto"
+                # Usamos nuestra nueva fábrica de rutas
+                path = get_image_path(p['id'], s_val)
 
-                path = f"Stickers/{region_folder}/{'Shiny/' if s else ''}{p['id']}{'s' if s else ''}.png"
                 with open(path, 'rb') as f:
                     msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
                     message_ids_to_delete.append(msg.message_id)
@@ -4017,28 +4300,34 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Error enviando sticker {p['id']}: {e}")
 
-            p_display = get_formatted_name(p, s)
+            p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
+
+            # Añadir la forma visualmente al texto
+            form_name = ""
+            if p['id'] in POKEMON_FORMS:
+                base_val = s_val - 1 if is_true_shiny else s_val
+                form_name = f" Forma {POKEMON_FORMS[p['id']][base_val][1]}"
 
             if message.chat.type in ['group', 'supergroup']:
                 db.add_pokemon_to_group_pokedex(message.chat.id, p['id'])
-                await check_and_unlock_johto(message.chat.id, context)
+                await check_and_unlock_regions(message.chat.id, context)
 
-            status = db.add_sticker_smart(user.id, p['id'], s)
+            status = db.add_sticker_smart(user.id, p['id'], s_val)
 
             if status == 'NEW':
-                summary_parts.append(f"🔸🆕 {p_display} {r_emoji}")
+                summary_parts.append(f"🔸🆕 {p_display}{form_name} {r_emoji}")
             elif status == 'DUPLICATE':
-                summary_parts.append(f"🔸♻️ {p_display} {r_emoji}")
+                summary_parts.append(f"🔸♻️ {p_display}{form_name} {r_emoji}")
             else:
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
                 db.update_money(user.id, money)
-                summary_parts.append(f"🔸✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
+                summary_parts.append(f"🔸✔️ {p_display}{form_name} {r_emoji} (+{format_money(money)}₽)")
 
         pack_name = ITEM_NAMES.get(item_id, "Sobre")
         final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
-        # Precios individuales (Kanto y Johto)
+        # --- PREMIOS INDIVIDUALES ---
         if not db.is_kanto_completed_by_user(user.id):
             if db.get_user_unique_kanto_count(user.id) >= 151:
                 db.set_kanto_completed_by_user(user.id)
@@ -4053,12 +4342,74 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
                 final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
+        if not db.is_hoenn_completed_by_user(user.id):
+            if db.get_user_unique_hoenn_count(user.id) >= 135:
+                db.set_hoenn_completed_by_user(user.id)
+                db.update_money(user.id, 3000)
+                db.add_item_to_inventory(user.id, 'pack_shiny_hoenn', 1)
+                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
+
         if not db.is_unown_completed_by_user(user.id):
             if db.get_user_unique_unown_count(user.id) >= 28:
                 db.set_unown_completed_by_user(user.id)
                 db.update_money(user.id, 2000)
                 db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
                 final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+
+        # --- PREMIOS RETOS GRUPALES ---
+        is_qualified = await is_group_qualified(message.chat_id, context)
+        chat_id = message.chat_id
+
+        if message.chat.type in ['group', 'supergroup']:
+            # 1. RETO KANTO
+            if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+                if len(group_unique_ids) >= 151:
+                    db.mark_event_completed(chat_id, 'kanto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+                    else:
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
+
+            # 2. RETO JOHTO
+            excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+            if not db.is_event_completed(chat_id, 'johto_group_challenge'):
+                raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+                valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+                if len(valid_johto_ids) >= 91:
+                    db.mark_event_completed(chat_id, 'johto_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
+                    else:
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
+
+            # 3. RETO HOENN
+            excluded_hoenn = {298, 360}
+            if not db.is_event_completed(chat_id, 'hoenn_group_challenge'):
+                raw_hoenn_ids = db.query_db(
+                    'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
+                    (chat_id,))
+                group_ids_hoenn = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
+                valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
+
+                if len(valid_hoenn_ids) >= 133:
+                    db.mark_event_completed(chat_id, 'hoenn_group_challenge')
+                    if is_qualified:
+                        group_users = db.get_users_in_group(chat_id)
+                        for uid in group_users:
+                            db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Hoenn")
+                            db.add_mail(uid, 'inventory_item', 'pack_shiny_hoenn', "Premio Reto Grupal: Hoenn")
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Hoenn en su buzón."
+                    else:
+                        final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>!"
 
         await context.bot.send_message(message.chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
@@ -4104,7 +4455,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 10)
         return
 
-    # 2. Validar reglas del comando (¡LÍMITE SUBIDO A 20!)
+    # 2. Validar reglas del comando (Límite subido a 20)
     if cantidad < 1 or cantidad > 20:
         msg = await update.message.reply_text("❌ Puedes abrir entre 1 y 20 sobres a la vez.", disable_notification=True)
         schedule_message_deletion(context, msg, 10)
@@ -4148,56 +4499,142 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_results = []
 
         # --- LÓGICA DE GENERACIÓN IDÉNTICA A LA NORMAL ---
-        if item_id == 'pack_elem_especial':
+
+        # 1. Sobres Brillantes
+        if item_id == 'pack_shiny_kanto':
+            kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            p_data = random.choice(kanto_pool)
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
+
+        elif item_id == 'pack_shiny_johto':
+            johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            p_data = random.choice(johto_pool)
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
+
+        elif item_id == 'pack_shiny_hoenn':
+            hoenn_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            p_data = random.choice(hoenn_pool)
+            form_offset = get_form_offset(p_data['id'])
+            pack_results.append({'data': p_data, 'is_shiny': form_offset + 1})
+
+        elif item_id == 'pack_shiny_unown':
+            from pokemon_data import POKEMON_UNOWN
+            p_data = random.choice(POKEMON_UNOWN)
+            pack_results.append({'data': p_data, 'is_shiny': 1})
+
+        # 2. Sobres Especiales (Doble Shiny)
+        elif item_id == 'pack_elem_especial':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
-                is_shiny = random.random() < (SHINY_CHANCE * 2)
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 cat_pool = [p for p in kanto_pool if p['category'] == cat]
-                if not cat_pool: cat_pool = kanto_pool
-                pack_results.append({'data': random.choice(cat_pool), 'is_shiny': is_shiny})
+                p_data = random.choice(cat_pool if cat_pool else kanto_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
+
+        elif item_id == 'pack_special_johto':
+            johto_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            for _ in range(pack_size):
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
+                cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
+                cat_pool = [p for p in johto_pool if p['category'] == cat]
+                p_data = random.choice(cat_pool if cat_pool else johto_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
 
         elif item_id == 'pack_special_unown':
             from pokemon_data import POKEMON_UNOWN
             for _ in range(pack_size):
-                is_shiny = random.random() < (SHINY_CHANCE * 2)
-                pack_results.append({'data': random.choice(POKEMON_UNOWN), 'is_shiny': is_shiny})
+                is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
+                pack_results.append({'data': random.choice(POKEMON_UNOWN), 'is_shiny': 1 if is_shiny_bool else 0})
 
+        # 3. Sobres Elementales (Tipos)
+        elif 'type_filter' in pack_config:
+            target_type = pack_config['type_filter']
+            region_filter = pack_config.get('region_filter')
+
+            if region_filter == 'Kanto':
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] <= 151]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif region_filter == 'Johto':
+                type_pool = [p for p in ALL_POKEMON_PACKS if
+                             target_type in p.get('types', []) and 152 <= p['id'] <= 251]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] > 251]
+                fallback_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            else:  # Fallback Nacional
+                type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', [])]
+                fallback_pool = ALL_POKEMON_PACKS
+
+            for _ in range(pack_size):
+                is_shiny_bool = random.random() < SHINY_CHANCE
+                p_data = random.choice(type_pool if type_pool else fallback_pool)
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
+
+        # 4. Sobres Mágicos
         elif is_magic:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
+
             if region_filter == 'Kanto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
             elif region_filter == 'Unown':
                 from pokemon_data import POKEMON_UNOWN
                 base_pool = POKEMON_UNOWN
 
             for _ in range(pack_size):
-                s = random.random() < SHINY_CHANCE
-                missing_pool = [p for p in base_pool if user_quantities.get((p['id'], s), 0) == 0]
-                one_qty_pool = [p for p in base_pool if user_quantities.get((p['id'], s), 0) == 1]
+                is_shiny_bool = random.random() < SHINY_CHANCE
+
+                missing_pool = []
+                one_qty_pool = []
+
+                for p in base_pool:
+                    form_off = get_form_offset(p['id'])
+                    s_v = form_off + (1 if is_shiny_bool else 0)
+
+                    qty = user_quantities.get((p['id'], s_v), 0)
+                    if qty == 0:
+                        missing_pool.append((p, s_v))
+                    elif qty == 1:
+                        one_qty_pool.append((p, s_v))
 
                 if missing_pool:
-                    p_data = random.choice(missing_pool)
+                    p_data, final_s_val = random.choice(missing_pool)
                 elif one_qty_pool:
-                    p_data = random.choice(one_qty_pool)
+                    p_data, final_s_val = random.choice(one_qty_pool)
                 else:
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                     possible = [p for p in base_pool if p['category'] == cat]
                     p_data = random.choice(possible if possible else base_pool)
+                    form_off = get_form_offset(p_data['id'])
+                    final_s_val = form_off + (1 if is_shiny_bool else 0)
 
-                pack_results.append({'data': p_data, 'is_shiny': s})
-                user_quantities[(p_data['id'], s)] = user_quantities.get((p_data['id'], s), 0) + 1
+                pack_results.append({'data': p_data, 'is_shiny': final_s_val})
+                user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
 
+        # 5. Sobres Normales
         else:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
+
             if region_filter == 'Kanto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             elif region_filter == 'Johto':
                 base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif region_filter == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
             elif region_filter == 'Unown':
                 from pokemon_data import POKEMON_UNOWN
                 base_pool = POKEMON_UNOWN
@@ -4206,33 +4643,46 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for p in base_pool: pool_by_cat[p['category']].append(p)
 
             for _ in range(pack_size):
-                is_shiny = random.random() < SHINY_CHANCE
+                is_shiny_bool = random.random() < SHINY_CHANCE
                 cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                 possible = pool_by_cat[cat]
-                pack_results.append({'data': random.choice(possible if possible else base_pool), 'is_shiny': is_shiny})
+                p_data = random.choice(possible if possible else base_pool)
+
+                form_offset = get_form_offset(p_data['id'])
+                s_val = form_offset + (1 if is_shiny_bool else 0)
+                pack_results.append({'data': p_data, 'is_shiny': s_val})
 
         # --- EVALUAR LOS RESULTADOS DEL SOBRE ACTUAL ---
         summary_parts = []
         for result in pack_results:
-            p, s = result['data'], result['is_shiny']
-            rarity = get_rarity(p['category'], s)
+            p, s_val = result['data'], result['is_shiny']
+
+            # Usar is_true_shiny para extraer la rareza y el nombre correctos
+            is_true_shiny = (s_val % 2 != 0)
+            rarity = get_rarity(p['category'], is_true_shiny)
 
             if update.effective_chat.type in ['group', 'supergroup']:
                 db.add_pokemon_to_group_pokedex(chat_id, p['id'])
-                await check_and_unlock_johto(chat_id, context)
+                await check_and_unlock_regions(chat_id, context)
 
-            status = db.add_sticker_smart(user.id, p['id'], s)
-            p_display = get_formatted_name(p, s)
+            status = db.add_sticker_smart(user.id, p['id'], s_val)
+            p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
+            # Añadir la forma visualmente al texto
+            form_name = ""
+            if p['id'] in POKEMON_FORMS:
+                base_val = s_val - 1 if is_true_shiny else s_val
+                form_name = f" Forma {POKEMON_FORMS[p['id']][base_val][1]}"
+
             if status == 'NEW':
-                summary_parts.append(f"🔸🆕 {p_display} {r_emoji}")
+                summary_parts.append(f"🔸🆕 {p_display}{form_name} {r_emoji}")
             elif status == 'DUPLICATE':
-                summary_parts.append(f"🔸♻️ {p_display} {r_emoji}")
+                summary_parts.append(f"🔸♻️ {p_display}{form_name} {r_emoji}")
             else:
                 money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
                 db.update_money(user.id, money)
-                summary_parts.append(f"🔸✔️ {p_display} {r_emoji} (+{format_money(money)}₽)")
+                summary_parts.append(f"🔸✔️ {p_display}{form_name} {r_emoji} (+{format_money(money)}₽)")
 
         pack_summary = f"<b>Sobre {i + 1}:</b>\n" + "\n".join(summary_parts) + "\n\n"
 
@@ -4243,7 +4693,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         final_text += pack_summary
 
-    # 5. Comprobar si completó alguna región
+    # 5. Comprobar si completó alguna región INDIVIDUALMENTE
     premios_extra = ""
     if not db.is_kanto_completed_by_user(user.id) and db.get_user_unique_kanto_count(user.id) >= 151:
         db.set_kanto_completed_by_user(user.id)
@@ -4257,6 +4707,12 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
         premios_extra += f"\n🎊 ¡Felicidades, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
+    if not db.is_hoenn_completed_by_user(user.id) and db.get_user_unique_hoenn_count(user.id) >= 135:
+        db.set_hoenn_completed_by_user(user.id)
+        db.update_money(user.id, 3000)
+        db.add_item_to_inventory(user.id, 'pack_shiny_hoenn', 1)
+        premios_extra += f"\n🎊 ¡Felicidades, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
+
     if not db.is_unown_completed_by_user(user.id) and db.get_user_unique_unown_count(user.id) >= 28:
         db.set_unown_completed_by_user(user.id)
         db.update_money(user.id, 2000)
@@ -4264,6 +4720,60 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         premios_extra += f"\n🎊 ¡Felicidades, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
     final_text += premios_extra
+
+    # --- PREMIOS RETOS GRUPALES ---
+    is_qualified = await is_group_qualified(chat_id, context)
+
+    if update.effective_chat.type in ['group', 'supergroup']:
+        # 1. RETO KANTO
+        if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
+            group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
+            if len(group_unique_ids) >= 151:
+                db.mark_event_completed(chat_id, 'kanto_group_challenge')
+                if is_qualified:
+                    group_users = db.get_users_in_group(chat_id)
+                    for uid in group_users:
+                        db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                        db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+                else:
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
+
+        # 2. RETO JOHTO
+        excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+        if not db.is_event_completed(chat_id, 'johto_group_challenge'):
+            raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
+            valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
+            if len(valid_johto_ids) >= 91:
+                db.mark_event_completed(chat_id, 'johto_group_challenge')
+                if is_qualified:
+                    group_users = db.get_users_in_group(chat_id)
+                    for uid in group_users:
+                        db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
+                        db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
+                else:
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
+
+        # 3. RETO HOENN
+        excluded_hoenn = {298, 360}
+        if not db.is_event_completed(chat_id, 'hoenn_group_challenge'):
+            raw_hoenn_ids = db.query_db(
+                'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
+                (chat_id,))
+            group_ids_hoenn = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
+            valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
+
+            if len(valid_hoenn_ids) >= 133:
+                db.mark_event_completed(chat_id, 'hoenn_group_challenge')
+                if is_qualified:
+                    group_users = db.get_users_in_group(chat_id)
+                    for uid in group_users:
+                        db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Hoenn")
+                        db.add_mail(uid, 'inventory_item', 'pack_shiny_hoenn', "Premio Reto Grupal: Hoenn")
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Hoenn en su buzón."
+                else:
+                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>!"
 
     # 6. Enviar el último mensaje (o único, si cabía todo)
     if final_text.strip():
@@ -4842,15 +5352,21 @@ async def dinero(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.register_user_in_group(user.id, update.effective_chat.id)
 
     money = db.get_user_money(user.id)
-    # --- CORRECCIÓN: Usamos effective_message ---
+
+    # NUEVO: Texto más amigable y sin Markdown para evitar errores con nombres raros
+    safe_name = user.first_name.replace('<', '').replace('>', '')
+    text = f"{safe_name}, tienes <b>{format_money(money)}₽</b> 💰."
+
     sent_message = await update.effective_message.reply_text(
-        f"Tienes *{format_money(money)}₽* 💰.",
-        parse_mode='Markdown',
+        text,
+        parse_mode='HTML',
         disable_notification=True
     )
-    schedule_message_deletion(context, sent_message)
-    if update.message:  # Solo borramos si hay comando de texto
-        schedule_message_deletion(context, update.message)
+
+    # NUEVO: Aumentado el tiempo de borrado a 60 segundos
+    schedule_message_deletion(context, sent_message, 60)
+    if update.message:
+        schedule_message_deletion(context, update.message, 5)
 
 
 async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4925,7 +5441,7 @@ async def regalar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Mensaje de éxito (este no se suele borrar rápido para que quede constancia, pero borramos el comando del usuario)
     await update.message.reply_text(
-        f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado a {recipient_mention}: *{format_money(amount)}₽*",
+        f"💸 ¡Transacción completada!\n{sender_mention} le ha enviado **{format_money(amount)}₽** a {recipient_mention}.",
         parse_mode='Markdown', disable_notification=True
     )
 
@@ -5048,26 +5564,55 @@ async def retos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if johto_unlocked:
         group_ids_johto = db.get_group_unique_johto_ids(chat_id)
-
-        # --- FILTRO: EXCLUIR BEBÉS Y UNOWN DEL RECUENTO GRUPAL ---
-        # IDs a excluir: 172, 173, 174, 175, 201, 236, 238, 239, 240
-        excluded_ids = {172, 173, 174, 175, 201, 236, 238, 239, 240}
-        valid_johto_ids = [pid for pid in group_ids_johto if pid not in excluded_ids]
+        excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
+        valid_johto_ids = [pid for pid in group_ids_johto if pid not in excluded_johto]
 
         total_johto = len(valid_johto_ids)
-        target_johto = 91  # 100 totales - 8 bebés - 1 unown
+        target_johto = 91
 
         if total_johto >= target_johto:
             text += f"🎯 Objetivo: Conseguir los {target_johto} Pokémon de Johto ✅ **¡Hecho!**\n"
         else:
             text += f"🎯 Objetivo: Conseguir los {target_johto} Pokémon de Johto:\n"
             text += f"📊 Total: {total_johto}/{target_johto}\n"
+
+        text += "\n" + "—" * 15 + "\n"
+
+        # --- LÓGICA HOENN (Desbloqueo al 75% de Johto = 68) ---
+        hoenn_unlocked = total_johto >= 68
+
+        if hoenn_unlocked:
+            # Reutilizamos la función de la BD para sacar los IDs grupales de Hoenn
+            # (No te preocupes por las formas múltiples, group_pokedex ya guarda el ID base, ej: 351, 386)
+            raw_group_ids_hoenn = db.query_db(
+                'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
+                (chat_id,))
+            group_ids_hoenn = {row[0] for row in raw_group_ids_hoenn} if raw_group_ids_hoenn else set()
+
+            # Excluimos bebés de Hoenn (Azurill y Wynaut)
+            excluded_hoenn = {298, 360}
+            valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
+
+            total_hoenn = len(valid_hoenn_ids)
+            target_hoenn = 133
+
+            if total_hoenn >= target_hoenn:
+                text += f"🎯 Objetivo: Conseguir los {target_hoenn} Pokémon de Hoenn ✅ **¡Hecho!**\n"
+            else:
+                text += f"🎯 Objetivo: Conseguir los {target_hoenn} Pokémon de Hoenn:\n"
+                text += f"📊 Total: {total_hoenn}/{target_hoenn}\n"
+        else:
+            text += "🔒 _Tercer reto bloqueado (Requiere 75% de Johto)_\n"
+
     else:
         text += "🔒 _Siguiente reto bloqueado (Requiere 75% de Kanto)_\n"
 
-    is_unlocked_flag = 1 if johto_unlocked else 0
+    # Enviamos los flags de desbloqueo al botón de faltantes
+    johto_flag = 1 if johto_unlocked else 0
+    hoenn_flag = 1 if (johto_unlocked and hoenn_unlocked) else 0
+
     keyboard = [[InlineKeyboardButton("📋 Stickers que faltan",
-                                      callback_data=f"retos_missing_menu_{chat_id}_{is_unlocked_flag}")]]
+                                      callback_data=f"retos_missing_menu_{chat_id}_{johto_flag}_{hoenn_flag}")]]
 
     if query and not is_panel:
         refresh_deletion_timer(context, message, 30)
@@ -5519,7 +6064,8 @@ async def trade_search_start_handler(update: Update, context: ContextTypes.DEFAU
     if query.message.chat.type == 'private':
         return await query.answer("Este buscador solo funciona si usas el comando dentro de un grupo.", show_alert=True)
 
-    text = "🔍 **Elige la región del sticker que quieres conseguir:**"
+    safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
+    text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que quieres conseguir:**"
     keyboard = [
         [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
         [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
@@ -5603,7 +6149,8 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     if nav_row: keyboard.append(nav_row)
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_search_start_{sender_id}_{cmd_msg_id}")])
 
-    text = f"🔍 **Elige el sticker que deseas conseguir ({region.capitalize()}):**"
+    safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
+    text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige el sticker que quieres conseguir ({region.capitalize()}):**"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
@@ -5793,8 +6340,10 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
     keyboard.append([InlineKeyboardButton("⬅️ Volver a regiones",
                                           callback_data=f"trade_back_reg_{target_id}_{sender_id}_{cmd_msg_id}")])
 
+    sender_user = await context.bot.get_chat(sender_id)
+    safe_sender = sender_user.first_name.replace('*', '').replace('_', '')
     target_name = (await context.bot.get_chat(target_id)).first_name
-    text = f"♻ **Repetidos de {target_name} ({region.capitalize()}):**\nSelecciona qué quieres recibir."
+    text = f"👤 *{safe_sender} intercambiando.*\n\n♻ **Repetidos de {target_name} ({region.capitalize()}):**\nSelecciona qué quieres recibir."
 
     if update.callback_query:
         refresh_deletion_timer(context, update.callback_query.message, 120)
@@ -6392,32 +6941,38 @@ async def check_delibird_startup(application):
 
 
 async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
-    """Lanza el evento."""
-    # 1. Limpiamos la programación de la BD
+    """Lanza el evento semanal (Delibird o Pelipper según el progreso del grupo)."""
     db.clear_delibird_schedule()
 
     active_groups = db.get_active_groups()
     current_time = time.time()
 
-    # Log para saber qué está pasando
-    logger.info(f"🐧 Lanzando Delibird a {len(active_groups)} grupos activos.")
-
-    text = (
-        "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
-        "Trae un saco lleno de sobres elementales de Kanto.\n"
-        "¡Reclama el tuyo antes de que se vaya!\n\n"
-    )
-
-    keyboard = [
-        [InlineKeyboardButton("🎁 ¡RECLAMAR SOBRE!", callback_data="delibird_claim")],
-        [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
-    ]
+    logger.info(f"Lanzando Evento Semanal a {len(active_groups)} grupos activos.")
 
     count_sent = 0
     for chat_id in active_groups:
         try:
-            # Añadimos debug para ver a qué chat intenta enviar
-            logger.info(f"🐧 Enviando a chat: {chat_id}")
+            # 1. Comprobamos si el grupo ha llegado a Hoenn
+            is_hoenn_unlocked = db.is_event_completed(chat_id, 'amelia_hoenn_unlock')
+
+            # 2. Elegimos al mensajero y su texto
+            if is_hoenn_unlocked:
+                text = (
+                    "🐦🎁 **¡PELIPPER HA LLEGADO!**\n\n"
+                    "Trae muchos sobres elementales de Johto en su pico.\n"
+                    "¡Reclama el tuyo antes de que se vaya!\n\n"
+                )
+            else:
+                text = (
+                    "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
+                    "Trae un saco lleno de sobres elementales de Kanto.\n"
+                    "¡Reclama el tuyo antes de que se vaya!\n\n"
+                )
+
+            keyboard = [
+                [InlineKeyboardButton("🎁 ¡RECLAMAR PREMIO!", callback_data="delibird_claim")],
+                [InlineKeyboardButton("ℹ", callback_data="delibird_info")]
+            ]
 
             msg = await context.bot.send_message(chat_id=chat_id, text=text,
                                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -6425,17 +6980,16 @@ async def trigger_delibird_event(context: ContextTypes.DEFAULT_TYPE):
             DELIBIRD_STATE[chat_id] = {
                 'msg_id': msg.message_id,
                 'winners': [],
-                'timestamp': current_time
+                'timestamp': current_time,
+                'is_pelipper': is_hoenn_unlocked # Guardamos quién es el mensajero
             }
             # Cierre en 24h
             context.job_queue.run_once(close_delibird_event, 86400, chat_id=chat_id, data=chat_id)
             count_sent += 1
 
         except Exception as e:
-            # AQUÍ VERÁS EL ERROR EN RENDER SI FALLA
-            logger.error(f"❌ Error enviando Delibird a {chat_id}: {e}")
+            logger.error(f"❌ Error enviando evento semanal a {chat_id}: {e}")
 
-    logger.info(f"🐧 Delibird enviado con éxito a {count_sent}/{len(active_groups)} grupos.")
 
 async def close_delibird_event(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data
@@ -6443,15 +6997,18 @@ async def close_delibird_event(context: ContextTypes.DEFAULT_TYPE):
 
     if state:
         try:
-            # Editar mensaje final
-            final_text = "🐧💤 **Delibird se fue a descansar**\n\nResultados del reparto:\n" + "\n".join(
-                state['winners'])
+            is_pelipper = state.get('is_pelipper', False)
+            if is_pelipper:
+                final_text = "🐦💤 **Pelipper se fue a descansar.**\n\nResultados del reparto:\n" + "\n".join(state['winners'])
+            else:
+                final_text = "🐧💤 **Delibird se fue a descansar.**\n\nResultados del reparto:\n" + "\n".join(
+                    state['winners'])
+
             await context.bot.edit_message_text(chat_id=chat_id, message_id=state['msg_id'], text=final_text,
                                                 parse_mode='Markdown')
         except:
             pass
 
-        # Limpiar memoria
         del DELIBIRD_STATE[chat_id]
 
 
@@ -6461,43 +7018,48 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
     chat_id = query.message.chat_id
     message = query.message
 
+    current_text = message.text_markdown if message.text_markdown else message.text
+    is_pelipper_msg = "PELIPPER" in current_text
+
+    # --- BOTÓN DE INFORMACIÓN ---
     if query.data == "delibird_info":
-        await query.answer(
-            "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales con más probabilidad de Shiny.",
-            show_alert=True)
+        if is_pelipper_msg:
+            await query.answer(
+                "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales de Johto con más probabilidad de Shiny.",
+                show_alert=True)
+        else:
+            await query.answer(
+                "🎒 Contiene sobres de tipos (Fuego, Agua, etc...) y Sobres Especiales de Kanto con más probabilidad de Shiny.",
+                show_alert=True)
         return
 
     # --- 1. DEFENSA CONTRA MENSAJES ZOMBIES ---
-    # Comprobamos la edad real del mensaje en Telegram
     msg_timestamp = message.date.timestamp()
-    current_timestamp = time.time()
-
-    if (current_timestamp - msg_timestamp) > 86400:  # 86400s = 24 horas
-        await query.answer("Delibird ya se fue a descansar...", show_alert=True)
-
-        # Rescatamos la lista de ganadores para cerrar el mensaje de forma bonita
+    if (time.time() - msg_timestamp) > 86400:  # 24 horas
         winners_list = []
-        current_text = message.text_markdown if message.text_markdown else message.text
         if "Resultados:" in current_text:
             parts = current_text.split("Resultados:\n")
             if len(parts) > 1:
                 raw_lines = parts[1].split("\n")
                 winners_list = [line for line in raw_lines if line.strip()]
 
-        final_text = "🐧💤 **Delibird se fue a descansar**\n\nResultados del reparto:\n" + "\n".join(winners_list)
+        if is_pelipper_msg:
+            await query.answer("Pelipper ya se fue a descansar.", show_alert=True)
+            final_text = "🐦💤 **Pelipper se fue a descansar.**\n\nResultados del reparto:\n" + "\n".join(winners_list)
+        else:
+            await query.answer("Delibird ya se fue a descansar.", show_alert=True)
+            final_text = "🐧💤 **Delibird se fue a descansar.**\n\nResultados del reparto:\n" + "\n".join(winners_list)
+
         try:
             await query.edit_message_text(text=final_text, parse_mode='Markdown')
         except:
             pass
         return
-    # ------------------------------------------
 
-    # --- 2. RECUPERACIÓN DE ESTADO EN RAM (SI SE REINICIÓ RECIENTEMENTE) ---
+    # --- 2. RECUPERACIÓN DE ESTADO EN RAM ---
     state = DELIBIRD_STATE.get(chat_id)
-
     if not state:
-        current_text = message.text_markdown if message.text_markdown else message.text
-        if "DELIBIRD HA LLEGADO" in current_text:
+        if "PELIPPER HA LLEGADO" in current_text or "DELIBIRD HA LLEGADO" in current_text:
             winners_list = []
             if "Resultados:" in current_text:
                 parts = current_text.split("Resultados:\n")
@@ -6508,43 +7070,62 @@ async def delibird_claim_handler(update: Update, context: ContextTypes.DEFAULT_T
             DELIBIRD_STATE[chat_id] = {
                 'msg_id': message.message_id,
                 'winners': winners_list,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'is_pelipper': is_pelipper_msg
             }
             state = DELIBIRD_STATE[chat_id]
         else:
-            await query.answer("Delibird ya se ha ido...", show_alert=True)
+            await query.answer("El Pokémon repartidor ya se ha ido...", show_alert=True)
             return
 
     # --- 3. VERIFICACIÓN SEGURA EN BASE DE DATOS ---
     if db.check_delibird_claimed_this_week(user.id):
-        await query.answer("¡Ya has reclamado un sobre esta semana!", show_alert=True)
+        await query.answer("¡Ya has cogido un sobre esta semana!", show_alert=True)
         return
-    # -----------------------------------------------
 
-    # Seleccionar premio
-    possible_packs = [k for k in SHOP_CONFIG.keys() if k.startswith('pack_elem_')]
+    # --- 4. SELECCIONAR PREMIO SEGÚN EL MENSAJERO ---
+    is_pelipper = state.get('is_pelipper', False)
+
+    if is_pelipper:
+        # Pelipper da sobres de Johto (los que terminan en _j y el especial_johto)
+        possible_packs = [k for k in SHOP_CONFIG.keys() if k.endswith('_j')] + ['pack_special_johto']
+    else:
+        # Delibird da sobres de Kanto (los elementales que no terminan en _j y el especial elemental)
+        possible_packs = [k for k in SHOP_CONFIG.keys() if
+                          k.startswith('pack_elem_') and not k.endswith('_j') and k != 'pack_special_johto']
+
     prize_id = random.choice(possible_packs)
     prize_info = SHOP_CONFIG[prize_id]
 
-    # Dar premio (A LA MOCHILA)
+    # Dar premio
     db.get_or_create_user(user.id, user.first_name)
     db.add_item_to_inventory(user.id, prize_id, 1)
-
-    # MARCAR EN BASE DE DATOS
     db.set_delibird_claimed(user.id)
 
     # Actualizar lista visual
     safe_name = user.first_name.replace('*', '').replace('_', '')
-    pack_display_name = f"🎴{prize_info['emoji']} Sobre {prize_info.get('type_filter', 'Especial')} de Kanto"
+
+    # Nombre del sobre limpio para el mensaje del grupo
+    sobre_region = "Johto" if is_pelipper else "Kanto"
+    pack_display_name = f"🎴{prize_info.get('emoji', '🎁')} Sobre {prize_info.get('type_filter', 'Especial')} de {sobre_region}"
+
     list_line = f"- {safe_name} recibió {pack_display_name}."
     state['winners'].append(list_line)
 
-    new_text = (
-            "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
-            "Trae un saco lleno de sobres elementales de Kanto.\n"
-            "¡Reclama el tuyo antes de que se vaya!\n\n"
-            "Resultados:\n" + "\n".join(state['winners'])
-    )
+    if is_pelipper:
+        new_text = (
+                "🐦🎁 **¡PELIPPER HA LLEGADO!**\n\n"
+                "Trae muchos sobres elementales de Johto en su pico.\n"
+                "¡Reclama el tuyo antes de que se vaya!\n\n"
+                "Resultados:\n" + "\n".join(state['winners'])
+        )
+    else:
+        new_text = (
+                "🐧🎁 **¡DELIBIRD HA LLEGADO!**\n\n"
+                "Trae un saco lleno de sobres elementales de Kanto.\n"
+                "¡Reclama el tuyo antes de que se vaya!\n\n"
+                "Resultados:\n" + "\n".join(state['winners'])
+        )
 
     try:
         await query.edit_message_text(text=new_text, reply_markup=query.message.reply_markup, parse_mode='Markdown')
@@ -7122,6 +7703,7 @@ def main():
         CallbackQueryHandler(trade_search_user_err_handler, pattern="^trade_suser_err$"),
         CallbackQueryHandler(inv_close_handler, pattern="^inv_close_"),
         CallbackQueryHandler(safari_hunt_btn_handler, pattern="^safari_hunt_"),
+        CallbackQueryHandler(claim_hoenn_starter_handler, pattern="^claim_hoenn_starter$"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
