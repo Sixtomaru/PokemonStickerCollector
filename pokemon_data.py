@@ -437,7 +437,7 @@ SKARMORY_ID = [227] # Exclusivo evento
 JIRACHI_ID = [385] # Exclusivo evento
 
 # 1. EXCLUIDOS DE LOS SOBRES (Bebés, Unowns y Jirachi)
-EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + JIRACHI_ID)
+EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + JIRACHI_ID + SKARMORY_ID)
 ALL_POKEMON_PACKS = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_FROM_PACKS]
 
 # 2. EXCLUIDOS DE SALVAJES (Todo lo anterior + Legendarios por desbloquear + Skarmory)
