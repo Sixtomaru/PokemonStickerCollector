@@ -387,6 +387,7 @@ ITEM_NAMES['pluma_arcoiris'] = 'Pluma Arcoíris'
 DAILY_WEIGHTS = [50, 32, 16, 2]
 USER_FRIENDLY_ITEM_IDS = {'sobremagicomedianonacional': 'pack_magic_medium_national'}
 MULTISOBRE_IDS = {
+    # --- NACIONALES ---
     'pequeñonacional': 'pack_small_national',
     'medianonacional': 'pack_medium_national',
     'grandenacional': 'pack_large_national',
@@ -394,6 +395,7 @@ MULTISOBRE_IDS = {
     'magicomedianonacional': 'pack_magic_medium_national',
     'magicograndenacional': 'pack_magic_large_national',
 
+    # --- KANTO ---
     'pequeñokanto': 'pack_small_kanto',
     'medianokanto': 'pack_medium_kanto',
     'grandekanto': 'pack_large_kanto',
@@ -401,6 +403,7 @@ MULTISOBRE_IDS = {
     'magicomedianokanto': 'pack_magic_medium_kanto',
     'magicograndekanto': 'pack_magic_large_kanto',
 
+    # --- JOHTO ---
     'pequeñojohto': 'pack_small_johto',
     'medianojohto': 'pack_medium_johto',
     'grandejohto': 'pack_large_johto',
@@ -408,6 +411,15 @@ MULTISOBRE_IDS = {
     'magicomedianojohto': 'pack_magic_medium_johto',
     'magicograndejohto': 'pack_magic_large_johto',
 
+    # --- HOENN (¡LOS NUEVOS!) ---
+    'pequeñohoenn': 'pack_small_hoenn',
+    'medianohoenn': 'pack_medium_hoenn',
+    'grandehoenn': 'pack_large_hoenn',
+    'magicopequeñohoenn': 'pack_magic_small_hoenn',
+    'magicomedianohoenn': 'pack_magic_medium_hoenn',
+    'magicograndehoenn': 'pack_magic_large_hoenn',
+
+    # --- UNOWN ---
     'pequeñounown': 'pack_small_unown',
     'medianounown': 'pack_medium_unown',
     'grandeunown': 'pack_large_unown',
@@ -416,6 +428,7 @@ MULTISOBRE_IDS = {
     'magicograndeunown': 'pack_magic_large_unown',
     'especialunown': 'pack_special_unown'
 }
+
 POKEMON_BY_CATEGORY = {cat: [] for cat in PROBABILITIES.keys()}
 for pokemon_item in ALL_POKEMON:
     # FILTRO: Solo añadimos Kanto (1-151) al pool de salvajes
@@ -634,22 +647,66 @@ async def claim_hoenn_starter_handler(update: Update, context: ContextTypes.DEFA
     if db.check_event_button_claim(chat_id, 'amelia_hoenn_unlock', user.id):
         return await query.answer("¡Ya has escaneado a tu inicial de Hoenn!", show_alert=True)
 
-    # 2. Damos el premio
+    # 2. Elegimos al inicial y tiramos los dados para shiny
     pokemon_id = random.choice([252, 255, 258])  # Treecko, Torchic, Mudkip
-    is_shiny = random.random() < 0.02  # 2% de probabilidad
+    is_shiny_bool = random.random() < SHINY_CHANCE
 
-    # 3. Registramos en la base de datos que ya lo ha cogido
+    # 3. Aplicamos el formato 0-7 (Aunque no tengan formas alternativas, el sistema lo requiere)
+    is_shiny_val = 1 if is_shiny_bool else 0
+    rarity = get_rarity('C', is_shiny_bool)  # Los tres son rareza C
+
+    # 4. Registramos en la base de datos que ya lo ha cogido
     db.add_event_button_claim(chat_id, 'amelia_hoenn_unlock', user.id)
 
-    # 4. Guardamos el sticker
-    status = db.add_sticker_smart(user.id, pokemon_id, is_shiny)
+    # 5. Guardamos el sticker
+    status = db.add_sticker_smart(user.id, pokemon_id, is_shiny_val)
     p_data = POKEMON_BY_ID[pokemon_id]
-    p_name = f"{p_data['name']}{' brillante ✨' if is_shiny else ''}"
+    p_name = f"{p_data['name']}{' brillante ✨' if is_shiny_bool else ''}"
 
+    # 6. Damos dinero si lo tiene repetido (Casi imposible siendo el primero, pero por si acaso)
     if status == 'MAX':
         money = DUPLICATE_MONEY_VALUES.get('C', 100)
         db.update_money(user.id, money)
 
+    # 7. --- DETECTOR DE ÁLBUM COMPLETO (Seguro y directo) ---
+    premio_texto = ""
+    # Kanto
+    if not db.is_kanto_completed_by_user(user.id) and db.get_user_unique_kanto_count(user.id) >= 151:
+        db.set_kanto_completed_by_user(user.id)
+        db.update_money(user.id, 3000)
+        db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
+        premio_texto += "\n\n🎊 ¡Felicidades, has completado Kanto! 🎊"
+
+    # Johto
+    if not db.is_johto_completed_by_user(user.id) and db.get_user_unique_johto_count(user.id) >= 100:
+        db.set_johto_completed_by_user(user.id)
+        db.update_money(user.id, 3000)
+        db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
+        premio_texto += "\n\n🎊 ¡Felicidades, has completado Johto! 🎊"
+
+    # Hoenn
+    if not db.is_hoenn_completed_by_user(user.id) and db.get_user_unique_hoenn_count(user.id) >= 135:
+        db.set_hoenn_completed_by_user(user.id)
+        db.update_money(user.id, 3000)
+        db.add_item_to_inventory(user.id, 'pack_shiny_hoenn', 1)
+        premio_texto += "\n\n🎊 ¡Felicidades, has completado Hoenn! 🎊"
+
+    # Unown
+    if not db.is_unown_completed_by_user(user.id) and db.get_user_unique_unown_count(user.id) >= 28:
+        db.set_unown_completed_by_user(user.id)
+        db.update_money(user.id, 2000)
+        db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
+        premio_texto += "\n\n🎊 ¡Felicidades, has completado el Álbum Unown! 🎊"
+
+    # Si hay premios por completar álbum, se los enviamos en un mensaje privado o al grupo para que no rompa el pop-up
+    if premio_texto:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"{user.mention_markdown()} {premio_texto}",
+                                           parse_mode='Markdown')
+        except:
+            pass
+
+    # 8. Respuesta final en el pop-up (Limpia)
     await query.answer(f"¡Has escaneado un {p_name} 📸!", show_alert=True)
 
 
