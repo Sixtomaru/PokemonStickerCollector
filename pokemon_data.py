@@ -264,6 +264,145 @@ POKEMON_JOHTO = [
     {"id": 251, "name": "Celebi", "category": "S", "types": ["Psíquico", "Planta"]},
 ]
 
+# --- POKÉMON HOENN (252-386) ---
+POKEMON_HOENN = [
+    {"id": 252, "name": "Treecko", "category": "C", "types": ["Planta"]},
+    {"id": 253, "name": "Grovyle", "category": "B", "types": ["Planta"]},
+    {"id": 254, "name": "Sceptile", "category": "A", "types": ["Planta"]},
+    {"id": 255, "name": "Torchic", "category": "C", "types": ["Fuego"]},
+    {"id": 256, "name": "Combusken", "category": "B", "types": ["Fuego", "Lucha"]},
+    {"id": 257, "name": "Blaziken", "category": "A", "types": ["Fuego", "Lucha"]},
+    {"id": 258, "name": "Mudkip", "category": "C", "types": ["Agua"]},
+    {"id": 259, "name": "Marshtomp", "category": "B", "types": ["Agua", "Tierra"]},
+    {"id": 260, "name": "Swampert", "category": "A", "types": ["Agua", "Tierra"]},
+    {"id": 261, "name": "Poochyena", "category": "C", "types": ["Siniestro"]},
+    {"id": 262, "name": "Mightyena", "category": "B", "types": ["Siniestro"]},
+    {"id": 263, "name": "Zigzagoon", "category": "C", "types": ["Normal"]},
+    {"id": 264, "name": "Linoone", "category": "B", "types": ["Normal"]},
+    {"id": 265, "name": "Wurmple", "category": "C", "types": ["Bicho"]},
+    {"id": 266, "name": "Silcoon", "category": "B", "types": ["Bicho"]},
+    {"id": 267, "name": "Beautifly", "category": "A", "types": ["Bicho", "Veneno"]},
+    {"id": 268, "name": "Cascoon", "category": "B", "types": ["Bicho"]},
+    {"id": 269, "name": "Dustox", "category": "A", "types": ["Bicho", "Veneno"]},
+    {"id": 270, "name": "Lotad", "category": "C", "types": ["Agua", "Planta"]},
+    {"id": 271, "name": "Lombre", "category": "B", "types": ["Agua", "Planta"]},
+    {"id": 272, "name": "Ludicolo", "category": "A", "types": ["Agua", "Planta"]},
+    {"id": 273, "name": "Seedot", "category": "C", "types": ["Planta"]},
+    {"id": 274, "name": "Nuzleaf", "category": "B", "types": ["Planta", "Siniestro"]},
+    {"id": 275, "name": "Shiftry", "category": "A", "types": ["Planta", "Siniestro"]},
+    {"id": 276, "name": "Taillow", "category": "C", "types": ["Normal", "Volador"]},
+    {"id": 277, "name": "Swellow", "category": "B", "types": ["Normal", "Volador"]},
+    {"id": 278, "name": "Wingull", "category": "C", "types": ["Agua", "Volador"]},
+    {"id": 279, "name": "Pelipper", "category": "B", "types": ["Agua", "Volador"]},
+    {"id": 280, "name": "Ralts", "category": "C", "types": ["Psíquico", "Hada"]},
+    {"id": 281, "name": "Kirlia", "category": "B", "types": ["Psíquico", "Hada"]},
+    {"id": 282, "name": "Gardevoir", "category": "A", "types": ["Psíquico", "Hada"]},
+    {"id": 283, "name": "Surskit", "category": "C", "types": ["Bicho", "Agua"]},
+    {"id": 284, "name": "Masquerain", "category": "B", "types": ["Bicho", "Volador"]},
+    {"id": 285, "name": "Shroomish", "category": "C", "types": ["Planta"]},
+    {"id": 286, "name": "Breloom", "category": "B", "types": ["Planta", "Lucha"]},
+    {"id": 287, "name": "Slakoth", "category": "C", "types": ["Normal"]},
+    {"id": 288, "name": "Vigoroth", "category": "B", "types": ["Normal"]},
+    {"id": 289, "name": "Slaking", "category": "A", "types": ["Normal"]},
+    {"id": 290, "name": "Nincada", "category": "C", "types": ["Bicho", "Tierra"]},
+    {"id": 291, "name": "Ninjask", "category": "B", "types": ["Bicho", "Volador"]},
+    {"id": 292, "name": "Shedinja", "category": "B", "types": ["Bicho", "Fantasma"]},
+    {"id": 293, "name": "Whismur", "category": "C", "types": ["Normal"]},
+    {"id": 294, "name": "Loudred", "category": "B", "types": ["Normal"]},
+    {"id": 295, "name": "Exploud", "category": "A", "types": ["Normal"]},
+    {"id": 296, "name": "Makuhita", "category": "C", "types": ["Lucha"]},
+    {"id": 297, "name": "Hariyama", "category": "B", "types": ["Lucha"]},
+    {"id": 298, "name": "Azurill", "category": "C", "types": ["Normal", "Hada"]},
+    {"id": 299, "name": "Nosepass", "category": "C", "types": ["Roca"]},
+    {"id": 300, "name": "Skitty", "category": "C", "types": ["Normal"]},
+    {"id": 301, "name": "Delcatty", "category": "B", "types": ["Normal"]},
+    {"id": 302, "name": "Sableye", "category": "B", "types": ["Siniestro", "Fantasma"]},
+    {"id": 303, "name": "Mawile", "category": "B", "types": ["Acero", "Hada"]},
+    {"id": 304, "name": "Aron", "category": "C", "types": ["Acero", "Roca"]},
+    {"id": 305, "name": "Lairon", "category": "B", "types": ["Acero", "Roca"]},
+    {"id": 306, "name": "Aggron", "category": "A", "types": ["Acero", "Roca"]},
+    {"id": 307, "name": "Meditite", "category": "C", "types": ["Lucha", "Psíquico"]},
+    {"id": 308, "name": "Medicham", "category": "B", "types": ["Lucha", "Psíquico"]},
+    {"id": 309, "name": "Electrike", "category": "C", "types": ["Eléctrico"]},
+    {"id": 310, "name": "Manectric", "category": "B", "types": ["Eléctrico"]},
+    {"id": 311, "name": "Plusle", "category": "B", "types": ["Eléctrico"]},
+    {"id": 312, "name": "Minun", "category": "B", "types": ["Eléctrico"]},
+    {"id": 313, "name": "Volbeat", "category": "B", "types": ["Bicho"]},
+    {"id": 314, "name": "Illumise", "category": "B", "types": ["Bicho"]},
+    {"id": 315, "name": "Roselia", "category": "B", "types": ["Planta", "Veneno"]},
+    {"id": 316, "name": "Gulpin", "category": "C", "types": ["Veneno"]},
+    {"id": 317, "name": "Swalot", "category": "B", "types": ["Veneno"]},
+    {"id": 318, "name": "Carvanha", "category": "C", "types": ["Agua", "Siniestro"]},
+    {"id": 319, "name": "Sharpedo", "category": "B", "types": ["Agua", "Siniestro"]},
+    {"id": 320, "name": "Wailmer", "category": "C", "types": ["Agua"]},
+    {"id": 321, "name": "Wailord", "category": "B", "types": ["Agua"]},
+    {"id": 322, "name": "Numel", "category": "C", "types": ["Tierra", "Fuego"]},
+    {"id": 323, "name": "Camerupt", "category": "B", "types": ["Tierra", "Fuego"]},
+    {"id": 324, "name": "Torkoal", "category": "B", "types": ["Fuego"]},
+    {"id": 325, "name": "Spoink", "category": "C", "types": ["Psíquico"]},
+    {"id": 326, "name": "Grumpig", "category": "B", "types": ["Psíquico"]},
+    {"id": 327, "name": "Spinda", "category": "B", "types": ["Normal"]},
+    {"id": 328, "name": "Trapinch", "category": "C", "types": ["Tierra"]},
+    {"id": 329, "name": "Vibrava", "category": "B", "types": ["Tierra", "Dragón"]},
+    {"id": 330, "name": "Flygon", "category": "A", "types": ["Tierra", "Dragón"]},
+    {"id": 331, "name": "Cacnea", "category": "C", "types": ["Planta"]},
+    {"id": 332, "name": "Cacturne", "category": "B", "types": ["Planta", "Siniestro"]},
+    {"id": 333, "name": "Swablu", "category": "C", "types": ["Normal", "Volador"]},
+    {"id": 334, "name": "Altaria", "category": "B", "types": ["Dragón", "Volador"]},
+    {"id": 335, "name": "Zangoose", "category": "B", "types": ["Normal"]},
+    {"id": 336, "name": "Seviper", "category": "B", "types": ["Veneno"]},
+    {"id": 337, "name": "Lunatone", "category": "B", "types": ["Roca", "Psíquico"]},
+    {"id": 338, "name": "Solrock", "category": "B", "types": ["Roca", "Psíquico"]},
+    {"id": 339, "name": "Barboach", "category": "C", "types": ["Agua", "Tierra"]},
+    {"id": 340, "name": "Whiscash", "category": "B", "types": ["Agua", "Tierra"]},
+    {"id": 341, "name": "Corphish", "category": "C", "types": ["Agua"]},
+    {"id": 342, "name": "Crawdaunt", "category": "B", "types": ["Agua", "Siniestro"]},
+    {"id": 343, "name": "Baltoy", "category": "C", "types": ["Tierra", "Psíquico"]},
+    {"id": 344, "name": "Claydol", "category": "B", "types": ["Tierra", "Psíquico"]},
+    {"id": 345, "name": "Lileep", "category": "C", "types": ["Roca", "Planta"]},
+    {"id": 346, "name": "Cradily", "category": "B", "types": ["Roca", "Planta"]},
+    {"id": 347, "name": "Anorith", "category": "C", "types": ["Roca", "Bicho"]},
+    {"id": 348, "name": "Armaldo", "category": "A", "types": ["Roca", "Bicho"]},
+    {"id": 349, "name": "Feebas", "category": "C", "types": ["Agua"]},
+    {"id": 350, "name": "Milotic", "category": "A", "types": ["Agua"]},
+    {"id": 351, "name": "Castform", "category": "A", "types": ["Normal"]},
+    {"id": 352, "name": "Kecleon", "category": "A", "types": ["Normal"]},
+    {"id": 353, "name": "Shuppet", "category": "C", "types": ["Fantasma"]},
+    {"id": 354, "name": "Banette", "category": "B", "types": ["Fantasma"]},
+    {"id": 355, "name": "Duskull", "category": "C", "types": ["Fantasma"]},
+    {"id": 356, "name": "Dusclops", "category": "B", "types": ["Fantasma"]},
+    {"id": 357, "name": "Tropius", "category": "B", "types": ["Planta", "Volador"]},
+    {"id": 358, "name": "Chimecho", "category": "A", "types": ["Psíquico"]},
+    {"id": 359, "name": "Absol", "category": "B", "types": ["Siniestro"]},
+    {"id": 360, "name": "Wynaut", "category": "C", "types": ["Psíquico"]},
+    {"id": 361, "name": "Snorunt", "category": "C", "types": ["Hielo"]},
+    {"id": 362, "name": "Glalie", "category": "B", "types": ["Hielo"]},
+    {"id": 363, "name": "Spheal", "category": "C", "types": ["Hielo", "Agua"]},
+    {"id": 364, "name": "Sealeo", "category": "B", "types": ["Hielo", "Agua"]},
+    {"id": 365, "name": "Walrein", "category": "A", "types": ["Hielo", "Agua"]},
+    {"id": 366, "name": "Clamperl", "category": "C", "types": ["Agua"]},
+    {"id": 367, "name": "Huntail", "category": "B", "types": ["Agua"]},
+    {"id": 368, "name": "Gorebyss", "category": "B", "types": ["Agua"]},
+    {"id": 369, "name": "Relicanth", "category": "B", "types": ["Agua", "Roca"]},
+    {"id": 370, "name": "Luvdisc", "category": "B", "types": ["Agua"]},
+    {"id": 371, "name": "Bagon", "category": "C", "types": ["Dragón"]},
+    {"id": 372, "name": "Shelgon", "category": "B", "types": ["Dragón"]},
+    {"id": 373, "name": "Salamence", "category": "A", "types": ["Dragón", "Volador"]},
+    {"id": 374, "name": "Beldum", "category": "C", "types": ["Acero", "Psíquico"]},
+    {"id": 375, "name": "Metang", "category": "B", "types": ["Acero", "Psíquico"]},
+    {"id": 376, "name": "Metagross", "category": "A", "types": ["Acero", "Psíquico"]},
+    {"id": 377, "name": "Regirock", "category": "S", "types": ["Roca"]},
+    {"id": 378, "name": "Regice", "category": "S", "types": ["Hielo"]},
+    {"id": 379, "name": "Registeel", "category": "S", "types": ["Acero"]},
+    {"id": 380, "name": "Latias", "category": "S", "types": ["Dragón", "Psíquico"]},
+    {"id": 381, "name": "Latios", "category": "S", "types": ["Dragón", "Psíquico"]},
+    {"id": 382, "name": "Kyogre", "category": "S", "types": ["Agua"]},
+    {"id": 383, "name": "Groudon", "category": "S", "types": ["Tierra"]},
+    {"id": 384, "name": "Rayquaza", "category": "S", "types": ["Dragón", "Volador"]},
+    {"id": 385, "name": "Jirachi", "category": "S", "types": ["Acero", "Psíquico"]},
+    {"id": 386, "name": "Deoxys", "category": "S", "types": ["Psíquico"]}
+]
+
 # --- POKÉMON UNOWN (Generación automática de las 28 formas) ---
 UNOWN_LETTERS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ["!", "?"]
 POKEMON_UNOWN = []
@@ -280,21 +419,27 @@ UNOWN_IDS = [p['id'] for p in POKEMON_UNOWN]
 POKEMON_REGIONS = {
     "Kanto": POKEMON_KANTO,
     "Johto": POKEMON_JOHTO,
+    "Hoenn": POKEMON_HOENN,
     "Unown": POKEMON_UNOWN
 }
-
 ALL_POKEMON = [p for region_list in POKEMON_REGIONS.values() for p in region_list]
 POKEMON_BY_ID = {p['id']: p for p in ALL_POKEMON}
 
 # --- LISTAS NEGRAS (EXCLUSIONES) ---
-BABY_IDS = [172, 173, 174, 175, 236, 238, 239, 240]
+# Añadimos a Azurill y Wynaut a los bebés
+BABY_IDS = [172, 173, 174, 175, 236, 238, 239, 240, 298, 360]
 UNOWN_BASE_ID = [201]
 LEGENDARY_JOHTO_IDS = [243, 244, 245]
 
-# Excluimos a los Bebés, al Unown 201 genérico y a las 28 formas Unown de los sobres normales
-EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS)
+# Hoenn: Legendarios y bloqueos
+LEGENDARY_HOENN_IDS = [382, 383, 384] # Kyogre, Groudon, Rayquaza
+SKARMORY_ID = [227] # Exclusivo evento
+JIRACHI_ID = [385] # Exclusivo evento
+
+# 1. EXCLUIDOS DE LOS SOBRES (Bebés, Unowns y Jirachi)
+EXCLUDED_FROM_PACKS = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + JIRACHI_ID)
 ALL_POKEMON_PACKS = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_FROM_PACKS]
 
-# Excluimos de salvajes
-EXCLUDED_FROM_WILD = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + LEGENDARY_JOHTO_IDS)
+# 2. EXCLUIDOS DE SALVAJES (Todo lo anterior + Legendarios por desbloquear + Skarmory)
+EXCLUDED_FROM_WILD = set(BABY_IDS + UNOWN_BASE_ID + UNOWN_IDS + LEGENDARY_JOHTO_IDS + LEGENDARY_HOENN_IDS + SKARMORY_ID + JIRACHI_ID)
 ALL_POKEMON_SPAWNABLE = [p for p in ALL_POKEMON if p['id'] not in EXCLUDED_FROM_WILD]
