@@ -1019,14 +1019,24 @@ def check_event_button_claim(chat_id, event_id, user_id):
         return user_id in claim_list
     return False
 
+
 def add_event_button_claim(chat_id, event_id, user_id):
-    """Registra que un usuario ha pulsado el botón del evento."""
-    res = query_db("SELECT claim_list FROM group_events WHERE chat_id = %s AND event_id = %s", (chat_id, event_id), one=True)
+    """Registra que un usuario ha pulsado el botón del evento, creándolo si no existía."""
+    res = query_db("SELECT claim_list FROM group_events WHERE chat_id = %s AND event_id = %s", (chat_id, event_id),
+                   one=True)
+
     if res and res[0]:
         claim_list = json.loads(res[0])
-        if user_id not in claim_list:
-            claim_list.append(user_id)
-            query_db("UPDATE group_events SET claim_list = %s WHERE chat_id = %s AND event_id = %s", (json.dumps(claim_list), chat_id, event_id))
+    else:
+        # SI NO EXISTE EL EVENTO (Por ser un mensaje antiguo), lo creamos sobre la marcha en Supabase
+        claim_list = []
+        query_db("INSERT INTO group_events (chat_id, event_id, completed) VALUES (%s, %s, 1) ON CONFLICT DO NOTHING",
+                 (chat_id, event_id))
+
+    if user_id not in claim_list:
+        claim_list.append(user_id)
+        query_db("UPDATE group_events SET claim_list = %s WHERE chat_id = %s AND event_id = %s",
+                 (json.dumps(claim_list), chat_id, event_id))
 
 
 # Iniciar la DB
