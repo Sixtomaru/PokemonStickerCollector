@@ -678,7 +678,7 @@ def evento_dojo_azafran(user, decision_parts, original_text, chat_id):
         choice_made_text = "ℹ️ Decidiste escanearlo."
         poke_id = int(decision_parts[1])
         result_text = (
-            f"🔸{user.first_name} saca rápidamente el Álbumdex, aprovecha el descanso del Pokémon para escanearlo y huye de allí antes de ser visto.\n\n"
+            f"🔸{user.first_name} saca rápidamente el Álbumdex, aprovecha el descanso del Pokémon para escanearlo y huye de allí antes de que le vean.\n\n"
         )
         is_shiny = roll_shiny()
         result_text += _handle_sticker_reward(user_id, user_mention, poke_id, is_shiny, chat_id)
