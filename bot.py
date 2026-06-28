@@ -4272,7 +4272,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 s_val = form_offset + (1 if is_shiny_bool else 0)
                 pack_results.append({'data': p_data, 'is_shiny': s_val})
 
-        # 4. Sobres Mágicos
+        # 4. Sobres Mágicos (Con Buscador Perfecto)
         elif is_magic:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
@@ -4296,14 +4296,23 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 one_qty_pool = []
 
                 for p in base_pool:
-                    form_off = get_form_offset(p['id'])
-                    s_v = form_off + (1 if is_shiny_bool else 0)
+                    if p['id'] in POKEMON_FORMS:
+                        for base_val in POKEMON_FORMS[p['id']].keys():
+                            s_v = base_val + (1 if is_shiny_bool else 0)
+                            qty = user_quantities.get((p['id'], s_v), 0)
 
-                    qty = user_quantities.get((p['id'], s_v), 0)
-                    if qty == 0:
-                        missing_pool.append((p, s_v))
-                    elif qty == 1:
-                        one_qty_pool.append((p, s_v))
+                            if qty == 0:
+                                missing_pool.append((p, s_v))
+                            elif qty == 1:
+                                one_qty_pool.append((p, s_v))
+                    else:
+                        s_v = 1 if is_shiny_bool else 0
+                        qty = user_quantities.get((p['id'], s_v), 0)
+
+                        if qty == 0:
+                            missing_pool.append((p, s_v))
+                        elif qty == 1:
+                            one_qty_pool.append((p, s_v))
 
                 if missing_pool:
                     p_data, final_s_val = random.choice(missing_pool)
@@ -4356,7 +4365,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rarity = get_rarity(p['category'], is_true_shiny)
 
             try:
-                # Usamos nuestra nueva fábrica de rutas
                 path = get_image_path(p['id'], s_val)
 
                 with open(path, 'rb') as f:
@@ -4369,7 +4377,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
-            # Añadir la forma visualmente al texto
             form_name = ""
             if p['id'] in POKEMON_FORMS:
                 base_val = s_val - 1 if is_true_shiny else s_val
@@ -4666,15 +4673,28 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 missing_pool = []
                 one_qty_pool = []
 
+                # --- NUEVA LÓGICA DE BÚSQUEDA INTELIGENTE DE FORMAS ---
                 for p in base_pool:
-                    form_off = get_form_offset(p['id'])
-                    s_v = form_off + (1 if is_shiny_bool else 0)
+                    if p['id'] in POKEMON_FORMS:
+                        # Si tiene formas (Castform, Deoxys), comprobamos TODAS sus formas
+                        for base_val in POKEMON_FORMS[p['id']].keys():
+                            s_v = base_val + (1 if is_shiny_bool else 0)
+                            qty = user_quantities.get((p['id'], s_v), 0)
 
-                    qty = user_quantities.get((p['id'], s_v), 0)
-                    if qty == 0:
-                        missing_pool.append((p, s_v))
-                    elif qty == 1:
-                        one_qty_pool.append((p, s_v))
+                            if qty == 0:
+                                missing_pool.append((p, s_v))
+                            elif qty == 1:
+                                one_qty_pool.append((p, s_v))
+                    else:
+                        # Si es un Pokémon normal
+                        s_v = 1 if is_shiny_bool else 0
+                        qty = user_quantities.get((p['id'], s_v), 0)
+
+                        if qty == 0:
+                            missing_pool.append((p, s_v))
+                        elif qty == 1:
+                            one_qty_pool.append((p, s_v))
+                # --------------------------------------------------------
 
                 if missing_pool:
                     p_data, final_s_val = random.choice(missing_pool)
