@@ -171,6 +171,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN code_notifications_enabled INTEGER DEFAULT 1",
         "ALTER TABLE users ADD COLUMN last_delibird_claim TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN johto_completed INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN hoenn_completed INTEGER DEFAULT 0",
+        "ALTER TABLE group_events ADD COLUMN claim_list TEXT DEFAULT '[]'",
 
         # --- NUEVO PARA INTERCAMBIOS ---
         "ALTER TABLE collection ADD COLUMN quantity INTEGER DEFAULT 1",
@@ -863,6 +865,24 @@ def get_user_unique_johto_count(user_id):
 
     return count
 
+def is_hoenn_completed_by_user(user_id):
+    res = query_db("SELECT hoenn_completed FROM users WHERE user_id = %s", (user_id,), one=True)
+    return res[0] if res else 0
+
+def set_hoenn_completed_by_user(user_id):
+    query_db("UPDATE users SET hoenn_completed = 1 WHERE user_id = %s", (user_id,))
+
+def get_user_unique_hoenn_count(user_id):
+    res = query_db("""
+        SELECT COUNT(DISTINCT pokemon_id) 
+        FROM collection 
+        WHERE user_id = %s 
+        AND pokemon_id >= 252 AND pokemon_id <= 386
+        AND pokemon_id NOT IN (298, 360) -- Excluimos Azurill y Wynaut (Bebés)
+    """, (user_id,), one=True)
+    return res[0] if res else 0
+
+
 # --- TÓMBOLA Y SPAWNS PERSISTENTES ---
 
 def get_tombola_state(chat_id):
@@ -990,6 +1010,23 @@ def get_codes_board_msg(chat_id):
     """Obtiene la ID del mensaje del tablón fijo de códigos."""
     res = query_db("SELECT value FROM system_flags WHERE flag_name = ?", (f"codes_board_{chat_id}",), one=True)
     return res[0] if res else None
+
+def check_event_button_claim(chat_id, event_id, user_id):
+    """Comprueba si un usuario ya ha pulsado un botón persistente de evento."""
+    res = query_db("SELECT claim_list FROM group_events WHERE chat_id = %s AND event_id = %s", (chat_id, event_id), one=True)
+    if res and res[0]:
+        claim_list = json.loads(res[0])
+        return user_id in claim_list
+    return False
+
+def add_event_button_claim(chat_id, event_id, user_id):
+    """Registra que un usuario ha pulsado el botón del evento."""
+    res = query_db("SELECT claim_list FROM group_events WHERE chat_id = %s AND event_id = %s", (chat_id, event_id), one=True)
+    if res and res[0]:
+        claim_list = json.loads(res[0])
+        if user_id not in claim_list:
+            claim_list.append(user_id)
+            query_db("UPDATE group_events SET claim_list = %s WHERE chat_id = %s AND event_id = %s", (json.dumps(claim_list), chat_id, event_id))
 
 
 # Iniciar la DB
