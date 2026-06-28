@@ -1080,7 +1080,7 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Conteo específico de letras Unown
     owned_unown = len({s[0] for s in user_collection if s[0] in UNOWN_IDS})
-    total_pokemon_count = 251  # Base inamovible (Kanto 151 + Johto 100)
+    total_pokemon_count = 386 # Base inamovible (Kanto 151 + Johto 100 + Hoenn 135)
 
     # --- 2. CONTEO DE RAREZAS ---
     rarity_counts = {rarity: 0 for rarity in RARITY_VISUALS.keys()}
@@ -4075,6 +4075,15 @@ async def egg_hatch_job(context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user_id, 3000)
                 db.add_item_to_inventory(user_id, 'pack_shiny_johto', 1)
                 premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+
+                # Hoenn (¡AÑADIMOS ESTE BLOQUE AHORA!)
+        if not db.is_hoenn_completed_by_user(user_id):
+            if db.get_user_unique_hoenn_count(user_id) >= 135:
+                db.set_hoenn_completed_by_user(user_id)
+                db.update_money(user_id, 3000)
+                db.add_item_to_inventory(user_id, 'pack_shiny_hoenn', 1)
+                premios_extra += f"\n\n🎊 ¡Felicidades {user_mention}, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
+
         # -----------------------------------
 
         text = (
@@ -7483,6 +7492,45 @@ async def admin_force_stop_remote(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Error al detener el juego.", disable_notification=True)
 
 
+async def force_hoenn_unlock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza el desbloqueo de Hoenn, limpia los reclamos de este grupo y manda el mensaje de Amelia."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+    chat_id = update.effective_chat.id
+
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text("Este comando solo funciona en grupos.", disable_notification=True)
+        return
+
+    # 1. Limpiamos la base de datos de este grupo para poder testear de cero
+    db.query_db("DELETE FROM group_events WHERE chat_id = %s AND event_id = 'amelia_hoenn_unlock'", (chat_id,))
+
+    # 2. Marcamos el evento como completado para liberar los spawns de Hoenn
+    db.mark_event_completed(chat_id, 'amelia_hoenn_unlock')
+
+    amelia_text = (
+        "💬 Amelia: <b>¡Hola a tod@s! soy yo, Amelia.</b>\n"
+        "¿Escucháis eso?, ¿no son trompetas lo que se oye a lo lejos?🎺\n\n"
+        "💬 ????: <b>¡Sí, sí, es un alumno mío, que ensaya en sus ratos libres!</b>\n\n"
+        "💬 Amelia: <b>¡Uy, pues no lo hace mal!</b>\n"
+        "Por cierto, por si no lo habéis notado: ¡¡estoy en Hoenn!!💥 concretamente en Villa Raíz, junto al profesor Abedul, nada más y nada menos. ¡Salude profesor!\n\n"
+        "💬 Abedul: <b>¡Holaaa!</b>\n\n"
+        "💬 Amelia: <b>No sabéis lo bien que se respira aquí y el buen tiempo que hace, tenéis que venir a explorar la región. Nos vendrá bien para expandir el negocio y seguir ayudando a la gente. Además, el profesor dice que quien venga al laboratorio, ¡podrá escanear a uno de sus iniciales!</b>\n\n"
+        "💬 Abedul: <b>¿Eh?, no recuerdo hab...</b>\n\n"
+        "💬 Amelia: <b>¡Además, Devon S. A., la empresa de Ciudad Férrica que se dedica al desarrollo de nuevas tecnologías para entrenadores Pokémon, se ha interesado en nuestro Álbumdex! después de hablarle largo y tendido sobre él. Así que, muy pronto podréis usar vuestro dispositivo como algo más que un escáner de Pokémon.</b>\n\n"
+        "¡Vamos a seguir así, a por todas!💥"
+    )
+
+    keyboard = [[InlineKeyboardButton("Escanear Inicial 🎁", callback_data="claim_hoenn_starter")]]
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=amelia_text,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    await update.message.delete()
+
+
 async def post_init(application: Application):
     bot = cast(Bot, getattr(application, "bot"))
     user_commands = [
@@ -7641,6 +7689,7 @@ def main():
             reply_markup=InlineKeyboardMarkup(keyboard),
             disable_notification=True
         )
+
     # ---------------------------------------------------------------
 
     all_handlers: list[BaseHandler] = [
@@ -7710,6 +7759,7 @@ def main():
         CommandHandler("rankingmensual", ranking_mensual_cmd),
         CommandHandler("multisobre", multisobre_cmd),
         CommandHandler("multicompra", multicompra_cmd),
+        CommandHandler("forcehoenn", force_hoenn_unlock_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
