@@ -682,10 +682,12 @@ def execute_trade(user_a, pokemon_a, is_shiny_a, user_b, pokemon_b, is_shiny_b):
     return status_a, status_b
 
 def get_user_collection_quantities(user_id):
-    """Devuelve un diccionario {(id, is_shiny): cantidad} para calcular sobres mágicos."""
-    rows = query_db("SELECT pokemon_id, is_shiny, quantity FROM collection WHERE user_id = ?", (user_id,))
-    # Devolvemos un diccionario fácil de leer: {(25, False): 1, (4, True): 0...}
-    return {(row[0], bool(row[1])): row[2] for row in rows}
+    """Devuelve un diccionario {(id, is_shiny_val): cantidad} para calcular sobres mágicos."""
+    rows = query_db("SELECT pokemon_id, is_shiny, quantity FROM collection WHERE user_id = %s", (user_id,), dict_cursor=True)
+    if rows:
+        # Devuelve el valor numérico puro (0 al 7) en lugar de True/False
+        return {(row['pokemon_id'], int(row['is_shiny'])): row['quantity'] for row in rows}
+    return {}
 
 # --- SISTEMA DE CÓDIGOS DE AMIGO ---
 
