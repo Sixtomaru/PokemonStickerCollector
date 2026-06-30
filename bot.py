@@ -1108,10 +1108,22 @@ async def albumdex_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("♻ Ver repetidos", callback_data=cb_dupes)])
     # ----------------------------------
 
-    for name in POKEMON_REGIONS.keys():
-        cb_data = f"album_{name}_0_{owner_user.id}"
-        if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
-        keyboard.append([InlineKeyboardButton(f"🔍 Ver Álbum de {name}", callback_data=cb_data)])
+    # Creamos los botones del menú de forma manual para forzar el orden exacto
+    cb_kanto = f"album_Kanto_0_{owner_user.id}"
+    cb_johto = f"album_Johto_0_{owner_user.id}"
+    cb_unown = f"album_Unown_0_{owner_user.id}"
+    cb_hoenn = f"album_Hoenn_0_{owner_user.id}"
+
+    if cmd_msg_id:
+        cb_kanto += f"_{cmd_msg_id}"
+        cb_johto += f"_{cmd_msg_id}"
+        cb_unown += f"_{cmd_msg_id}"
+        cb_hoenn += f"_{cmd_msg_id}"
+
+    keyboard.append([InlineKeyboardButton("🔍 Ver Álbum de Kanto", callback_data=cb_kanto)])
+    keyboard.append([InlineKeyboardButton("🔍 Ver Álbum de Johto", callback_data=cb_johto)])
+    keyboard.append([InlineKeyboardButton("🔍 Ver Álbum de Unown", callback_data=cb_unown)])
+    keyboard.append([InlineKeyboardButton("🔍 Ver Álbum de Hoenn", callback_data=cb_hoenn)])
 
     close_cb_data = f"album_close_{owner_user.id}"
     if cmd_msg_id: close_cb_data += f"_{cmd_msg_id}"
@@ -1555,17 +1567,21 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard, row = [], []
     for pokemon in pokemon_on_page:
 
-        # --- EFECTO ESPEJO UNOWN (Botones) ---
+        # --- EFECTO ESPEJO UNOWN Y FORMAS MULTIPLES ---
         if pokemon['id'] == 201:
             has_normal = any((uid, 0) in user_collection for uid in UNOWN_IDS)
             has_shiny = any((uid, 1) in user_collection for uid in UNOWN_IDS)
+        elif pokemon['id'] in POKEMON_FORMS:
+            # Si tiene formas múltiples, miramos si tiene CUALQUIER forma normal (pares) o shiny (impares)
+            has_normal = any((pokemon['id'], v) in user_collection for v in range(0, 8, 2))
+            has_shiny = any((pokemon['id'], v) in user_collection for v in range(1, 8, 2))
         else:
             has_normal = (pokemon['id'], 0) in user_collection
             has_shiny = (pokemon['id'], 1) in user_collection
         # -------------------------------------
 
         if has_normal or has_shiny:
-            # Formato bonito para ocultar el ID numérico en el álbum de Unowns
+            # Formato bonito
             if pokemon['id'] > 1000:
                 button_text = f"{pokemon['name']}"
             else:
@@ -1580,7 +1596,6 @@ async def album_region_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if cmd_msg_id: cb_data += f"_{cmd_msg_id}"
             callback_data = cb_data
         else:
-            # Fallback bonito para los Unown que aún no tienes
             if pokemon['id'] > 1000:
                 letra = pokemon['name'].split('(')[1][0] if '(' in pokemon['name'] else '?'
                 button_text = f"--- ({letra})"
@@ -1725,14 +1740,14 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
                     if row_forms: keyboard.append(row_forms)
 
-            # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS (Conteo X/4, pero mostrando botones Shiny) ---
-            else:
-                # El total de formas base es 4 (excluyendo los shinys de la cuenta)
-                total_forms = len(forms)
-                # Contamos cuántas formas normales (valores pares: 0, 2, 4, 6) tiene en la colección
-                owned_forms_count = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
+                    # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS ---
+                    else:
+                        total_forms = len(forms)
+                        # Contamos las normales (pares) y las brillantes (impares)
+                        owned_n = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
+                        owned_b = sum(1 for base_val in forms.keys() if (pokemon_id, base_val + 1) in user_collection)
 
-                text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: ({owned_forms_count}/{total_forms})"
+                        text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: N({owned_n}/{total_forms}) B({owned_b}/{total_forms})"
 
                 for base_val, (f_letter, f_name) in forms.items():
                     row_forms = []
@@ -1843,9 +1858,12 @@ async def send_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             # Formateamos el nombre de la forma si la tiene
             form_name = ""
             if pokemon_id in POKEMON_FORMS:
-                # Obtenemos el valor base (0, 2, 4, 6) restando 1 si es impar (shiny)
                 base_val = is_shiny_val - 1 if is_true_shiny else is_shiny_val
-                form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+                if pokemon_id == 352:
+                    # Formato especial para Kecleon: (normal) / (camuflaje) en minúsculas
+                    form_name = f" ({POKEMON_FORMS[pokemon_id][base_val][1].lower()})"
+                else:
+                    form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
 
             message_text = f"{interactor_user.first_name} mostró su {pokemon_display}{form_name} {rarity_emoji}"
 
@@ -4292,38 +4310,56 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for _ in range(pack_size):
                 is_shiny_bool = random.random() < SHINY_CHANCE
 
-                missing_pool = []
-                one_qty_pool = []
+                missing_species_pool = []  # No tiene NINGUNA variante de este Pokémon
+                missing_forms_pool = []  # Tiene el Pokémon, pero le falta alguna forma
+                one_qty_pool = []  # Le falta para intercambiar (Cantidad = 1)
 
                 for p in base_pool:
-                    if p['id'] in POKEMON_FORMS:
-                        for base_val in POKEMON_FORMS[p['id']].keys():
+                    p_id = p['id']
+                    has_species = any(user_quantities.get((p_id, v), 0) > 0 for v in range(8))
+
+                    if p_id in POKEMON_FORMS:
+                        # Si tiene formas, analizamos las formas válidas (0, 2, 4, 6) o (1, 3, 5, 7)
+                        valid_forms = list(POKEMON_FORMS[p_id].keys())
+                        for base_val in valid_forms:
                             s_v = base_val + (1 if is_shiny_bool else 0)
-                            qty = user_quantities.get((p['id'], s_v), 0)
+                            qty = user_quantities.get((p_id, s_v), 0)
 
                             if qty == 0:
-                                missing_pool.append((p, s_v))
+                                if not has_species:
+                                    missing_species_pool.append((p, s_v))
+                                else:
+                                    missing_forms_pool.append((p, s_v))
                             elif qty == 1:
                                 one_qty_pool.append((p, s_v))
                     else:
+                        # Pokémon sin formas
                         s_v = 1 if is_shiny_bool else 0
-                        qty = user_quantities.get((p['id'], s_v), 0)
+                        qty = user_quantities.get((p_id, s_v), 0)
 
                         if qty == 0:
-                            missing_pool.append((p, s_v))
+                            missing_species_pool.append((p, s_v))
                         elif qty == 1:
                             one_qty_pool.append((p, s_v))
 
-                if missing_pool:
-                    p_data, final_s_val = random.choice(missing_pool)
+                # Orden de Mando
+                if missing_species_pool:
+                    p_data, final_s_val = random.choice(missing_species_pool)
+                elif missing_forms_pool:
+                    p_data, final_s_val = random.choice(missing_forms_pool)
                 elif one_qty_pool:
                     p_data, final_s_val = random.choice(one_qty_pool)
                 else:
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                     possible = [p for p in base_pool if p['category'] == cat]
                     p_data = random.choice(possible if possible else base_pool)
-                    form_off = get_form_offset(p_data['id'])
-                    final_s_val = form_off + (1 if is_shiny_bool else 0)
+
+                    # Al dar al azar, solo cogemos formas VÁLIDAS
+                    if p_data['id'] in POKEMON_FORMS:
+                        base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys()))
+                    else:
+                        base_val = 0
+                    final_s_val = base_val + (1 if is_shiny_bool else 0)
 
                 pack_results.append({'data': p_data, 'is_shiny': final_s_val})
                 user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
@@ -4670,46 +4706,59 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for _ in range(pack_size):
                 is_shiny_bool = random.random() < SHINY_CHANCE
 
-                missing_pool = []
-                one_qty_pool = []
+                missing_species_pool = []  # No tiene NINGUNA variante de este Pokémon
+                missing_forms_pool = []  # Tiene el Pokémon, pero le falta alguna forma
+                one_qty_pool = []  # Le falta para intercambiar (Cantidad = 1)
 
-                # --- NUEVA LÓGICA DE BÚSQUEDA INTELIGENTE DE FORMAS ---
                 for p in base_pool:
-                    if p['id'] in POKEMON_FORMS:
-                        # Si tiene formas (Castform, Deoxys), comprobamos TODAS sus formas
-                        for base_val in POKEMON_FORMS[p['id']].keys():
+                    p_id = p['id']
+                    has_species = any(user_quantities.get((p_id, v), 0) > 0 for v in range(8))
+
+                    if p_id in POKEMON_FORMS:
+                        # Si tiene formas, analizamos las formas válidas (0, 2, 4, 6) o (1, 3, 5, 7)
+                        valid_forms = list(POKEMON_FORMS[p_id].keys())
+                        for base_val in valid_forms:
                             s_v = base_val + (1 if is_shiny_bool else 0)
-                            qty = user_quantities.get((p['id'], s_v), 0)
+                            qty = user_quantities.get((p_id, s_v), 0)
 
                             if qty == 0:
-                                missing_pool.append((p, s_v))
+                                if not has_species:
+                                    missing_species_pool.append((p, s_v))
+                                else:
+                                    missing_forms_pool.append((p, s_v))
                             elif qty == 1:
                                 one_qty_pool.append((p, s_v))
                     else:
-                        # Si es un Pokémon normal
+                        # Pokémon sin formas
                         s_v = 1 if is_shiny_bool else 0
-                        qty = user_quantities.get((p['id'], s_v), 0)
+                        qty = user_quantities.get((p_id, s_v), 0)
 
                         if qty == 0:
-                            missing_pool.append((p, s_v))
+                            missing_species_pool.append((p, s_v))
                         elif qty == 1:
                             one_qty_pool.append((p, s_v))
-                # --------------------------------------------------------
 
-                if missing_pool:
-                    p_data, final_s_val = random.choice(missing_pool)
+                # Orden de Mando
+                if missing_species_pool:
+                    p_data, final_s_val = random.choice(missing_species_pool)
+                elif missing_forms_pool:
+                    p_data, final_s_val = random.choice(missing_forms_pool)
                 elif one_qty_pool:
                     p_data, final_s_val = random.choice(one_qty_pool)
                 else:
                     cat = random.choices(list(PROBABILITIES.keys()), weights=list(PROBABILITIES.values()), k=1)[0]
                     possible = [p for p in base_pool if p['category'] == cat]
                     p_data = random.choice(possible if possible else base_pool)
-                    form_off = get_form_offset(p_data['id'])
-                    final_s_val = form_off + (1 if is_shiny_bool else 0)
+
+                    # Al dar al azar, solo cogemos formas VÁLIDAS
+                    if p_data['id'] in POKEMON_FORMS:
+                        base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys()))
+                    else:
+                        base_val = 0
+                    final_s_val = base_val + (1 if is_shiny_bool else 0)
 
                 pack_results.append({'data': p_data, 'is_shiny': final_s_val})
                 user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
-
         # 5. Sobres Normales
         else:
             region_filter = pack_config.get('region_filter')
@@ -4755,9 +4804,9 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
-            # Añadir la forma visualmente al texto
+            # Añadir la forma visualmente al texto (Omitimos Kecleon para mantener la sorpresa)
             form_name = ""
-            if p['id'] in POKEMON_FORMS:
+            if p['id'] in POKEMON_FORMS and p['id'] != 352:
                 base_val = s_val - 1 if is_true_shiny else s_val
                 form_name = f" Forma {POKEMON_FORMS[p['id']][base_val][1]}"
 
@@ -6094,6 +6143,7 @@ async def show_trade_region_menu(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("🔍 Buscar", callback_data=f"trade_search_start_{sender_id}_{cmd_msg_id}")],
         [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_reg_{target_id}_{sender_id}_kanto_{cmd_msg_id}")],
         [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_reg_{target_id}_{sender_id}_johto_{cmd_msg_id}")],
+        [InlineKeyboardButton("🔸 Hoenn", callback_data=f"trade_reg_{target_id}_{sender_id}_hoenn_{cmd_msg_id}")],
         [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
     ]
 
@@ -6182,6 +6232,8 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
         pool = [p for p in ALL_POKEMON if p['id'] <= 151]
     elif region == 'johto':
         pool = [p for p in ALL_POKEMON if (152 <= p['id'] <= 251 and p['id'] != 201) or p['id'] > 20000]
+    elif region == 'hoenn':
+        pool = [p for p in ALL_POKEMON if 252 <= p['id'] <= 386]
 
     # 2. Filtramos SOLO las especies que no tiene en absoluto
     missing_species = [p for p in pool if p['id'] not in owned_species]
@@ -6445,9 +6497,20 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
 async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     parts = query.data.split('_')
-    target_id, sender_id = int(parts[2]), int(parts[3])
-    wanted_pid, wanted_shiny = int(parts[4]), bool(int(parts[5]))
-    cmd_msg_id = parts[6] if len(parts) > 6 else ""
+
+    # 1. Detectar si venimos de la pantalla anterior (step2) o estamos navegando por páginas (offer_page)
+    if parts[1] == 'step2':
+        # Formato: trade_step2_TGT_SND_WPID_WSHINY_MSGID
+        target_id, sender_id = int(parts[2]), int(parts[3])
+        wanted_pid, wanted_shiny = int(parts[4]), bool(int(parts[5]))
+        page = 0
+        cmd_msg_id = parts[6] if len(parts) > 6 else ""
+    else:
+        # Formato: trade_offer_page_TGT_SND_WPID_WSHINY_PAGE_MSGID
+        target_id, sender_id = int(parts[3]), int(parts[4])
+        wanted_pid, wanted_shiny = int(parts[5]), bool(int(parts[6]))
+        page = int(parts[7])
+        cmd_msg_id = parts[8] if len(parts) > 8 else ""
 
     if query.from_user.id != sender_id:
         return await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
@@ -6465,43 +6528,47 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     target_collection = db.get_all_user_stickers(target_id)
 
-    # 1. Función de Estado para el Destinatario
-    def get_status(p_id, s_shiny, collection):
-        has_exact = (p_id, s_shiny) in collection
-        has_normal = (p_id, 0) in collection
-        has_shiny = (p_id, 1) in collection
+    def is_species_missing(p_id, collection):
+        return (p_id, 0) not in collection and (p_id, 1) not in collection
 
-        if not has_normal and not has_shiny: return 0  # Le falta especie (🆕)
-        if not has_exact: return 1  # Le falta variante (✔️)
-        return 2  # Ya lo tiene (Nada)
-
-    # 2. Ordenación Inteligente
     def sort_key_offer(item):
         pid, shiny = item
-        status = get_status(pid, shiny, target_collection)
+        is_useful = is_species_missing(pid, target_collection)
         name = POKEMON_BY_ID[pid]['name']
-        return (status, name)
+
+        if is_useful and not shiny:
+            priority = 1
+        elif is_useful and shiny:
+            priority = 2
+        elif not is_useful and not shiny:
+            priority = 3
+        else:
+            priority = 4
+
+        return (priority, name)
 
     valid_duplicates.sort(key=sort_key_offer)
 
     if not valid_duplicates:
         return await query.answer(f"❌ No tienes repetidos de rareza {wanted_rarity} para ofrecer.", show_alert=True)
 
+    # --- NUEVO: SISTEMA DE PAGINACIÓN ---
+    ITEMS_PER_PAGE = 20
+    total_pages = math.ceil(len(valid_duplicates) / ITEMS_PER_PAGE)
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    current_list = valid_duplicates[start:end]
+
     keyboard = []
     row = []
-    for pid, shiny in valid_duplicates:
+    for pid, shiny in current_list:
         p_data = POKEMON_BY_ID[pid]
 
-        status = get_status(pid, shiny, target_collection)
-        if status == 0:
-            mark = " 🆕"
-        elif status == 1:
-            mark = " ✔️"
-        else:
-            mark = ""
-
+        is_useful = is_species_missing(pid, target_collection)
+        useful_mark = " 🤝" if is_useful else ""
         shiny_mark = "✨" if shiny else ""
-        btn_text = f"{p_data['name']}{shiny_mark}{mark}"
+
+        btn_text = f"{p_data['name']}{shiny_mark}{useful_mark}"
         cb_data = f"trade_conf_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{pid}_{int(shiny)}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
@@ -6510,13 +6577,31 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             row = []
     if row: keyboard.append(row)
 
-    region_of_wanted = 'kanto' if wanted_pid <= 151 else 'johto'
+    # --- BOTONES DE NAVEGACIÓN ---
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Anterior",
+                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{page - 1}_{cmd_msg_id}"))
+    if end < len(valid_duplicates):
+        nav_row.append(InlineKeyboardButton("Siguiente ➡️",
+                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{page + 1}_{cmd_msg_id}"))
+    if nav_row: keyboard.append(nav_row)
+
+    # Lógica de botón Volver actualizada para Hoenn y Unown
+    region_of_wanted = 'kanto'
+    if wanted_pid > 20000:
+        region_of_wanted = 'johto'  # Los Unown están en la lista de Johto en intercambios
+    elif wanted_pid > 251:
+        region_of_wanted = 'hoenn'
+    elif wanted_pid > 151:
+        region_of_wanted = 'johto'
+
     keyboard.append([InlineKeyboardButton("⬅️ Volver",
                                           callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region_of_wanted}_0_{cmd_msg_id}")])
 
     text = (f"♻ **Tu Oferta ({wanted_rarity}):**\n"
             f"Elegiste: {wanted_data['name']}\n"
-            f"Selecciona qué repetido ofreces a cambio:")
+            f"Selecciona qué repetido ofreces a cambio (Pág {page + 1}/{total_pages}):")
 
     refresh_deletion_timer(context, query.message, 120)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -7810,7 +7895,7 @@ def main():
         CallbackQueryHandler(retos_missing_menu, pattern="^retos_missing_menu_"),
         CallbackQueryHandler(retos_view_region, pattern="^retos_view_"),
         CallbackQueryHandler(retos_cmd, pattern="^retos_back_"),
-        CallbackQueryHandler(trade_step2_handler, pattern="^trade_step2_"),
+        CallbackQueryHandler(trade_step2_handler, pattern="^trade_(step2|offer_page)_"),
         CallbackQueryHandler(trade_confirm_handler, pattern="^trade_conf_"),
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
