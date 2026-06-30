@@ -6331,41 +6331,53 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
 
     chat_id = query.message.chat.id
     group_users = db.get_users_in_group(chat_id)
-    group_users = [u for u in group_users if u != sender_id]  # Excluir al propio buscador
+    group_users = [u for u in group_users if u != sender_id]
 
     available_trades = []
+
+    # Búsqueda Inteligente de Repetidos (Soporta Formas y Pase VIP de Kecleon)
     for uid in group_users:
         dupes = db.get_user_duplicates(uid)
-        for d_pid, d_shiny in dupes:
+        for d_pid, d_shiny_val in dupes:
             if d_pid == pokemon_id:
-                available_trades.append((uid, d_shiny))
+                # Si es Kecleon (352), tratamos las formas Normal (0,2) y Shiny (1,3) como bloque conjunto
+                if pokemon_id == 352:
+                    is_true_shiny = (d_shiny_val % 2 != 0)
+                    base_shiny = 1 if is_true_shiny else 0
+
+                    # Evitar duplicar en la lista si tiene tanto el normal como el camuflaje repetidos
+                    if not any(t[0] == uid and t[1] == base_shiny for t in available_trades):
+                        available_trades.append((uid, base_shiny))
+                else:
+                    # Resto de Pokémon (Kanto, Johto, Castform, Deoxys)
+                    available_trades.append((uid, d_shiny_val))
 
     if not available_trades:
         await query.answer("❌ Nadie del grupo tiene ese sticker repetido.", show_alert=True)
         # Volvemos a la pantalla de selección de región automáticamente
-        text = "🔍 **Elige la región del sticker que deseas conseguir:**"
+        safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
+        text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que deseas conseguir:**"
         keyboard = [
             [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
             [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🔸 Hoenn", callback_data=f"trade_sreg_{sender_id}_hoenn_0_num_{cmd_msg_id}")],
             [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
     trade_data = []
-    for uid, is_shiny in available_trades:
+    for uid, is_shiny_val in available_trades:
         can_trade = db.check_trade_daily_limit(uid)
-        # Intentar sacar nombre de BD rápido
         res = db.query_db("SELECT username FROM users WHERE user_id = %s", (uid,), one=True)
         uname = res[0] if res and res[0] else f"Entrenador"
 
         trade_data.append({
             'uid': uid,
             'name': uname,
-            'is_shiny': is_shiny,
+            'is_shiny_val': is_shiny_val,
             'can_trade': can_trade
         })
 
-    # Ordenar: Los que PUEDEN intercambiar van primero
     trade_data.sort(key=lambda x: not x['can_trade'])
 
     ITEMS_PER_PAGE = 10
@@ -6377,18 +6389,28 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     keyboard = []
     for t in current_users:
         icon = "✅" if t['can_trade'] else "❌"
-        shiny_str = " ✨" if t['is_shiny'] else ""
-        btn_text = f"{icon} {t['name']}{shiny_str}"
+
+        is_true_shiny = (t['is_shiny_val'] % 2 != 0)
+        shiny_str = " ✨" if is_true_shiny else ""
+
+        form_name = ""
+        if pokemon_id in POKEMON_FORMS:
+            base_val = t['is_shiny_val'] - 1 if is_true_shiny else t['is_shiny_val']
+            if pokemon_id == 352:
+                form_name = f" ({POKEMON_FORMS[pokemon_id][base_val][1].lower()})"
+            else:
+                form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+
+        btn_text = f"{icon} {t['name']}{form_name}{shiny_str}"
 
         if t['can_trade']:
-            # Mágico: Al pinchar, enviamos al usuario DIRECTO a la función 'trade_step2_handler' que ya tenemos programada
-            cb_data = f"trade_step2_{t['uid']}_{sender_id}_{pokemon_id}_{int(t['is_shiny'])}_{cmd_msg_id}"
+            cb_data = f"trade_step2_{t['uid']}_{sender_id}_{pokemon_id}_{t['is_shiny_val']}_{cmd_msg_id}"
         else:
             cb_data = "trade_suser_err"
 
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
 
-    # Navegación
+    # Navegación de páginas
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
@@ -6398,13 +6420,21 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
                                             callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
-    # Deducir región para volver correctamente
-    region = 'kanto' if pokemon_id <= 151 else 'johto'
+    # --- SOLUCIÓN: Deducir la región correctamente (Kanto, Johto, Hoenn o Unown) ---
+    if pokemon_id > 20000:
+        region = 'johto'  # Los Unown en el buscador están agrupados en Johto
+    elif pokemon_id > 251:
+        region = 'hoenn'
+    elif pokemon_id > 151:
+        region = 'johto'
+    else:
+        region = 'kanto'
+
     keyboard.append(
         [InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_sreg_{sender_id}_{region}_0_num_{cmd_msg_id}")])
 
     p_name = POKEMON_BY_ID[pokemon_id]['name']
-    text = f"🔍 **Usuarios con {p_name} repetido:**\nSelecciona el usuario con el que quieres intercambiar:"
+    text = f"🔍 **Usuarios con {p_name} repetido:**\nSelecciona un usuario para proponerle un intercambio:"
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
