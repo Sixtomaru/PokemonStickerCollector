@@ -1193,7 +1193,7 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         parts = query.data.split('_')
-        region = parts[3]  # kanto, johto, hoenn
+        region = parts[3]
         owner_id = int(parts[4])
         cmd_msg_id = parts[5] if len(parts) > 5 else ""
 
@@ -1202,51 +1202,42 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return
 
-    # Obtener repetidos
     duplicates = db.get_user_duplicates(owner_id)
-
-    # Filtrar por región
     names_list = []
 
     for pid, is_shiny_val in duplicates:
-        # Detectamos si es shiny de verdad para las estrellitas (impar = shiny)
         is_true_shiny = (is_shiny_val % 2 != 0)
 
-        # Filtro Kanto (1-151)
+        # Filtro Kanto
         if region == 'kanto' and 1 <= pid <= 151:
             p_data = POKEMON_BY_ID[pid]
-            name_display = get_formatted_name(p_data, is_true_shiny)
-            names_list.append(name_display)
+            base_name = get_formatted_name(p_data, is_true_shiny).replace('<b>', '**').replace('</b>', '**')
+            names_list.append(base_name)
 
-        # Filtro Johto (152-251) + Unown (>20000)
+        # Filtro Johto + Unown
         elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):
             p_data = POKEMON_BY_ID[pid]
-            # Usamos el nombre base sin Emoji Custom si es Unown
             if pid > 20000:
-                name_display = f"{p_data['name']}{'✨' if is_true_shiny else ''}"
+                name_display = f"**{p_data['name']}**{'✨' if is_true_shiny else ''}"
             else:
-                name_display = get_formatted_name(p_data, is_true_shiny)
+                name_display = get_formatted_name(p_data, is_true_shiny).replace('<b>', '**').replace('</b>', '**')
             names_list.append(name_display)
 
-        # Filtro Hoenn (252-386)
+        # Filtro Hoenn
         elif region == 'hoenn' and 252 <= pid <= 386:
             p_data = POKEMON_BY_ID[pid]
 
-            # --- DETECTOR DE FORMAS (Deoxys, Castform, Kecleon) ---
             form_name = ""
             if pid in POKEMON_FORMS:
                 base_val = is_shiny_val - 1 if is_true_shiny else is_shiny_val
-                if pid == 352:  # Kecleon
+                if pid == 352:
                     form_name = f" ({POKEMON_FORMS[pid][base_val][1].lower()})"
                 else:
                     form_name = f" Forma {POKEMON_FORMS[pid][base_val][1]}"
-            # -------------------------------------------------------
 
-            base_name = get_formatted_name(p_data, is_true_shiny)
-            # Pegamos el nombre base con la forma (ej: Castform Forma Lluvia✨)
+            base_name = get_formatted_name(p_data, is_true_shiny).replace('<b>', '**').replace('</b>', '**')
             names_list.append(f"{base_name}{form_name}")
 
-    # Ordenar alfabéticamente
     names_list.sort()
 
     text = f"🔄 **Repetidos de {region.capitalize()}:**\n\n"
@@ -1749,13 +1740,15 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
         if pokemon_id in POKEMON_FORMS:
             forms = POKEMON_FORMS[pokemon_id]
 
-            # --- HUEVO DE PASCUA KECLEON (2x1 y sin Shinys en la cuenta) ---
+            # --- KECLEON (2x1 y sin Shinys inventados) ---
             if pokemon_id == 352:
+                # Comprueba los que tiene REALMENTE
                 has_any_normal = any((352, val) in user_collection for val in [0, 2])
                 has_any_shiny = any((352, val) in user_collection for val in [1, 3])
 
                 text = "Elige qué versión de *Kecleon* quieres mostrar:"
 
+                # Dibujamos SOLO lo que tiene (Si tiene normal, le damos los 2 normales. Si tiene shiny, los 2 shinys).
                 for base_val, (f_letter, f_name) in forms.items():
                     row_forms = []
                     if has_any_normal:
@@ -1766,7 +1759,7 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
                     if row_forms: keyboard.append(row_forms)
 
-            # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS ---
+            # --- CASTFORM Y DEOXYS (Muestra todos los botones, pero solo suma los que tiene) ---
             else:
                 total_forms = len(forms)
                 owned_n = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
@@ -1774,15 +1767,25 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
 
                 text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: N({owned_n}/{total_forms}) B({owned_b}/{total_forms})"
 
+                # Dibujamos TODOS los botones posibles
                 for base_val, (f_letter, f_name) in forms.items():
                     row_forms = []
+
+                    # Botón Normal (Se ilumina ⚪ si lo tiene, se queda 🔒 si no)
                     if (pokemon_id, base_val) in user_collection:
                         row_forms.append(InlineKeyboardButton(f"{f_name} ⚪",
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val}_{owner_id}"))
+                    else:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} 🔒", callback_data="missing_sticker"))
+
+                    # Botón Shiny (Se ilumina ✨ si lo tiene, se queda 🔒 si no)
                     if (pokemon_id, base_val + 1) in user_collection:
                         row_forms.append(InlineKeyboardButton(f"{f_name} ✨",
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
-                    if row_forms: keyboard.append(row_forms)
+                    else:
+                        row_forms.append(InlineKeyboardButton(f"{f_name} 🔒", callback_data="missing_sticker"))
+
+                    keyboard.append(row_forms)
 
         # --- POKÉMON ESTÁNDAR (Pikachu, Totodile, etc) ---
         else:
@@ -4436,8 +4439,9 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
+            # Ocultamos la forma de Kecleon al atraparlo para que solo diga "Kecleon"
             form_name = ""
-            if p['id'] in POKEMON_FORMS:
+            if p['id'] in POKEMON_FORMS and p['id'] != 352:
                 base_val = s_val - 1 if is_true_shiny else s_val
                 form_name = f" Forma {POKEMON_FORMS[p['id']][base_val][1]}"
 
@@ -4827,7 +4831,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
-            # Añadir la forma visualmente al texto (Omitimos Kecleon para mantener la sorpresa)
+            # Ocultamos la forma de Kecleon al atraparlo para que solo diga "Kecleon"
             form_name = ""
             if p['id'] in POKEMON_FORMS and p['id'] != 352:
                 base_val = s_val - 1 if is_true_shiny else s_val
@@ -6233,6 +6237,8 @@ async def trade_search_start_handler(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
     ]
 
+    # Reinicia el reloj a 2 minutos al interactuar
+    refresh_deletion_timer(context, query.message, 120)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
@@ -6313,12 +6319,15 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_search_start_{sender_id}_{cmd_msg_id}")])
 
     safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
-    text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige el sticker que quieres conseguir ({region.capitalize()}):**"
+    text = f"🔍 **Elige el sticker que quieres conseguir ({region.capitalize()}):**"
+
+    # Reinicia el reloj a 2 minutos al pasar de página o entrar
+    refresh_deletion_timer(context, query.message, 120)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Pantalla 3: Muestra usuarios del grupo con este Pokémon repetido."""
+    """Pantalla 3: Muestra usuarios del grupo con este Pokémon repetido (Soporta TODAS las Formas)."""
     query = update.callback_query
     parts = query.data.split('_')
     sender_id = int(parts[2])
@@ -6335,32 +6344,28 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
 
     available_trades = []
 
-    # Búsqueda Inteligente de Repetidos (Soporta Formas y Pase VIP de Kecleon)
     for uid in group_users:
         dupes = db.get_user_duplicates(uid)
         for d_pid, d_shiny_val in dupes:
             if d_pid == pokemon_id:
-                # Si es Kecleon (352), tratamos las formas Normal (0,2) y Shiny (1,3) como bloque conjunto
                 if pokemon_id == 352:
+                    # KECLEON: 2x1 lógico. Si tiene el normal(0) o camuflaje(2), tratamos como normal(0).
                     is_true_shiny = (d_shiny_val % 2 != 0)
                     base_shiny = 1 if is_true_shiny else 0
-
-                    # Evitar duplicar en la lista si tiene tanto el normal como el camuflaje repetidos
                     if not any(t[0] == uid and t[1] == base_shiny for t in available_trades):
                         available_trades.append((uid, base_shiny))
                 else:
-                    # Resto de Pokémon (Kanto, Johto, Castform, Deoxys)
+                    # NORMALES, CASTFORM y DEOXYS: Añadimos cada forma (is_shiny_val) independientemente
                     available_trades.append((uid, d_shiny_val))
 
     if not available_trades:
         await query.answer("❌ Nadie del grupo tiene ese sticker repetido.", show_alert=True)
-        # Volvemos a la pantalla de selección de región automáticamente
         safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
         text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que deseas conseguir:**"
         keyboard = [
             [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
             [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
-            [InlineKeyboardButton("🔸 Hoenn", callback_data=f"trade_sreg_{sender_id}_hoenn_0_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🌋 Hoenn", callback_data=f"trade_sreg_{sender_id}_hoenn_0_num_{cmd_msg_id}")],
             [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -6390,18 +6395,27 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     for t in current_users:
         icon = "✅" if t['can_trade'] else "❌"
 
+        # --- NUEVO: TRADUCTOR DE FORMAS PARA LOS BOTONES ---
         is_true_shiny = (t['is_shiny_val'] % 2 != 0)
         shiny_str = " ✨" if is_true_shiny else ""
 
         form_name = ""
         if pokemon_id in POKEMON_FORMS:
+            # Conseguimos la base (0, 2, 4, 6)
             base_val = t['is_shiny_val'] - 1 if is_true_shiny else t['is_shiny_val']
+
             if pokemon_id == 352:
+                # Si es Kecleon, usamos el formato en minúsculas (camuflaje)
                 form_name = f" ({POKEMON_FORMS[pokemon_id][base_val][1].lower()})"
             else:
+                # Si es Deoxys o Castform, usamos Forma Velocidad, etc.
                 form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+        # --------------------------------------------------
 
-        btn_text = f"{icon} {t['name']}{form_name}{shiny_str}"
+        # Limpiamos el nombre de usuario de Markdown peligroso
+        safe_uname = t['name'].replace('_', '').replace('*', '').replace('`', '')
+
+        btn_text = f"{icon} {safe_uname}{form_name}{shiny_str}"
 
         if t['can_trade']:
             cb_data = f"trade_step2_{t['uid']}_{sender_id}_{pokemon_id}_{t['is_shiny_val']}_{cmd_msg_id}"
@@ -6410,7 +6424,7 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
 
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
 
-    # Navegación de páginas
+    # Navegación
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
@@ -6420,9 +6434,8 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
                                             callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
-    # --- SOLUCIÓN: Deducir la región correctamente (Kanto, Johto, Hoenn o Unown) ---
     if pokemon_id > 20000:
-        region = 'johto'  # Los Unown en el buscador están agrupados en Johto
+        region = 'johto'
     elif pokemon_id > 251:
         region = 'hoenn'
     elif pokemon_id > 151:
@@ -6436,6 +6449,7 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     p_name = POKEMON_BY_ID[pokemon_id]['name']
     text = f"🔍 **Usuarios con {p_name} repetido:**\nSelecciona un usuario para proponerle un intercambio:"
 
+    refresh_deletion_timer(context, query.message, 120)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
