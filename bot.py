@@ -1168,11 +1168,18 @@ async def album_dupe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd_msg_id: cb_kanto += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("🔸 Kanto", callback_data=cb_kanto)])
 
-    # --- NUEVO: Botón Johto ---
+    # Botón Johto
     cb_johto = f"album_dupe_show_johto_{owner_id}"
     if cmd_msg_id: cb_johto += f"_{cmd_msg_id}"
     keyboard.append([InlineKeyboardButton("🔹 Johto", callback_data=cb_johto)])
 
+    # --- NUEVO: Botón Hoenn ---
+    cb_hoenn = f"album_dupe_show_hoenn_{owner_id}"
+    if cmd_msg_id: cb_hoenn += f"_{cmd_msg_id}"
+    keyboard.append([InlineKeyboardButton("🔸 Hoenn", callback_data=cb_hoenn)])
+
+    # Botón Volver
+    cb_back = f"album_main_{owner_id}"
     # Botón Volver
     cb_back = f"album_main_{owner_id}"
     if cmd_msg_id: cb_back += f"_{cmd_msg_id}"
@@ -1186,35 +1193,58 @@ async def album_dupe_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         parts = query.data.split('_')
-        region = parts[3]  # kanto o johto
+        region = parts[3]  # kanto, johto, hoenn
         owner_id = int(parts[4])
         cmd_msg_id = parts[5] if len(parts) > 5 else ""
 
         if query.from_user.id != owner_id:
-            await query.answer("Este menú no es tuyo.", show_alert=True)
-            return
+            return await query.answer("Este menú no es tuyo.", show_alert=True)
     except:
         return
 
     # Obtener repetidos
     duplicates = db.get_user_duplicates(owner_id)
 
-    # Filtrar por región y ordenar alfabéticamente
+    # Filtrar por región
     names_list = []
 
-    for pid, is_shiny in duplicates:
+    for pid, is_shiny_val in duplicates:
+        # Detectamos si es shiny de verdad para las estrellitas (impar = shiny)
+        is_true_shiny = (is_shiny_val % 2 != 0)
+
         # Filtro Kanto (1-151)
         if region == 'kanto' and 1 <= pid <= 151:
             p_data = POKEMON_BY_ID[pid]
-            # Usamos get_formatted_name si quieres emojis, o texto plano como tenías
-            name_display = f"{p_data['name']}{'✨' if is_shiny else ''}"
+            name_display = get_formatted_name(p_data, is_true_shiny)
             names_list.append(name_display)
 
-        # Filtro Johto (152-251)
-        elif region == 'johto' and 152 <= pid <= 251:
+        # Filtro Johto (152-251) + Unown (>20000)
+        elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):
             p_data = POKEMON_BY_ID[pid]
-            name_display = f"{p_data['name']}{'✨' if is_shiny else ''}"
+            # Usamos el nombre base sin Emoji Custom si es Unown
+            if pid > 20000:
+                name_display = f"{p_data['name']}{'✨' if is_true_shiny else ''}"
+            else:
+                name_display = get_formatted_name(p_data, is_true_shiny)
             names_list.append(name_display)
+
+        # Filtro Hoenn (252-386)
+        elif region == 'hoenn' and 252 <= pid <= 386:
+            p_data = POKEMON_BY_ID[pid]
+
+            # --- DETECTOR DE FORMAS (Deoxys, Castform, Kecleon) ---
+            form_name = ""
+            if pid in POKEMON_FORMS:
+                base_val = is_shiny_val - 1 if is_true_shiny else is_shiny_val
+                if pid == 352:  # Kecleon
+                    form_name = f" ({POKEMON_FORMS[pid][base_val][1].lower()})"
+                else:
+                    form_name = f" Forma {POKEMON_FORMS[pid][base_val][1]}"
+            # -------------------------------------------------------
+
+            base_name = get_formatted_name(p_data, is_true_shiny)
+            # Pegamos el nombre base con la forma (ej: Castform Forma Lluvia✨)
+            names_list.append(f"{base_name}{form_name}")
 
     # Ordenar alfabéticamente
     names_list.sort()
@@ -1715,20 +1745,16 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
         keyboard = []
 
         # --- LÓGICA DE MULTI-FORMAS (Castform, Kecleon, Deoxys) ---
+        # --- LÓGICA DE MULTI-FORMAS (Castform, Kecleon, Deoxys) ---
         if pokemon_id in POKEMON_FORMS:
             forms = POKEMON_FORMS[pokemon_id]
 
             # --- HUEVO DE PASCUA KECLEON (2x1 y sin Shinys en la cuenta) ---
             if pokemon_id == 352:
-                # Kecleon normal desbloquea la forma B automáticamente.
                 has_any_normal = any((352, val) in user_collection for val in [0, 2])
                 has_any_shiny = any((352, val) in user_collection for val in [1, 3])
 
-                # El total de formas es 2 (Normal y Camuflaje, obviando los shinys)
-                owned_forms_count = 2 if has_any_normal else 0
-                total_forms = 2
-
-                text = f"Elige qué versión de *Kecleon* quieres mostrar:"
+                text = "Elige qué versión de *Kecleon* quieres mostrar:"
 
                 for base_val, (f_letter, f_name) in forms.items():
                     row_forms = []
@@ -1740,28 +1766,25 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
                     if row_forms: keyboard.append(row_forms)
 
-                    # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS ---
-                    else:
-                        total_forms = len(forms)
-                        # Contamos las normales (pares) y las brillantes (impares)
-                        owned_n = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
-                        owned_b = sum(1 for base_val in forms.keys() if (pokemon_id, base_val + 1) in user_collection)
+            # --- COMPORTAMIENTO NORMAL PARA CASTFORM Y DEOXYS ---
+            else:
+                total_forms = len(forms)
+                owned_n = sum(1 for base_val in forms.keys() if (pokemon_id, base_val) in user_collection)
+                owned_b = sum(1 for base_val in forms.keys() if (pokemon_id, base_val + 1) in user_collection)
 
-                        text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: N({owned_n}/{total_forms}) B({owned_b}/{total_forms})"
+                text = f"Elige qué versión de *{pokemon_name}* quieres mostrar: N({owned_n}/{total_forms}) B({owned_b}/{total_forms})"
 
                 for base_val, (f_letter, f_name) in forms.items():
                     row_forms = []
-                    # Si tiene el normal, mostramos botón normal
                     if (pokemon_id, base_val) in user_collection:
                         row_forms.append(InlineKeyboardButton(f"{f_name} ⚪",
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val}_{owner_id}"))
-                    # Si tiene el shiny, mostramos botón shiny (pero no suma en el contador)
                     if (pokemon_id, base_val + 1) in user_collection:
                         row_forms.append(InlineKeyboardButton(f"{f_name} ✨",
                                                               callback_data=f"sendsticker_{pokemon_id}_{base_val + 1}_{owner_id}"))
                     if row_forms: keyboard.append(row_forms)
 
-        # --- POKÉMON ESTÁNDAR ---
+        # --- POKÉMON ESTÁNDAR (Pikachu, Totodile, etc) ---
         else:
             text = f"Elige qué versión de *{pokemon_name}* quieres mostrar:"
             row = []
@@ -1769,7 +1792,7 @@ async def choose_sticker_version_handler(update: Update, context: ContextTypes.D
                 row.append(InlineKeyboardButton("Normal", callback_data=f"sendsticker_{pokemon_id}_0_{owner_id}"))
             if (pokemon_id, 1) in user_collection:
                 row.append(InlineKeyboardButton("Brillante ✨", callback_data=f"sendsticker_{pokemon_id}_1_{owner_id}"))
-            keyboard.append(row)
+            if row: keyboard.append(row)
 
         # --- BOTÓN VOLVER ---
         back_cb_data = f"album_{region_name}_{page_str}_{owner_id}"
@@ -6402,6 +6425,8 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
         if region == 'kanto' and 1 <= pid <= 151:
             filtered_dupes.append((pid, shiny))
         elif region == 'johto' and (152 <= pid <= 251 or pid > 20000):
+            filtered_dupes.append((pid, shiny))
+        elif region == 'hoenn' and 252 <= pid <= 386:
             filtered_dupes.append((pid, shiny))
 
     if not filtered_dupes:
