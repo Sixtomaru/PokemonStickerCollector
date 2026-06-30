@@ -6224,10 +6224,12 @@ async def trade_search_start_handler(update: Update, context: ContextTypes.DEFAU
         return await query.answer("Este buscador solo funciona si usas el comando dentro de un grupo.", show_alert=True)
 
     safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
-    text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que quieres conseguir:**"
+    text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que deseas conseguir:**"
+
     keyboard = [
         [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
         [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
+        [InlineKeyboardButton("🔸 Hoenn", callback_data=f"trade_sreg_{sender_id}_hoenn_0_num_{cmd_msg_id}")],
         [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
     ]
 
