@@ -3317,7 +3317,7 @@ async def claim_mail_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     elif item_type == 'single_sticker':
         poke_id, is_shiny_int = map(int, item_details.split('_'))
-        is_shiny = bool(is_shiny_int)
+        is_shiny = is_shiny_int
         pokemon_data = POKEMON_BY_ID.get(poke_id)
 
         if not pokemon_data:
@@ -3395,7 +3395,7 @@ async def claim_all_mail_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         elif item_type == 'single_sticker':
             poke_id, is_shiny_int = map(int, item_details.split('_'))
-            is_shiny = bool(is_shiny_int)
+            is_shiny = is_shiny_int
             pokemon_data = POKEMON_BY_ID.get(poke_id)
 
             if pokemon_data:
@@ -5469,7 +5469,7 @@ async def add_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target_user:
         return await update.message.reply_text("Uso: `/addsticker [@usuario|ID] <poke_id> <shiny 0/1>`")
     try:
-        poke_id, is_shiny = int(args[0]), bool(int(args[1]))
+        poke_id, is_shiny = int(args[0]), int(args[1])
         poke_name = POKEMON_BY_ID.get(poke_id, {}).get('name')
         if not poke_name:
             return await update.message.reply_text(f"❌ Error: El Pokémon con ID {poke_id} no existe.")
@@ -5491,7 +5491,7 @@ async def remove_sticker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not target_user:
         return await update.message.reply_text("Uso: `/removesticker [@usuario|ID] <poke_id> <shiny 0/1>`")
     try:
-        poke_id, is_shiny = int(args[0]), bool(int(args[1]))
+        poke_id, is_shiny = int(args[0]), int(args[1])
         poke_name = POKEMON_BY_ID.get(poke_id, {}).get('name')
         if not poke_name:
             return await update.message.reply_text(f"❌ Error: El Pokémon con ID {poke_id} no existe.")
@@ -6573,13 +6573,13 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if parts[1] == 'step2':
         # Formato: trade_step2_TGT_SND_WPID_WSHINY_MSGID
         target_id, sender_id = int(parts[2]), int(parts[3])
-        wanted_pid, wanted_shiny = int(parts[4]), bool(int(parts[5]))
+        wanted_pid, wanted_shiny = int(parts[4]), int(parts[5])
         page = 0
         cmd_msg_id = parts[6] if len(parts) > 6 else ""
     else:
         # Formato: trade_offer_page_TGT_SND_WPID_WSHINY_PAGE_MSGID
         target_id, sender_id = int(parts[3]), int(parts[4])
-        wanted_pid, wanted_shiny = int(parts[5]), bool(int(parts[6]))
+        wanted_pid, wanted_shiny = int(parts[5]), int(parts[6])
         page = int(parts[7])
         cmd_msg_id = parts[8] if len(parts) > 8 else ""
 
@@ -6687,8 +6687,8 @@ async def trade_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
         return
 
-    want_p, want_s = int(parts[4]), bool(int(parts[5]))
-    offer_p, offer_s = int(parts[6]), bool(int(parts[7]))
+    want_p, want_s = int(parts[4]), int(parts[5])
+    offer_p, offer_s = int(parts[6]), int(parts[7])
 
     sender = await context.bot.get_chat(sender_id)
     target = await context.bot.get_chat(target_id)
@@ -6774,8 +6774,8 @@ async def trade_final_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     # Datos de los Pokémon
-    want_p, want_s = int(parts[4]), bool(int(parts[5]))  # Lo que da el TARGET (Destinatario)
-    offer_p, offer_s = int(parts[6]), bool(int(parts[7]))  # Lo que da el SENDER (Solicitante)
+    want_p, want_s = int(parts[4]), int(parts[5])
+    offer_p, offer_s = int(parts[6]), int(parts[7])
 
     # 3. VALIDACIÓN CRÍTICA DE STOCK
     # Comprobamos si el Solicitante aún tiene el repetido que ofreció
