@@ -381,7 +381,7 @@ def get_user_money(user_id):
 
 def remove_sticker_from_collection(user_id, pokemon_id, is_shiny):
     count = query_db("DELETE FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-                     (user_id, pokemon_id, 1 if is_shiny else 0))
+                     (user_id, pokemon_id, int(is_shiny)))
     return count > 0
 
 
@@ -488,17 +488,17 @@ def get_or_create_user(user_id, username):
 
 def check_sticker_owned(user_id, pokemon_id, is_shiny):
     res = query_db("SELECT 1 FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-                   (user_id, pokemon_id, 1 if is_shiny else 0), one=True)
+                   (user_id, pokemon_id, int(is_shiny)), one=True)
     return res is not None
 
 
 def add_sticker_to_collection(user_id, pokemon_id, is_shiny):
     if DATABASE_URL:
         query_db("INSERT INTO collection (user_id, pokemon_id, is_shiny) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-                 (user_id, pokemon_id, 1 if is_shiny else 0))
+                 (user_id, pokemon_id, int(is_shiny)))
     else:
         query_db("INSERT OR IGNORE INTO collection (user_id, pokemon_id, is_shiny) VALUES (?, ?, ?)",
-                 (user_id, pokemon_id, 1 if is_shiny else 0))
+                 (user_id, pokemon_id, int(is_shiny)))
 
 
 def update_money(user_id, amount):
@@ -595,7 +595,7 @@ def is_user_notification_enabled(user_id):
 
 def add_sticker_smart(user_id, pokemon_id, is_shiny):
     res = query_db("SELECT quantity FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-                   (user_id, pokemon_id, 1 if is_shiny else 0), one=True)
+                   (user_id, pokemon_id, int(is_shiny)), one=True)
 
     if not res:
         # No lo tiene, insertar
@@ -605,15 +605,15 @@ def add_sticker_smart(user_id, pokemon_id, is_shiny):
     qty = res[0]
 
     if qty <= 0:
-        # Reparación de "Pokémon Fantasma" (Bug antiguo de intercambios)
+        # Reparación de "Pokémon Fantasma"
         query_db("UPDATE collection SET quantity = 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-                 (user_id, pokemon_id, 1 if is_shiny else 0))
+                 (user_id, pokemon_id, int(is_shiny)))
         return 'NEW'
 
     elif qty == 1:
         # Tiene 1, subimos a 2
         query_db("UPDATE collection SET quantity = 2 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-                 (user_id, pokemon_id, 1 if is_shiny else 0))
+                 (user_id, pokemon_id, int(is_shiny)))
         return 'DUPLICATE'
 
     # Tiene 2 o más
@@ -658,25 +658,15 @@ def check_trade_daily_limit(user_id):
 
 
 def execute_trade(user_a, pokemon_a, is_shiny_a, user_b, pokemon_b, is_shiny_b):
-    """
-    Ejecuta el intercambio atómico.
-    User A da Pokemon A -> Recibe Pokemon B.
-    User B da Pokemon B -> Recibe Pokemon A.
-    """
-    # 1. Restar 1 a la cantidad de los pokémon ofrecidos (pasan de 2 a 1)
-    # (Asumimos que ya validamos que tienen duplicados antes de llamar a esto)
     query_db("UPDATE collection SET quantity = quantity - 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-             (user_a, pokemon_a, 1 if is_shiny_a else 0))
+             (user_a, pokemon_a, int(is_shiny_a)))
 
     query_db("UPDATE collection SET quantity = quantity - 1 WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-             (user_b, pokemon_b, 1 if is_shiny_b else 0))
+             (user_b, pokemon_b, int(is_shiny_b)))
 
-    # 2. Sumar el pokémon recibido (usamos add_sticker_smart para manejar si ya lo tenían o no)
-    # Nota: Si add_sticker_smart devuelve 'MAX', significa que ya tenían 2, así que en el bot daremos dinero.
     status_a = add_sticker_smart(user_a, pokemon_b, is_shiny_b)
     status_b = add_sticker_smart(user_b, pokemon_a, is_shiny_a)
 
-    # 3. Actualizar contadores diarios
     query_db("UPDATE users SET daily_trades = daily_trades + 1 WHERE user_id IN (?, ?)", (user_a, user_b))
 
     return status_a, status_b
@@ -772,7 +762,7 @@ def has_duplicate(user_id, pokemon_id, is_shiny):
     """Verifica si el usuario tiene al menos 1 repetido (cantidad >= 2) de un Pokémon específico."""
     res = query_db(
         "SELECT quantity FROM collection WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?",
-        (user_id, pokemon_id, 1 if is_shiny else 0),
+        (user_id, pokemon_id, int(is_shiny)),
         one=True
     )
     return res and res[0] >= 2
