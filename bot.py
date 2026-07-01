@@ -6256,9 +6256,8 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
         return await query.answer("No es tu menú.", show_alert=True)
 
     user_stickers = db.get_all_user_stickers(sender_id)
-    owned_species = {pid for pid, shiny in user_stickers}
 
-    # 1. Filtramos la región (Y EXCLUIMOS EL UNOWN 201 BASE PARA QUE NO SALGA EN LA BÚSQUEDA)
+    # 1. Filtramos la región (Y EXCLUIMOS EL UNOWN 201 BASE)
     if region == 'kanto':
         pool = [p for p in ALL_POKEMON if p['id'] <= 151]
     elif region == 'johto':
@@ -6266,8 +6265,20 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     elif region == 'hoenn':
         pool = [p for p in ALL_POKEMON if 252 <= p['id'] <= 386]
 
-    # 2. Filtramos SOLO las especies que no tiene en absoluto
-    missing_species = [p for p in pool if p['id'] not in owned_species]
+    # 2. Nueva lógica: Mostrar Pokémon si falta ALGUNA de sus formas
+    missing_species = []
+    for p in pool:
+        p_id = p['id']
+        if p_id in POKEMON_FORMS:
+            # Si tiene formas, verificamos si le falta alguna (normal o shiny)
+            valid_forms = list(POKEMON_FORMS[p_id].keys())
+            has_all = all((p_id, v) in user_stickers and (p_id, v + 1) in user_stickers for v in valid_forms)
+            if not has_all:
+                missing_species.append(p)
+        else:
+            # Si no tiene formas, miramos si le falta el normal o el shiny
+            if (p_id, 0) not in user_stickers or (p_id, 1) not in user_stickers:
+                missing_species.append(p)
 
     # 3. MENSAJE SI NO LE FALTA NADA
     if not missing_species:
@@ -6485,14 +6496,14 @@ async def show_trade_menu_target_duplicates(update: Update, context: ContextType
 
     sender_collection = db.get_all_user_stickers(sender_id)
 
-    # 2. Función de Estado: 0 (No tiene especie), 1 (Tiene una variante), 2 (Ya tiene esa variante exacta)
+    # 2. Función de Estado para los iconos
     def get_status(p_id, s_shiny, collection):
         has_exact = (p_id, s_shiny) in collection
-        has_normal = (p_id, 0) in collection
-        has_shiny = (p_id, 1) in collection
-
-        if not has_normal and not has_shiny: return 0  # Le falta la especie entera (🆕)
-        if not has_exact: return 1  # Le falta esta variante, pero tiene la otra (✔️)
+        if not has_exact:
+            # Si no tiene la variante exacta, miramos si tiene alguna otra forma de esa especie
+            has_any = any(pid == p_id for pid, sh in collection)
+            if not has_any: return 0  # Le falta la especie entera (🆕)
+            return 1  # Tiene la especie, pero no esta variante (✔️)
         return 2  # Ya tiene esta variante exacta (Nada)
 
     # 3. Ordenación Inteligente
@@ -6573,12 +6584,14 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if parts[1] == 'step2':
         # Formato: trade_step2_TGT_SND_WPID_WSHINY_MSGID
         target_id, sender_id = int(parts[2]), int(parts[3])
+        # CORRECCIÓN: Quitamos el bool() y lo dejamos como int
         wanted_pid, wanted_shiny = int(parts[4]), int(parts[5])
         page = 0
         cmd_msg_id = parts[6] if len(parts) > 6 else ""
     else:
         # Formato: trade_offer_page_TGT_SND_WPID_WSHINY_PAGE_MSGID
         target_id, sender_id = int(parts[3]), int(parts[4])
+        # CORRECCIÓN: Quitamos el bool() y lo dejamos como int
         wanted_pid, wanted_shiny = int(parts[5]), int(parts[6])
         page = int(parts[7])
         cmd_msg_id = parts[8] if len(parts) > 8 else ""
@@ -6587,31 +6600,39 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await query.answer("Solo la persona que inició el intercambio puede elegir.", show_alert=True)
 
     wanted_data = POKEMON_BY_ID[wanted_pid]
-    wanted_rarity = get_rarity(wanted_data['category'], wanted_shiny)
+
+    # --- CORRECCIÓN DE RAREZA ---
+    # Convertimos los números (2,4,6) a False y (1,3,5) a True para que no los confunda con shinys
+    wanted_is_true_shiny = (wanted_shiny % 2 != 0)
+    wanted_rarity = get_rarity(wanted_data['category'], wanted_is_true_shiny)
+
     my_duplicates = db.get_user_duplicates(sender_id)
 
     valid_duplicates = []
     for pid, shiny in my_duplicates:
         p_data = POKEMON_BY_ID[pid]
-        r = get_rarity(p_data['category'], shiny)
+        is_true_shiny = (shiny % 2 != 0)
+        r = get_rarity(p_data['category'], is_true_shiny)
         if r == wanted_rarity:
             valid_duplicates.append((pid, shiny))
 
     target_collection = db.get_all_user_stickers(target_id)
 
     def is_species_missing(p_id, collection):
-        return (p_id, 0) not in collection and (p_id, 1) not in collection
+        # CORRECCIÓN: Comprobamos si tiene CUALQUIER forma de esa especie
+        return not any(c_pid == p_id for c_pid, c_sh in collection)
 
     def sort_key_offer(item):
         pid, shiny = item
         is_useful = is_species_missing(pid, target_collection)
+        is_true_shiny = (shiny % 2 != 0)
         name = POKEMON_BY_ID[pid]['name']
 
-        if is_useful and not shiny:
+        if is_useful and not is_true_shiny:
             priority = 1
-        elif is_useful and shiny:
+        elif is_useful and is_true_shiny:
             priority = 2
-        elif not is_useful and not shiny:
+        elif not is_useful and not is_true_shiny:
             priority = 3
         else:
             priority = 4
@@ -6634,13 +6655,23 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     row = []
     for pid, shiny in current_list:
         p_data = POKEMON_BY_ID[pid]
+        is_true_shiny = (shiny % 2 != 0)
 
         is_useful = is_species_missing(pid, target_collection)
-        useful_mark = " 🤝" if is_useful else ""
-        shiny_mark = "✨" if shiny else ""
+        useful_mark = " 🆕" if is_useful else ""
+        shiny_mark = "✨" if is_true_shiny else ""
 
-        btn_text = f"{p_data['name']}{shiny_mark}{useful_mark}"
-        cb_data = f"trade_conf_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{pid}_{int(shiny)}"
+        # --- AÑADIDO: Nombres de las multi-formas en los botones ---
+        form_name = ""
+        if pid in POKEMON_FORMS:
+            base_val = shiny - 1 if is_true_shiny else shiny
+            if pid == 352:
+                form_name = f" ({POKEMON_FORMS[pid][base_val][1].lower()})"
+            else:
+                form_name = f" Forma {POKEMON_FORMS[pid][base_val][1]}"
+
+        btn_text = f"{p_data['name']}{form_name}{shiny_mark}{useful_mark}"
+        cb_data = f"trade_conf_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{pid}_{shiny}"
 
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
         if len(row) == 2:
@@ -6652,10 +6683,10 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
-                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{page - 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page - 1}_{cmd_msg_id}"))
     if end < len(valid_duplicates):
         nav_row.append(InlineKeyboardButton("Siguiente ➡️",
-                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{int(wanted_shiny)}_{page + 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
     # Lógica de botón Volver actualizada para Hoenn y Unown
@@ -6670,8 +6701,19 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard.append([InlineKeyboardButton("⬅️ Volver",
                                           callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region_of_wanted}_0_{cmd_msg_id}")])
 
+    # --- AÑADIDO: Formateamos también el nombre del Pokémon que pedimos ---
+    wanted_form_name = ""
+    if wanted_pid in POKEMON_FORMS:
+        base_val = wanted_shiny - 1 if wanted_is_true_shiny else wanted_shiny
+        if wanted_pid == 352:
+            wanted_form_name = f" ({POKEMON_FORMS[wanted_pid][base_val][1].lower()})"
+        else:
+            wanted_form_name = f" Forma {POKEMON_FORMS[wanted_pid][base_val][1]}"
+
+    wanted_shiny_mark = "✨" if wanted_is_true_shiny else ""
+
     text = (f"♻ **Tu Oferta ({wanted_rarity}):**\n"
-            f"Elegiste: {wanted_data['name']}\n"
+            f"Elegiste: {wanted_data['name']}{wanted_form_name}{wanted_shiny_mark}\n"
             f"Selecciona qué repetido ofreces a cambio (Pág {page + 1}/{total_pages}):")
 
     refresh_deletion_timer(context, query.message, 120)
