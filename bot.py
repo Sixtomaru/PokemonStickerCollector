@@ -4216,29 +4216,92 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         context.chat_data['is_opening_pack'] = True
-
-        # Eliminar el mensaje del inventario
         await message.delete()
-
         db.remove_item_from_inventory(user.id, item_id, 1)
-
-        opening_message = await context.bot.send_message(
-            message.chat_id,
-            f"🎴 ¡{user.mention_html()} ha abierto un <b>{ITEM_NAMES.get(item_id)}</b>! ",
-            parse_mode='HTML',
-            disable_notification=True
-        )
 
         pack_config = SHOP_CONFIG.get(item_id, {})
         pack_size = pack_config.get('size', 1)
         is_magic = pack_config.get('is_magic', False)
+
+        # --- SISTEMA DE SOBRE DIOS (GOD PACK) ---
+        # 1. Averiguar la región del sobre
+        region_filter = pack_config.get('region_filter')
+        display_region = region_filter if region_filter else "Nacional"
+        if not region_filter and 'national' in item_id:
+            display_region = "Nacional"
+
+        # 2. Probabilidad del 0.1%
+        is_god_pack = random.random() < 0.001
+
+        if is_god_pack:
+            pack_size = 5
+            opening_text = f"🎴 ¡{user.mention_html()} va a abrir un <b>{ITEM_NAMES.get(item_id, 'Sobre')}</b>... cuando de repente, se da cuenta de que lo que tiene en las manos es: ¡¡un <b>Sobre Brillante {display_region}</b>!!✨✨"
+            summary_header_name = f"🌟 Resultado del Sobre Brillante {display_region}✨✨"
+        else:
+            opening_text = f"🎴 ¡{user.mention_html()} ha abierto un <b>{ITEM_NAMES.get(item_id)}</b>! "
+            summary_header_name = f"📜 Resultado del <b>{ITEM_NAMES.get(item_id)}</b>"
+
+        opening_message = await context.bot.send_message(
+            message.chat_id,
+            opening_text,
+            parse_mode='HTML',
+            disable_notification=True
+        )
+
         pack_results = []
         message_ids_to_delete = [opening_message.message_id]
 
         # --- LÓGICA DE GENERACIÓN ---
 
-        # 1. Sobres Brillantes
-        if item_id == 'pack_shiny_kanto':
+        if is_god_pack:
+            # Seleccionamos la piscina de la región (ignorando tipos elementales)
+            if display_region == 'Kanto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif display_region == 'Johto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif display_region == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            elif display_region == 'Unown':
+                from pokemon_data import POKEMON_UNOWN
+                base_pool = POKEMON_UNOWN
+            else:
+                base_pool = ALL_POKEMON_PACKS
+
+            if is_magic:
+                user_quantities = db.get_user_collection_quantities(user.id)
+                for _ in range(pack_size):
+                    missing_shinies = []
+                    for p in base_pool:
+                        p_id = p['id']
+                        if p_id in POKEMON_FORMS:
+                            for base_val in POKEMON_FORMS[p_id].keys():
+                                s_val = base_val + 1  # Impar = Shiny
+                                if user_quantities.get((p_id, s_val), 0) == 0:
+                                    missing_shinies.append((p, s_val))
+                        else:
+                            if user_quantities.get((p_id, 1), 0) == 0:
+                                missing_shinies.append((p, 1))
+
+                    if missing_shinies:
+                        p_data, final_s_val = random.choice(missing_shinies)
+                    else:
+                        p_data = random.choice(base_pool)
+                        base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys())) if p_data[
+                                                                                                  'id'] in POKEMON_FORMS else 0
+                        final_s_val = base_val + 1
+
+                    pack_results.append({'data': p_data, 'is_shiny': final_s_val})
+                    user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val),
+                                                                                       0) + 1
+            else:
+                for _ in range(pack_size):
+                    p_data = random.choice(base_pool)
+                    base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys())) if p_data[
+                                                                                              'id'] in POKEMON_FORMS else 0
+                    pack_results.append({'data': p_data, 'is_shiny': base_val + 1})
+
+        # 1. Sobres Brillantes Normales
+        elif item_id == 'pack_shiny_kanto':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             p_data = random.choice(kanto_pool)
             form_offset = get_form_offset(p_data['id'])
@@ -4316,7 +4379,7 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 s_val = form_offset + (1 if is_shiny_bool else 0)
                 pack_results.append({'data': p_data, 'is_shiny': s_val})
 
-        # 4. Sobres Mágicos (Con Buscador Perfecto)
+        # 4. Sobres Mágicos
         elif is_magic:
             region_filter = pack_config.get('region_filter')
             base_pool = ALL_POKEMON_PACKS
@@ -4336,16 +4399,15 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for _ in range(pack_size):
                 is_shiny_bool = random.random() < SHINY_CHANCE
 
-                missing_species_pool = []  # No tiene NINGUNA variante de este Pokémon
-                missing_forms_pool = []  # Tiene el Pokémon, pero le falta alguna forma
-                one_qty_pool = []  # Le falta para intercambiar (Cantidad = 1)
+                missing_species_pool = []
+                missing_forms_pool = []
+                one_qty_pool = []
 
                 for p in base_pool:
                     p_id = p['id']
                     has_species = any(user_quantities.get((p_id, v), 0) > 0 for v in range(8))
 
                     if p_id in POKEMON_FORMS:
-                        # Si tiene formas, analizamos las formas válidas (0, 2, 4, 6) o (1, 3, 5, 7)
                         valid_forms = list(POKEMON_FORMS[p_id].keys())
                         for base_val in valid_forms:
                             s_v = base_val + (1 if is_shiny_bool else 0)
@@ -4359,7 +4421,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             elif qty == 1:
                                 one_qty_pool.append((p, s_v))
                     else:
-                        # Pokémon sin formas
                         s_v = 1 if is_shiny_bool else 0
                         qty = user_quantities.get((p_id, s_v), 0)
 
@@ -4368,7 +4429,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         elif qty == 1:
                             one_qty_pool.append((p, s_v))
 
-                # Orden de Mando
                 if missing_species_pool:
                     p_data, final_s_val = random.choice(missing_species_pool)
                 elif missing_forms_pool:
@@ -4380,7 +4440,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     possible = [p for p in base_pool if p['category'] == cat]
                     p_data = random.choice(possible if possible else base_pool)
 
-                    # Al dar al azar, solo cogemos formas VÁLIDAS
                     if p_data['id'] in POKEMON_FORMS:
                         base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys()))
                     else:
@@ -4428,7 +4487,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try:
                 path = get_image_path(p['id'], s_val)
-
                 with open(path, 'rb') as f:
                     msg = await context.bot.send_sticker(chat_id=message.chat_id, sticker=f, disable_notification=True)
                     message_ids_to_delete.append(msg.message_id)
@@ -4439,7 +4497,6 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
-            # Ocultamos la forma de Kecleon al atraparlo para que solo diga "Kecleon"
             form_name = ""
             if p['id'] in POKEMON_FORMS and p['id'] != 352:
                 base_val = s_val - 1 if is_true_shiny else s_val
@@ -4460,87 +4517,71 @@ async def open_pack_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user.id, money)
                 summary_parts.append(f"🔸✔️ {p_display}{form_name} {r_emoji} (+{format_money(money)}₽)")
 
-        pack_name = ITEM_NAMES.get(item_id, "Sobre")
-        final_text = f"📜 Resultado del <b>{pack_name}</b> de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
+        final_text = f"{summary_header_name} de {user.mention_html()}:\n\n" + "\n".join(summary_parts)
 
-        # --- PREMIOS INDIVIDUALES ---
-        if not db.is_kanto_completed_by_user(user.id):
-            if db.get_user_unique_kanto_count(user.id) >= 151:
-                db.set_kanto_completed_by_user(user.id)
-                db.update_money(user.id, 3000)
-                db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
+        # --- PREMIOS INDIVIDUALES Y RETOS GRUPALES ---
+        if not db.is_kanto_completed_by_user(user.id) and db.get_user_unique_kanto_count(user.id) >= 151:
+            db.set_kanto_completed_by_user(user.id)
+            db.update_money(user.id, 3000)
+            db.add_item_to_inventory(user.id, 'pack_shiny_kanto', 1)
+            final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Kanto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Kanto!"
 
-        if not db.is_johto_completed_by_user(user.id):
-            if db.get_user_unique_johto_count(user.id) >= 100:
-                db.set_johto_completed_by_user(user.id)
-                db.update_money(user.id, 3000)
-                db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
+        if not db.is_johto_completed_by_user(user.id) and db.get_user_unique_johto_count(user.id) >= 100:
+            db.set_johto_completed_by_user(user.id)
+            db.update_money(user.id, 3000)
+            db.add_item_to_inventory(user.id, 'pack_shiny_johto', 1)
+            final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Johto</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Johto!"
 
-        if not db.is_hoenn_completed_by_user(user.id):
-            if db.get_user_unique_hoenn_count(user.id) >= 135:
-                db.set_hoenn_completed_by_user(user.id)
-                db.update_money(user.id, 3000)
-                db.add_item_to_inventory(user.id, 'pack_shiny_hoenn', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
+        if not db.is_hoenn_completed_by_user(user.id) and db.get_user_unique_hoenn_count(user.id) >= 135:
+            db.set_hoenn_completed_by_user(user.id)
+            db.update_money(user.id, 3000)
+            db.add_item_to_inventory(user.id, 'pack_shiny_hoenn', 1)
+            final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
 
-        if not db.is_unown_completed_by_user(user.id):
-            if db.get_user_unique_unown_count(user.id) >= 28:
-                db.set_unown_completed_by_user(user.id)
-                db.update_money(user.id, 2000)
-                db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
-                final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
+        if not db.is_unown_completed_by_user(user.id) and db.get_user_unique_unown_count(user.id) >= 28:
+            db.set_unown_completed_by_user(user.id)
+            db.update_money(user.id, 2000)
+            db.add_item_to_inventory(user.id, 'pack_shiny_unown', 1)
+            final_text += f"\n\n🎊 ¡Felicidades {user.mention_html()}, has completado el <b>Álbum Unown</b>! 🎊\n¡Recibes 2000₽ y un Sobre Brillante Unown!"
 
-        # --- PREMIOS RETOS GRUPALES ---
         is_qualified = await is_group_qualified(message.chat_id, context)
         chat_id = message.chat_id
 
         if message.chat.type in ['group', 'supergroup']:
-            # 1. RETO KANTO
             if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-                group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
-                if len(group_unique_ids) >= 151:
+                if len(db.get_group_unique_kanto_ids(chat_id)) >= 151:
                     db.mark_event_completed(chat_id, 'kanto_group_challenge')
                     if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
+                        for uid in db.get_users_in_group(chat_id):
                             db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
                             db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
                         final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
                     else:
                         final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
 
-            # 2. RETO JOHTO
             excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
             if not db.is_event_completed(chat_id, 'johto_group_challenge'):
-                raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
-                valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
-                if len(valid_johto_ids) >= 91:
+                valid_johto = [p for p in db.get_group_unique_johto_ids(chat_id) if p not in excluded_johto]
+                if len(valid_johto) >= 91:
                     db.mark_event_completed(chat_id, 'johto_group_challenge')
                     if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
+                        for uid in db.get_users_in_group(chat_id):
                             db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
                             db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
                         final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
                     else:
                         final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
 
-            # 3. RETO HOENN
             excluded_hoenn = {298, 360}
             if not db.is_event_completed(chat_id, 'hoenn_group_challenge'):
-                raw_hoenn_ids = db.query_db(
+                raw_hoenn = db.query_db(
                     'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
                     (chat_id,))
-                group_ids_hoenn = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
-                valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
-
-                if len(valid_hoenn_ids) >= 133:
+                valid_hoenn = [r[0] for r in raw_hoenn if r[0] not in excluded_hoenn] if raw_hoenn else []
+                if len(valid_hoenn) >= 133:
                     db.mark_event_completed(chat_id, 'hoenn_group_challenge')
                     if is_qualified:
-                        group_users = db.get_users_in_group(chat_id)
-                        for uid in group_users:
+                        for uid in db.get_users_in_group(chat_id):
                             db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Hoenn")
                             db.add_mail(uid, 'inventory_item', 'pack_shiny_hoenn', "Premio Reto Grupal: Hoenn")
                         final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Hoenn en su buzón."
@@ -4570,7 +4611,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ['group', 'supergroup']:
         db.register_user_in_group(user.id, chat_id)
 
-    # 1. Validar Argumentos
     args = context.args
     if not args or len(args) < 2:
         msg = await update.message.reply_text(
@@ -4583,7 +4623,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     sobre_input = args[0].lower()
-
     try:
         cantidad = int(args[1])
     except ValueError:
@@ -4591,7 +4630,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 10)
         return
 
-    # 2. Validar reglas del comando (Límite subido a 20)
     if cantidad < 1 or cantidad > 20:
         msg = await update.message.reply_text("❌ Puedes abrir entre 1 y 20 sobres a la vez.", disable_notification=True)
         schedule_message_deletion(context, msg, 10)
@@ -4604,7 +4642,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 10)
         return
 
-    # 3. Comprobar Inventario
     inventory = db.get_user_inventory(user.id)
     user_qty = 0
     for item in inventory:
@@ -4618,26 +4655,76 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_message_deletion(context, msg, 10)
         return
 
-    # 4. Procesar la apertura en bloque
     pack_config = SHOP_CONFIG.get(item_id, {})
-    pack_size = pack_config.get('size', 1)
+    original_pack_size = pack_config.get('size', 1)
     is_magic = pack_config.get('is_magic', False)
     pack_name = pack_config.get('name', 'Sobre')
 
-    # Restamos todos los sobres de golpe
+    # Determinar Región Base
+    region_filter = pack_config.get('region_filter')
+    display_region = region_filter if region_filter else "Nacional"
+    if not region_filter and 'national' in item_id:
+        display_region = "Nacional"
+
     db.remove_item_from_inventory(user.id, item_id, cantidad)
 
     final_text = f"🎴 <b>Apertura Múltiple de {user.mention_html()}</b> 🎴\n<i>{cantidad}x {pack_name}</i>\n\n"
     user_quantities = db.get_user_collection_quantities(user.id)
 
-    # Iteramos por cada sobre
     for i in range(cantidad):
         pack_results = []
 
-        # --- LÓGICA DE GENERACIÓN IDÉNTICA A LA NORMAL ---
+        # --- TIRADA DE SOBRE DIOS (0.1%) ---
+        is_god_pack = random.random() < 0.001
+        pack_size = 5 if is_god_pack else original_pack_size
 
-        # 1. Sobres Brillantes
-        if item_id == 'pack_shiny_kanto':
+        if is_god_pack:
+            if display_region == 'Kanto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+            elif display_region == 'Johto':
+                base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+            elif display_region == 'Hoenn':
+                base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+            elif display_region == 'Unown':
+                from pokemon_data import POKEMON_UNOWN
+                base_pool = POKEMON_UNOWN
+            else:
+                base_pool = ALL_POKEMON_PACKS
+
+            if is_magic:
+                for _ in range(pack_size):
+                    missing_shinies = []
+                    for p in base_pool:
+                        p_id = p['id']
+                        if p_id in POKEMON_FORMS:
+                            for base_val in POKEMON_FORMS[p_id].keys():
+                                s_val = base_val + 1
+                                if user_quantities.get((p_id, s_val), 0) == 0:
+                                    missing_shinies.append((p, s_val))
+                        else:
+                            if user_quantities.get((p_id, 1), 0) == 0:
+                                missing_shinies.append((p, 1))
+
+                    if missing_shinies:
+                        p_data, final_s_val = random.choice(missing_shinies)
+                    else:
+                        p_data = random.choice(base_pool)
+                        base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys())) if p_data[
+                                                                                                  'id'] in POKEMON_FORMS else 0
+                        final_s_val = base_val + 1
+
+                    pack_results.append({'data': p_data, 'is_shiny': final_s_val})
+                    user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val),
+                                                                                       0) + 1
+            else:
+                for _ in range(pack_size):
+                    p_data = random.choice(base_pool)
+                    base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys())) if p_data[
+                                                                                              'id'] in POKEMON_FORMS else 0
+                    pack_results.append({'data': p_data, 'is_shiny': base_val + 1})
+
+        # 1. Sobres Brillantes Normales
+        elif item_id == 'pack_shiny_kanto':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             p_data = random.choice(kanto_pool)
             form_offset = get_form_offset(p_data['id'])
@@ -4660,7 +4747,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_data = random.choice(POKEMON_UNOWN)
             pack_results.append({'data': p_data, 'is_shiny': 1})
 
-        # 2. Sobres Especiales (Doble Shiny)
+        # 2. Sobres Especiales
         elif item_id == 'pack_elem_especial':
             kanto_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
             for _ in range(pack_size):
@@ -4689,7 +4776,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 is_shiny_bool = random.random() < (SHINY_CHANCE * 2)
                 pack_results.append({'data': random.choice(POKEMON_UNOWN), 'is_shiny': 1 if is_shiny_bool else 0})
 
-        # 3. Sobres Elementales (Tipos)
+        # 3. Sobres Elementales
         elif 'type_filter' in pack_config:
             target_type = pack_config['type_filter']
             region_filter = pack_config.get('region_filter')
@@ -4704,7 +4791,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif region_filter == 'Hoenn':
                 type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', []) and p['id'] > 251]
                 fallback_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
-            else:  # Fallback Nacional
+            else:
                 type_pool = [p for p in ALL_POKEMON_PACKS if target_type in p.get('types', [])]
                 fallback_pool = ALL_POKEMON_PACKS
 
@@ -4732,17 +4819,15 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             for _ in range(pack_size):
                 is_shiny_bool = random.random() < SHINY_CHANCE
-
-                missing_species_pool = []  # No tiene NINGUNA variante de este Pokémon
-                missing_forms_pool = []  # Tiene el Pokémon, pero le falta alguna forma
-                one_qty_pool = []  # Le falta para intercambiar (Cantidad = 1)
+                missing_species_pool = []
+                missing_forms_pool = []
+                one_qty_pool = []
 
                 for p in base_pool:
                     p_id = p['id']
                     has_species = any(user_quantities.get((p_id, v), 0) > 0 for v in range(8))
 
                     if p_id in POKEMON_FORMS:
-                        # Si tiene formas, analizamos las formas válidas (0, 2, 4, 6) o (1, 3, 5, 7)
                         valid_forms = list(POKEMON_FORMS[p_id].keys())
                         for base_val in valid_forms:
                             s_v = base_val + (1 if is_shiny_bool else 0)
@@ -4756,7 +4841,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             elif qty == 1:
                                 one_qty_pool.append((p, s_v))
                     else:
-                        # Pokémon sin formas
                         s_v = 1 if is_shiny_bool else 0
                         qty = user_quantities.get((p_id, s_v), 0)
 
@@ -4765,7 +4849,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         elif qty == 1:
                             one_qty_pool.append((p, s_v))
 
-                # Orden de Mando
                 if missing_species_pool:
                     p_data, final_s_val = random.choice(missing_species_pool)
                 elif missing_forms_pool:
@@ -4777,7 +4860,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     possible = [p for p in base_pool if p['category'] == cat]
                     p_data = random.choice(possible if possible else base_pool)
 
-                    # Al dar al azar, solo cogemos formas VÁLIDAS
                     if p_data['id'] in POKEMON_FORMS:
                         base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys()))
                     else:
@@ -4786,6 +4868,7 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 pack_results.append({'data': p_data, 'is_shiny': final_s_val})
                 user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
+
         # 5. Sobres Normales
         else:
             region_filter = pack_config.get('region_filter')
@@ -4818,8 +4901,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary_parts = []
         for result in pack_results:
             p, s_val = result['data'], result['is_shiny']
-
-            # Usar is_true_shiny para extraer la rareza y el nombre correctos
             is_true_shiny = (s_val % 2 != 0)
             rarity = get_rarity(p['category'], is_true_shiny)
 
@@ -4831,7 +4912,6 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_display = get_formatted_name(p, is_true_shiny)
             r_emoji = RARITY_VISUALS.get(rarity, '')
 
-            # Ocultamos la forma de Kecleon al atraparlo para que solo diga "Kecleon"
             form_name = ""
             if p['id'] in POKEMON_FORMS and p['id'] != 352:
                 base_val = s_val - 1 if is_true_shiny else s_val
@@ -4846,16 +4926,19 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db.update_money(user.id, money)
                 summary_parts.append(f"🔸✔️ {p_display}{form_name} {r_emoji} (+{format_money(money)}₽)")
 
-        pack_summary = f"<b>Sobre {i + 1}:</b>\n" + "\n".join(summary_parts) + "\n\n"
+        if is_god_pack:
+            pack_summary_header = f"<b>🌟 Sobre Brillante {display_region}✨✨:</b>"
+        else:
+            pack_summary_header = f"<b>Sobre {i + 1}:</b>"
 
-        # --- SISTEMA ANTI-LÍMITES DE TELEGRAM ---
+        pack_summary = f"{pack_summary_header}\n" + "\n".join(summary_parts) + "\n\n"
+
         if len(final_text) + len(pack_summary) > 3800:
             await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
-            final_text = ""  # Reseteamos para el siguiente mensaje
+            final_text = ""
 
         final_text += pack_summary
 
-    # 5. Comprobar si completó alguna región INDIVIDUALMENTE
     premios_extra = ""
     if not db.is_kanto_completed_by_user(user.id) and db.get_user_unique_kanto_count(user.id) >= 151:
         db.set_kanto_completed_by_user(user.id)
@@ -4883,61 +4966,49 @@ async def multisobre_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     final_text += premios_extra
 
-    # --- PREMIOS RETOS GRUPALES ---
     is_qualified = await is_group_qualified(chat_id, context)
 
     if update.effective_chat.type in ['group', 'supergroup']:
-        # 1. RETO KANTO
-        if not db.is_event_completed(chat_id, 'kanto_group_challenge'):
-            group_unique_ids = db.get_group_unique_kanto_ids(chat_id)
-            if len(group_unique_ids) >= 151:
-                db.mark_event_completed(chat_id, 'kanto_group_challenge')
-                if is_qualified:
-                    group_users = db.get_users_in_group(chat_id)
-                    for uid in group_users:
-                        db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
-                        db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
-                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
-                else:
-                    final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
+        if not db.is_event_completed(chat_id, 'kanto_group_challenge') and len(
+                db.get_group_unique_kanto_ids(chat_id)) >= 151:
+            db.mark_event_completed(chat_id, 'kanto_group_challenge')
+            if is_qualified:
+                for uid in db.get_users_in_group(chat_id):
+                    db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Kanto")
+                    db.add_mail(uid, 'inventory_item', 'pack_shiny_kanto', "Premio Reto Grupal: Kanto")
+                final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Kanto en su buzón."
+            else:
+                final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Kanto</b>!"
 
-        # 2. RETO JOHTO
         excluded_johto = {172, 173, 174, 175, 201, 236, 238, 239, 240}
         if not db.is_event_completed(chat_id, 'johto_group_challenge'):
-            raw_johto_ids = db.get_group_unique_johto_ids(chat_id)
-            valid_johto_ids = [pid for pid in raw_johto_ids if pid not in excluded_johto]
-            if len(valid_johto_ids) >= 91:
+            valid_johto = [p for p in db.get_group_unique_johto_ids(chat_id) if p not in excluded_johto]
+            if len(valid_johto) >= 91:
                 db.mark_event_completed(chat_id, 'johto_group_challenge')
                 if is_qualified:
-                    group_users = db.get_users_in_group(chat_id)
-                    for uid in group_users:
+                    for uid in db.get_users_in_group(chat_id):
                         db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Johto")
                         db.add_mail(uid, 'inventory_item', 'pack_shiny_johto', "Premio Reto Grupal: Johto")
                     final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Johto en su buzón."
                 else:
                     final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Johto</b>!"
 
-        # 3. RETO HOENN
         excluded_hoenn = {298, 360}
         if not db.is_event_completed(chat_id, 'hoenn_group_challenge'):
-            raw_hoenn_ids = db.query_db(
+            raw_hoenn = db.query_db(
                 'SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386',
                 (chat_id,))
-            group_ids_hoenn = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
-            valid_hoenn_ids = [pid for pid in group_ids_hoenn if pid not in excluded_hoenn]
-
-            if len(valid_hoenn_ids) >= 133:
+            valid_hoenn = [r[0] for r in raw_hoenn if r[0] not in excluded_hoenn] if raw_hoenn else []
+            if len(valid_hoenn) >= 133:
                 db.mark_event_completed(chat_id, 'hoenn_group_challenge')
                 if is_qualified:
-                    group_users = db.get_users_in_group(chat_id)
-                    for uid in group_users:
+                    for uid in db.get_users_in_group(chat_id):
                         db.add_mail(uid, 'money', '2000', "Premio Reto Grupal: Hoenn")
                         db.add_mail(uid, 'inventory_item', 'pack_shiny_hoenn', "Premio Reto Grupal: Hoenn")
                     final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>! Cada jugador ha recibido 2000₽ y un Sobre Brillante Hoenn en su buzón."
                 else:
                     final_text += f"\n\n🌍🎉 ¡FELICIDADES AL GRUPO! ¡Habéis completado el reto de <b>Hoenn</b>!"
 
-    # 6. Enviar el último mensaje (o único, si cabía todo)
     if final_text.strip():
         await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
 
@@ -5028,6 +5099,134 @@ async def multicompra_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(success_text, parse_mode='Markdown', disable_notification=True)
     schedule_message_deletion(context, msg, 60)
     schedule_message_deletion(context, update.message, 15)
+
+
+async def admin_godpack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando de testeo para abrir un Sobre Dios (God Pack) manualmente."""
+    user = update.effective_user
+    if not user or user.id != ADMIN_USER_ID:
+        return
+
+    chat_id = update.effective_chat.id
+
+    db.get_or_create_user(user.id, user.first_name)
+    if update.effective_chat.type in ['group', 'supergroup']:
+        db.register_user_in_group(user.id, chat_id)
+
+    if not context.args:
+        msg = await update.message.reply_text(
+            "❌ Uso: `/godpack <kanto|johto|hoenn|unown|nacional>`",
+            parse_mode='Markdown', disable_notification=True
+        )
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    region_arg = context.args[0].lower()
+
+    # 1. Seleccionar la piscina según la región
+    if region_arg == 'kanto':
+        base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] <= 151]
+        display_region = "Kanto"
+    elif region_arg == 'johto':
+        base_pool = [p for p in ALL_POKEMON_PACKS if 152 <= p['id'] <= 251]
+        display_region = "Johto"
+    elif region_arg == 'hoenn':
+        base_pool = [p for p in ALL_POKEMON_PACKS if p['id'] > 251]
+        display_region = "Hoenn"
+    elif region_arg == 'unown':
+        from pokemon_data import POKEMON_UNOWN
+        base_pool = POKEMON_UNOWN
+        display_region = "Unown"
+    elif region_arg == 'nacional':
+        base_pool = ALL_POKEMON_PACKS
+        display_region = "Nacional"
+    else:
+        msg = await update.message.reply_text("❌ Región inválida. Usa kanto, johto, hoenn, unown o nacional.")
+        schedule_message_deletion(context, msg, 10)
+        return
+
+    # Mensaje de apertura épico
+    opening_text = f"🎴 ¡{user.mention_html()} usa sus poderes de administrador para invocar un sobre... y lo que tiene en las manos es: ¡¡un <b>Sobre Brillante {display_region}</b>!!✨✨"
+
+    opening_message = await context.bot.send_message(
+        chat_id=chat_id,
+        text=opening_text,
+        parse_mode='HTML',
+        disable_notification=True
+    )
+
+    pack_results = []
+    message_ids_to_delete = [opening_message.message_id]
+    user_quantities = db.get_user_collection_quantities(user.id)
+
+    # 2. Generar 5 shinys (Priorizando los que no tiene)
+    for _ in range(5):
+        missing_shinies = []
+        for p in base_pool:
+            p_id = p['id']
+            if p_id in POKEMON_FORMS:
+                for base_val in POKEMON_FORMS[p_id].keys():
+                    s_val = base_val + 1  # Impar = Shiny
+                    if user_quantities.get((p_id, s_val), 0) == 0:
+                        missing_shinies.append((p, s_val))
+            else:
+                if user_quantities.get((p_id, 1), 0) == 0:
+                    missing_shinies.append((p, 1))
+
+        if missing_shinies:
+            p_data, final_s_val = random.choice(missing_shinies)
+        else:
+            p_data = random.choice(base_pool)
+            base_val = random.choice(list(POKEMON_FORMS[p_data['id']].keys())) if p_data['id'] in POKEMON_FORMS else 0
+            final_s_val = base_val + 1
+
+        pack_results.append({'data': p_data, 'is_shiny': final_s_val})
+        user_quantities[(p_data['id'], final_s_val)] = user_quantities.get((p_data['id'], final_s_val), 0) + 1
+
+    # 3. Mostrar y evaluar resultados
+    summary_parts = []
+    for result in pack_results:
+        p, s_val = result['data'], result['is_shiny']
+        rarity = get_rarity(p['category'], True)
+
+        try:
+            path = get_image_path(p['id'], s_val)
+            with open(path, 'rb') as f:
+                msg = await context.bot.send_sticker(chat_id=chat_id, sticker=f, disable_notification=True)
+                message_ids_to_delete.append(msg.message_id)
+            await asyncio.sleep(1.0)
+        except Exception as e:
+            logger.error(f"Error God Pack: {e}")
+
+        p_display = get_formatted_name(p, True)
+        r_emoji = RARITY_VISUALS.get(rarity, '')
+
+        form_name = ""
+        if p['id'] in POKEMON_FORMS and p['id'] != 352:
+            base_val = s_val - 1
+            form_name = f" Forma {POKEMON_FORMS[p['id']][base_val][1]}"
+
+        status = db.add_sticker_smart(user.id, p['id'], s_val)
+
+        if status == 'NEW':
+            summary_parts.append(f"🔸🆕 {p_display}{form_name} {r_emoji}")
+        elif status == 'DUPLICATE':
+            summary_parts.append(f"🔸♻️ {p_display}{form_name} {r_emoji}")
+        else:
+            money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+            db.update_money(user.id, money)
+            summary_parts.append(f"🔸✔️ {p_display}{form_name} {r_emoji} (+{format_money(money)}₽)")
+
+    final_text = f"🌟 <b>Resultado del Sobre Brillante {display_region}✨✨ de {user.mention_html()}:</b>\n\n" + "\n".join(
+        summary_parts)
+
+    await context.bot.send_message(chat_id, text=final_text, parse_mode='HTML', disable_notification=True)
+
+    if message_ids_to_delete:
+        context.job_queue.run_once(delete_pack_stickers, 60,
+                                   data={'chat_id': chat_id, 'sticker_ids': message_ids_to_delete})
+
+    await update.message.delete()
 
 
 async def view_ticket_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7978,6 +8177,7 @@ def main():
         CommandHandler("multisobre", multisobre_cmd),
         CommandHandler("multicompra", multicompra_cmd),
         CommandHandler("forcehoenn", force_hoenn_unlock_cmd),
+        CommandHandler("godpack", admin_godpack_cmd),
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
