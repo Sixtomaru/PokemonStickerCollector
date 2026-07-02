@@ -581,7 +581,13 @@ async def resolve_safari_catch_job(context: ContextTypes.DEFAULT_TYPE):
         db.increment_group_monthly_stickers(user_id, chat_id)
 
     pokemon_data = POKEMON_BY_ID.get(pokemon_id)
-    p_display = get_formatted_name(pokemon_data, is_shiny)
+    is_true_shiny = (is_shiny % 2 != 0)
+    p_display = get_formatted_name(pokemon_data, is_true_shiny)
+
+    if pokemon_id in POKEMON_FORMS and pokemon_id != 352:
+        base_val = is_shiny - 1 if is_true_shiny else is_shiny
+        p_display += f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
     status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
@@ -2156,7 +2162,11 @@ async def spawn_pokemon(context: ContextTypes.DEFAULT_TYPE):
                             is_shiny_val = form_offset + (1 if is_shiny_bool else 0)
                 # ----------------------------------------------------
 
-                pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny_bool else ''}"
+                form_name = ""
+                if pokemon_data['id'] in POKEMON_FORMS and pokemon_data['id'] != 352:
+                    form_name = f" Forma {POKEMON_FORMS[pokemon_data['id']][form_offset][1]}"
+
+                pokemon_name = f"{pokemon_data['name']}{form_name}{' brillante ✨' if is_shiny_bool else ''}"
 
                 # Usamos nuestra nueva fábrica de rutas
                 image_path = get_image_path(pokemon_data['id'], is_shiny_val)
@@ -2256,7 +2266,11 @@ async def force_spawn_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         form_offset = get_form_offset(pokemon_data['id'])
         is_shiny_val = form_offset + (1 if is_shiny_bool else 0)
 
-        pokemon_name = f"{pokemon_data['name']}{' brillante ✨' if is_shiny_bool else ''}"
+        form_name = ""
+        if pokemon_data['id'] in POKEMON_FORMS and pokemon_data['id'] != 352:
+            form_name = f" Forma {POKEMON_FORMS[pokemon_data['id']][form_offset][1]}"
+
+        pokemon_name = f"{pokemon_data['name']}{form_name}{' brillante ✨' if is_shiny_bool else ''}"
         text_message = f"¡Un <b>{pokemon_name}</b> {RARITY_VISUALS.get(rarity, '')} salvaje apareció!"
 
         # Usamos nuestra nueva fábrica de rutas
@@ -2769,8 +2783,14 @@ async def claim_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         pokemon_data = POKEMON_BY_ID.get(pokemon_id)
 
-        # Formato HTML
-        pokemon_display = get_formatted_name(pokemon_data, is_shiny)
+        # Calculamos si es shiny real y añadimos el nombre de la forma
+        is_true_shiny = (is_shiny % 2 != 0)
+        pokemon_display = get_formatted_name(pokemon_data, is_true_shiny)
+
+        if pokemon_id in POKEMON_FORMS and pokemon_id != 352:
+            base_val = is_shiny - 1 if is_true_shiny else is_shiny
+            pokemon_display += f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+
         rarity_emoji = RARITY_VISUALS.get(rarity, '')
         user_link = user.mention_html()
 
@@ -6455,6 +6475,7 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
         return await query.answer("No es tu menú.", show_alert=True)
 
     user_stickers = db.get_all_user_stickers(sender_id)
+    owned_species = {pid for pid, shiny in user_stickers}
 
     # 1. Filtramos la región (Y EXCLUIMOS EL UNOWN 201 BASE)
     if region == 'kanto':
@@ -6464,19 +6485,18 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
     elif region == 'hoenn':
         pool = [p for p in ALL_POKEMON if 252 <= p['id'] <= 386]
 
-    # 2. Nueva lógica: Mostrar Pokémon si falta ALGUNA de sus formas
+    # 2. Nueva lógica inteligente para ocultar lo que ya tienes
     missing_species = []
     for p in pool:
         p_id = p['id']
         if p_id in POKEMON_FORMS:
-            # Si tiene formas, verificamos si le falta alguna (normal o shiny)
             valid_forms = list(POKEMON_FORMS[p_id].keys())
-            has_all = all((p_id, v) in user_stickers and (p_id, v + 1) in user_stickers for v in valid_forms)
-            if not has_all:
+            # Si es Castform/Deoxys, lo mostramos si le falta ALGUNA de sus formas normales
+            if not all((p_id, v) in user_stickers for v in valid_forms):
                 missing_species.append(p)
         else:
-            # Si no tiene formas, miramos si le falta el normal o el shiny
-            if (p_id, 0) not in user_stickers or (p_id, 1) not in user_stickers:
+            # Si es normal, lo ocultamos en cuanto consiga uno (normal o shiny)
+            if p_id not in owned_species:
                 missing_species.append(p)
 
     # 3. MENSAJE SI NO LE FALTA NADA
