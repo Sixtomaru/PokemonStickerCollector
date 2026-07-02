@@ -58,22 +58,38 @@ QUIZ_DATA = [
 def roll_shiny():
     return random.random() < SHINY_CHANCE
 
+
+# Definimos las formas aquí también para que events.py las reconozca
+POKEMON_FORMS = {
+    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nublado')},
+    352: {0: ('A', 'Normal'), 2: ('B', 'Camuflaje')},
+    386: {0: ('A', 'Normal'), 2: ('B', 'Ataque'), 4: ('C', 'Defensa'), 6: ('D', 'Velocidad')}
+}
+
+
 def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, chat_id=None):
     pokemon_data = POKEMON_BY_ID.get(pokemon_id)
     if not pokemon_data:
         return "Error: No se encontró el Pokémon."
 
-    rarity = get_rarity(pokemon_data['category'], is_shiny)
-    pokemon_display = get_formatted_name(pokemon_data, is_shiny)
+    # Lógica de formas y shinys
+    is_shiny_val = int(is_shiny)
+    is_true_shiny = (is_shiny_val % 2 != 0)
+
+    rarity = get_rarity(pokemon_data['category'], is_true_shiny)
+    pokemon_display = get_formatted_name(pokemon_data, is_true_shiny)
+
+    if pokemon_id in POKEMON_FORMS and pokemon_id != 352:
+        base_val = is_shiny_val - 1 if is_true_shiny else is_shiny_val
+        pokemon_display += f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
+
     rarity_emoji = RARITY_VISUALS.get(rarity, '')
 
-    # Sumar al ranking del grupo
     if chat_id:
         db.increment_group_monthly_stickers(user_id, chat_id)
         db.add_pokemon_to_group_pokedex(chat_id, pokemon_id)
 
-    # Smart Add
-    status = db.add_sticker_smart(user_id, pokemon_id, is_shiny)
+    status = db.add_sticker_smart(user_id, pokemon_id, is_shiny_val)
 
     if status == 'NEW':
         return (f"🎉 ¡Felicidades, {user_mention}! Has conseguido un sticker de "
@@ -81,7 +97,7 @@ def _handle_sticker_reward(user_id, user_mention, pokemon_id, is_shiny=False, ch
     elif status == 'DUPLICATE':
         return (f"♻ ¡Genial, {user_mention}! Conseguiste un sticker de "
                 f"{pokemon_display} {rarity_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo.")
-    else: # MAX
+    else:  # MAX
         money_earned = DUPLICATE_MONEY_VALUES.get(rarity, 100)
         db.update_money(user_id, money_earned)
         return (f"✔️ ¡Genial, {user_mention}! Conseguiste un sticker de "
