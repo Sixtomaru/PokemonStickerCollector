@@ -1313,9 +1313,11 @@ async def egg_claim_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("💬 Con uno que cuides, de momento es suficiente, gracias.", show_alert=True)
         return
 
-    # 2. Generar Huevo
-    # Lista de bebés: Pichu, Cleffa, Igglybuff, Togepi, Tyrogue, Smoochum, Elekid, Magby
-    BABY_POOL = [172, 173, 174, 175, 236, 238, 239, 240]
+        # 2. Generar Huevo
+        # Lista de bebés: Pichu, Cleffa, Igglybuff, Togepi, Tyrogue, Smoochum, Elekid, Magby, Azurill, Wynaut
+        BABY_POOL = [172, 173, 174, 175, 236, 238, 239, 240, 298, 360]
+
+        pokemon_id = random.choice(BABY_POOL)
 
     pokemon_id = random.choice(BABY_POOL)
     is_shiny = random.random() < SHINY_CHANCE
