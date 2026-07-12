@@ -440,7 +440,7 @@ PACK_OPEN_COOLDOWN = 30
 # --- SISTEMA DE FORMAS MULTIPLES (Hoenn) ---
 # Mapeo: Forma A (0,1), Forma B (2,3), Forma C (4,5), Forma D (6,7)
 POKEMON_FORMS = {
-    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nublado')},
+    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nieve')},
     352: {0: ('A', 'Normal'), 2: ('B', 'Camuflaje')},
     386: {0: ('A', 'Normal'), 2: ('B', 'Ataque'), 4: ('C', 'Defensa'), 6: ('D', 'Velocidad')}
 }
