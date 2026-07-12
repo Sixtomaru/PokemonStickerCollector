@@ -61,7 +61,7 @@ def roll_shiny():
 
 # Definimos las formas aquí también para que events.py las reconozca
 POKEMON_FORMS = {
-    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nublado')},
+    351: {0: ('A', 'Normal'), 2: ('B', 'Soleado'), 4: ('C', 'Lluvia'), 6: ('D', 'Nieve')},
     352: {0: ('A', 'Normal'), 2: ('B', 'Camuflaje')},
     386: {0: ('A', 'Normal'), 2: ('B', 'Ataque'), 4: ('C', 'Defensa'), 6: ('D', 'Velocidad')}
 }
