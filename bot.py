@@ -6653,7 +6653,7 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
         btn_text = f"{icon} {safe_uname}{form_name}{shiny_str}"
 
         if t['can_trade']:
-            cb_data = f"trade_step2_{t['uid']}_{sender_id}_{pokemon_id}_{t['is_shiny_val']}_{cmd_msg_id}"
+            cb_data = f"trade_step2s_{t['uid']}_{sender_id}_{pokemon_id}_{t['is_shiny_val']}_{cmd_msg_id}"
         else:
             cb_data = "trade_suser_err"
 
@@ -6806,18 +6806,28 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     parts = query.data.split('_')
 
-    # 1. Detectar si venimos de la pantalla anterior (step2) o estamos navegando por páginas (offer_page)
+    is_search = False
+
+    # Leemos la "brújula" secreta para saber de dónde venimos
     if parts[1] == 'step2':
-        # Formato: trade_step2_TGT_SND_WPID_WSHINY_MSGID
         target_id, sender_id = int(parts[2]), int(parts[3])
-        # CORRECCIÓN: Quitamos el bool() y lo dejamos como int
         wanted_pid, wanted_shiny = int(parts[4]), int(parts[5])
         page = 0
         cmd_msg_id = parts[6] if len(parts) > 6 else ""
-    else:
-        # Formato: trade_offer_page_TGT_SND_WPID_WSHINY_PAGE_MSGID
+    elif parts[1] == 'step2s':
+        is_search = True
+        target_id, sender_id = int(parts[2]), int(parts[3])
+        wanted_pid, wanted_shiny = int(parts[4]), int(parts[5])
+        page = 0
+        cmd_msg_id = parts[6] if len(parts) > 6 else ""
+    elif parts[1] == 'offer' and parts[2] == 'page':
         target_id, sender_id = int(parts[3]), int(parts[4])
-        # CORRECCIÓN: Quitamos el bool() y lo dejamos como int
+        wanted_pid, wanted_shiny = int(parts[5]), int(parts[6])
+        page = int(parts[7])
+        cmd_msg_id = parts[8] if len(parts) > 8 else ""
+    elif parts[1] == 'offer' and parts[2] == 'pages':
+        is_search = True
+        target_id, sender_id = int(parts[3]), int(parts[4])
         wanted_pid, wanted_shiny = int(parts[5]), int(parts[6])
         page = int(parts[7])
         cmd_msg_id = parts[8] if len(parts) > 8 else ""
@@ -6827,8 +6837,6 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     wanted_data = POKEMON_BY_ID[wanted_pid]
 
-    # --- CORRECCIÓN DE RAREZA ---
-    # Convertimos los números (2,4,6) a False y (1,3,5) a True para que no los confunda con shinys
     wanted_is_true_shiny = (wanted_shiny % 2 != 0)
     wanted_rarity = get_rarity(wanted_data['category'], wanted_is_true_shiny)
 
@@ -6845,7 +6853,6 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     target_collection = db.get_all_user_stickers(target_id)
 
     def is_species_missing(p_id, collection):
-        # CORRECCIÓN: Comprobamos si tiene CUALQUIER forma de esa especie
         return not any(c_pid == p_id for c_pid, c_sh in collection)
 
     def sort_key_offer(item):
@@ -6870,7 +6877,6 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not valid_duplicates:
         return await query.answer(f"❌ No tienes repetidos de rareza {wanted_rarity} para ofrecer.", show_alert=True)
 
-    # --- NUEVO: SISTEMA DE PAGINACIÓN ---
     ITEMS_PER_PAGE = 20
     total_pages = math.ceil(len(valid_duplicates) / ITEMS_PER_PAGE)
     start = page * ITEMS_PER_PAGE
@@ -6887,7 +6893,6 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         useful_mark = " 🆕" if is_useful else ""
         shiny_mark = "✨" if is_true_shiny else ""
 
-        # --- AÑADIDO: Nombres de las multi-formas en los botones ---
         form_name = ""
         if pid in POKEMON_FORMS:
             base_val = shiny - 1 if is_true_shiny else shiny
@@ -6905,29 +6910,35 @@ async def trade_step2_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             row = []
     if row: keyboard.append(row)
 
-    # --- BOTONES DE NAVEGACIÓN ---
+    # Botones de navegación con memoria
+    offer_str = "offer_pages" if is_search else "offer_page"
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
-                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page - 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_{offer_str}_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page - 1}_{cmd_msg_id}"))
     if end < len(valid_duplicates):
         nav_row.append(InlineKeyboardButton("Siguiente ➡️",
-                                            callback_data=f"trade_offer_page_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page + 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_{offer_str}_{target_id}_{sender_id}_{wanted_pid}_{wanted_shiny}_{page + 1}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
-    # Lógica de botón Volver actualizada para Hoenn y Unown
-    region_of_wanted = 'kanto'
-    if wanted_pid > 20000:
-        region_of_wanted = 'johto'  # Los Unown están en la lista de Johto en intercambios
-    elif wanted_pid > 251:
-        region_of_wanted = 'hoenn'
-    elif wanted_pid > 151:
-        region_of_wanted = 'johto'
+    # Botón Volver Inteligente
+    if is_search:
+        # Vuelve a la lista de usuarios que tienen el pokemon que buscaste
+        keyboard.append([InlineKeyboardButton("⬅️ Volver",
+                                              callback_data=f"trade_sstick_{sender_id}_{wanted_pid}_0_0_{cmd_msg_id}")])
+    else:
+        # Vuelve a la lista de repetidos del usuario que mencionaste
+        region_of_wanted = 'kanto'
+        if wanted_pid > 20000:
+            region_of_wanted = 'johto'
+        elif wanted_pid > 251:
+            region_of_wanted = 'hoenn'
+        elif wanted_pid > 151:
+            region_of_wanted = 'johto'
 
-    keyboard.append([InlineKeyboardButton("⬅️ Volver",
-                                          callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region_of_wanted}_0_{cmd_msg_id}")])
+        keyboard.append([InlineKeyboardButton("⬅️ Volver",
+                                              callback_data=f"trade_nav_target_{target_id}_{sender_id}_{region_of_wanted}_0_{cmd_msg_id}")])
 
-    # --- AÑADIDO: Formateamos también el nombre del Pokémon que pedimos ---
     wanted_form_name = ""
     if wanted_pid in POKEMON_FORMS:
         base_val = wanted_shiny - 1 if wanted_is_true_shiny else wanted_shiny
@@ -8235,7 +8246,7 @@ def main():
         CallbackQueryHandler(retos_missing_menu, pattern="^retos_missing_menu_"),
         CallbackQueryHandler(retos_view_region, pattern="^retos_view_"),
         CallbackQueryHandler(retos_cmd, pattern="^retos_back_"),
-        CallbackQueryHandler(trade_step2_handler, pattern="^trade_(step2|offer_page)_"),
+        CallbackQueryHandler(trade_step2_handler, pattern="^trade_(step2s?|offer_pages?)_"),
         CallbackQueryHandler(trade_confirm_handler, pattern="^trade_conf_"),
         CallbackQueryHandler(trade_final_handler, pattern="^trade_(exec|reject)_"),
         CallbackQueryHandler(trade_nav_handler, pattern="^trade_nav_target_"),
