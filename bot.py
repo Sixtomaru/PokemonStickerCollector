@@ -6524,7 +6524,7 @@ async def trade_search_region_handler(update: Update, context: ContextTypes.DEFA
         else:
             btn_text = f"#{p['id']:03} {p['name']}" if sort_mode == 'num' else p['name']
 
-        cb_data = f"trade_sstick_{sender_id}_{p['id']}_{page}_{cmd_msg_id}"
+        cb_data = f"trade_sstick_{sender_id}_{p['id']}_0_{page}_{cmd_msg_id}"
         row.append(InlineKeyboardButton(btn_text, callback_data=cb_data))
         if len(row) == 2:
             keyboard.append(row)
@@ -6562,8 +6562,20 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     parts = query.data.split('_')
     sender_id = int(parts[2])
     pokemon_id = int(parts[3])
-    page = int(parts[4])
-    cmd_msg_id = parts[5] if len(parts) > 5 else ""
+    page = int(parts[4])  # Página de la lista de usuarios
+
+    # Extraemos la página de la región para recordarla al volver
+    region_page = 0
+    cmd_msg_id = ""
+    if len(parts) > 5:
+        if parts[5].isdigit() or parts[5] == "":
+            if parts[5] != "":
+                region_page = int(parts[5])
+            if len(parts) > 6:
+                cmd_msg_id = parts[6]
+        else:
+            # Por si alguien pulsa un botón antiguo que no tenía esta mejora
+            cmd_msg_id = parts[5]
 
     if query.from_user.id != sender_id:
         return await query.answer("No es tu menú.", show_alert=True)
@@ -6579,13 +6591,11 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
         for d_pid, d_shiny_val in dupes:
             if d_pid == pokemon_id:
                 if pokemon_id == 352:
-                    # KECLEON: 2x1 lógico. Si tiene el normal(0) o camuflaje(2), tratamos como normal(0).
                     is_true_shiny = (d_shiny_val % 2 != 0)
                     base_shiny = 1 if is_true_shiny else 0
                     if not any(t[0] == uid and t[1] == base_shiny for t in available_trades):
                         available_trades.append((uid, base_shiny))
                 else:
-                    # NORMALES, CASTFORM y DEOXYS: Añadimos cada forma (is_shiny_val) independientemente
                     available_trades.append((uid, d_shiny_val))
 
     if not available_trades:
@@ -6593,9 +6603,12 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
         safe_name = query.from_user.first_name.replace('*', '').replace('_', '')
         text = f"👤 *{safe_name} intercambiando.*\n\n🔍 **Elige la región del sticker que deseas conseguir:**"
         keyboard = [
-            [InlineKeyboardButton("🔸 Kanto", callback_data=f"trade_sreg_{sender_id}_kanto_0_num_{cmd_msg_id}")],
-            [InlineKeyboardButton("🔹 Johto", callback_data=f"trade_sreg_{sender_id}_johto_0_num_{cmd_msg_id}")],
-            [InlineKeyboardButton("🌋 Hoenn", callback_data=f"trade_sreg_{sender_id}_hoenn_0_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🔸 Kanto",
+                                  callback_data=f"trade_sreg_{sender_id}_kanto_{region_page}_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🔹 Johto",
+                                  callback_data=f"trade_sreg_{sender_id}_johto_{region_page}_num_{cmd_msg_id}")],
+            [InlineKeyboardButton("🌋 Hoenn",
+                                  callback_data=f"trade_sreg_{sender_id}_hoenn_{region_page}_num_{cmd_msg_id}")],
             [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
         ]
         return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -6625,26 +6638,18 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     for t in current_users:
         icon = "✅" if t['can_trade'] else "❌"
 
-        # --- NUEVO: TRADUCTOR DE FORMAS PARA LOS BOTONES ---
         is_true_shiny = (t['is_shiny_val'] % 2 != 0)
         shiny_str = " ✨" if is_true_shiny else ""
 
         form_name = ""
         if pokemon_id in POKEMON_FORMS:
-            # Conseguimos la base (0, 2, 4, 6)
             base_val = t['is_shiny_val'] - 1 if is_true_shiny else t['is_shiny_val']
-
             if pokemon_id == 352:
-                # Si es Kecleon, usamos el formato en minúsculas (camuflaje)
                 form_name = f" ({POKEMON_FORMS[pokemon_id][base_val][1].lower()})"
             else:
-                # Si es Deoxys o Castform, usamos Forma Velocidad, etc.
                 form_name = f" Forma {POKEMON_FORMS[pokemon_id][base_val][1]}"
-        # --------------------------------------------------
 
-        # Limpiamos el nombre de usuario de Markdown peligroso
         safe_uname = t['name'].replace('_', '').replace('*', '').replace('`', '')
-
         btn_text = f"{icon} {safe_uname}{form_name}{shiny_str}"
 
         if t['can_trade']:
@@ -6654,14 +6659,14 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
 
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
 
-    # Navegación
+    # Navegación de los usuarios, recordando la página de la región
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Anterior",
-                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page - 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page - 1}_{region_page}_{cmd_msg_id}"))
     if end < len(trade_data):
         nav_row.append(InlineKeyboardButton("Siguiente ➡️",
-                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page + 1}_{cmd_msg_id}"))
+                                            callback_data=f"trade_sstick_{sender_id}_{pokemon_id}_{page + 1}_{region_page}_{cmd_msg_id}"))
     if nav_row: keyboard.append(nav_row)
 
     if pokemon_id > 20000:
@@ -6673,8 +6678,10 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
     else:
         region = 'kanto'
 
+    # Botón volver dinámico
     keyboard.append(
-        [InlineKeyboardButton("⬅️ Volver", callback_data=f"trade_sreg_{sender_id}_{region}_0_num_{cmd_msg_id}")])
+        [InlineKeyboardButton("⬅️ Volver",
+                              callback_data=f"trade_sreg_{sender_id}_{region}_{region_page}_num_{cmd_msg_id}")])
 
     p_name = POKEMON_BY_ID[pokemon_id]['name']
     text = f"🔍 **Usuarios con {p_name} repetido:**\nSelecciona un usuario para proponerle un intercambio:"
