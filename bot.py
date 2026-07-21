@@ -2,6 +2,7 @@
 import logging
 import random
 import time  # <--- Este es el módulo time original (necesario para time.time)
+import calendar
 import asyncio
 import re
 import requests
@@ -162,6 +163,9 @@ EVENT_CHANCE = 0.15
 DELIBIRD_STATE = {}
 MIN_SPAWN_TIME = 7200  # 2 horas
 MAX_SPAWN_TIME = 14400  # 4 horas
+
+# --- JIRACHI ---
+JIRACHI_STATE = {}
 
 # --- ALMACÉN DEL RANKING (GLOBAL) ---
 RANKING_ARCHIVE = {}
@@ -2440,6 +2444,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         db.add_group(chat.id, chat.title)
+        # Aseguramos que el grupo nuevo tenga su evento Jirachi del mes
+        schedule_jirachi_for_group(chat.id, context.application)
         db.set_group_active(chat.id, True)
 
         current_jobs = context.job_queue.get_jobs_by_name(f"spawn_{chat.id}")
@@ -6607,7 +6613,7 @@ async def trade_search_sticker_handler(update: Update, context: ContextTypes.DEF
                                   callback_data=f"trade_sreg_{sender_id}_kanto_{region_page}_num_{cmd_msg_id}")],
             [InlineKeyboardButton("🔹 Johto",
                                   callback_data=f"trade_sreg_{sender_id}_johto_{region_page}_num_{cmd_msg_id}")],
-            [InlineKeyboardButton("🌋 Hoenn",
+            [InlineKeyboardButton("🔸 Hoenn",
                                   callback_data=f"trade_sreg_{sender_id}_hoenn_{region_page}_num_{cmd_msg_id}")],
             [InlineKeyboardButton("❌ Cancelar", callback_data=f"trade_cancel_{sender_id}_{cmd_msg_id}")]
         ]
@@ -7244,9 +7250,9 @@ async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         parts = query.data.split('_')
-        chat_id = int(parts[-2])  # El penúltimo es el ID
-        # El último es el flag de desbloqueo (si existe, si no asumimos 0 por compatibilidad vieja)
-        is_johto_unlocked = int(parts[-1]) if len(parts) > 4 else 0
+        chat_id = int(parts[3]) # Leemos correctamente el ID (es la 4ª posición)
+        is_johto_unlocked = int(parts[4])
+        is_hoenn_unlocked = int(parts[5]) if len(parts) > 5 else 0
     except:
         return
 
@@ -7259,6 +7265,10 @@ async def retos_missing_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Botón Johto (Solo si desbloqueado)
     if is_johto_unlocked:
         keyboard.append([InlineKeyboardButton("🔹 Johto", callback_data=f"retos_view_johto_{chat_id}")])
+
+    # Botón Hoenn (Solo si desbloqueado)
+    if is_hoenn_unlocked:
+        keyboard.append([InlineKeyboardButton("🔸 Hoenn", callback_data=f"retos_view_hoenn_{chat_id}")])
 
     keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data=f"retos_back_{chat_id}")])
 
@@ -7274,8 +7284,16 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
     region = data[2]
     chat_id = int(data[3])
 
-    k_ids = db.get_group_unique_kanto_ids(chat_id)
-    is_unlocked = 1 if len(k_ids) >= 113 else 0
+    # Recalculamos flags por si le dan a Volver
+    group_ids_kanto = db.get_group_unique_kanto_ids(chat_id)
+    is_johto_unlocked = 1 if len(group_ids_kanto) >= 113 else 0
+
+    is_hoenn_unlocked = 0
+    if is_johto_unlocked:
+        raw_johto = db.get_group_unique_johto_ids(chat_id)
+        valid_johto = [pid for pid in raw_johto if pid not in {172, 173, 174, 175, 201, 236, 238, 239, 240}]
+        if len(valid_johto) >= 68:
+            is_hoenn_unlocked = 1
 
     rarity_counts = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
     rarity_totals = {'C': 0, 'B': 0, 'A': 0, 'S': 0}
@@ -7283,7 +7301,7 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ""
 
     if region == 'kanto':
-        group_ids = k_ids
+        group_ids = group_ids_kanto
         for p in ALL_POKEMON:
             if p['id'] > 151: continue
             rarity_totals[p['category']] += 1
@@ -7291,28 +7309,39 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 rarity_counts[p['category']] += 1
             else:
                 missing_names.append(p['name'])
-
         text = "🔸 **Kanto:**\n\n"
 
     elif region == 'johto':
         raw_group_ids = db.get_group_unique_johto_ids(chat_id)
-        # Excluir bebés y Unown del conteo (Los Legendarios SÍ entran)
         excluded_ids = {172, 173, 174, 175, 201, 236, 238, 239, 240}
         group_ids = {pid for pid in raw_group_ids if pid not in excluded_ids}
 
-        # --- CORRECCIÓN: USAR ALL_POKEMON PARA INCLUIR LEGENDARIOS ---
         for p in ALL_POKEMON:
             if p['id'] < 152 or p['id'] > 251: continue
-            if p['id'] in excluded_ids: continue  # Saltamos los bebés aquí también
-
+            if p['id'] in excluded_ids: continue
             rarity_totals[p['category']] += 1
             if p['id'] in group_ids:
                 rarity_counts[p['category']] += 1
             else:
                 missing_names.append(p['name'])
-        # --------------------------------------------------------------
-
         text = "🔹 **Johto:**\n\n"
+
+    elif region == 'hoenn':
+        # Leemos los de Hoenn directamente
+        raw_hoenn_ids = db.query_db('SELECT pokemon_id FROM group_pokedex WHERE chat_id = %s AND pokemon_id >= 252 AND pokemon_id <= 386', (chat_id,))
+        group_ids = {row[0] for row in raw_hoenn_ids} if raw_hoenn_ids else set()
+        excluded_ids = {298, 360}
+        group_ids = {pid for pid in group_ids if pid not in excluded_ids}
+
+        for p in ALL_POKEMON:
+            if p['id'] < 252 or p['id'] > 386: continue
+            if p['id'] in excluded_ids: continue
+            rarity_totals[p['category']] += 1
+            if p['id'] in group_ids:
+                rarity_counts[p['category']] += 1
+            else:
+                missing_names.append(p['name'])
+        text = "🔸 **Hoenn:**\n\n"
 
     text += "_Rarezas:_\n"
     r_text = []
@@ -7333,7 +7362,7 @@ async def retos_view_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_valid = sum(rarity_totals.values())
     text += f"📊 **Total: {len(group_ids)}/{total_valid}**"
 
-    keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data=f"retos_missing_menu_{chat_id}_{is_unlocked}")]]
+    keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data=f"retos_missing_menu_{chat_id}_{is_johto_unlocked}_{is_hoenn_unlocked}")]]
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -7698,6 +7727,200 @@ async def admin_test_delibird(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(chat_id=chat_id, text=f"Error test: {e}")
 
 
+# ==========================================
+# --- EVENTO ESTRELLA FUGAZ (JIRACHI) ---
+# ==========================================
+
+def schedule_jirachi_for_group(chat_id, application):
+    """Calcula y programa el evento Jirachi para un grupo específico en este mes."""
+    now = datetime.now(TZ_SPAIN)
+    current_month_int = int(now.strftime('%Y%m'))
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    end_of_month = now.replace(day=last_day, hour=23, minute=59, second=59)
+
+    sched_ts, saved_month = db.get_jirachi_schedule(chat_id)
+
+    if saved_month != current_month_int:
+        # Toca programarlo para este mes
+        seconds_left = max(60, int((end_of_month - now).total_seconds()))
+        # Si queda más de 2 horas en el mes, lo reparte; si no, inminente.
+        random_delay = random.randint(3600, seconds_left - 3600) if seconds_left > 7200 else random.randint(10,
+                                                                                                            seconds_left)
+        target_ts = time.time() + random_delay
+
+        db.set_jirachi_schedule(chat_id, target_ts, current_month_int)
+        application.job_queue.run_once(trigger_jirachi_event, random_delay, chat_id=chat_id, name=f"jirachi_{chat_id}")
+        logger.info(f"💫 Jirachi programado en {chat_id} para dentro de {random_delay}s.")
+    else:
+        # Ya estaba programado, lo restauramos
+        if sched_ts:
+            delay = sched_ts - time.time()
+            if delay <= 0:
+                # Ocurrió mientras el bot estaba apagado. Como es efímero (35s), lo lanzamos YA para compensar.
+                db.clear_jirachi_schedule(chat_id)
+                application.job_queue.run_once(trigger_jirachi_event, 5, chat_id=chat_id, name=f"jirachi_{chat_id}")
+            else:
+                application.job_queue.run_once(trigger_jirachi_event, delay, chat_id=chat_id, name=f"jirachi_{chat_id}")
+                logger.info(f"💫 Jirachi restaurado en {chat_id} para dentro de {delay}s.")
+
+
+async def check_jirachi_startup(application):
+    """Revisa y programa Jirachi para todos los grupos activos al encender el bot."""
+    for chat_id in db.get_active_groups():
+        schedule_jirachi_for_group(chat_id, application)
+
+
+async def schedule_jirachi_monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    """Se ejecuta a diario, pero solo el día 1 resetea los eventos de todos los grupos."""
+    now = datetime.now(TZ_SPAIN)
+    if now.day == 1:
+        await check_jirachi_startup(context.application)
+
+
+async def trigger_jirachi_event(context: ContextTypes.DEFAULT_TYPE):
+    """Lanza el mensaje efímero de la estrella fugaz en el grupo."""
+    chat_id = context.job.chat_id
+    db.clear_jirachi_schedule(chat_id)  # Borramos porque ya va a ocurrir
+
+    # Se decide si este Jirachi es shiny para TODOS los que pulsen
+    is_shiny = random.random() < SHINY_CHANCE
+
+    text = "Está pasando una estrella fugaz 💫"
+    keyboard = [[InlineKeyboardButton("Pedir deseo", callback_data=f"jirachi_wish_{chat_id}")]]
+
+    try:
+        msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+        JIRACHI_STATE[chat_id] = {
+            'msg_id': msg.message_id,
+            'users': [],
+            'is_shiny': is_shiny
+        }
+
+        # Exactamente 35 segundos de límite
+        context.job_queue.run_once(close_jirachi_event, 35, chat_id=chat_id, data=chat_id,
+                                   name=f"jirachi_close_{chat_id}")
+    except Exception as e:
+        logger.error(f"Error enviando estrella fugaz a {chat_id}: {e}")
+
+
+async def jirachi_wish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Registra a los usuarios que logran pulsar el botón a tiempo."""
+    query = update.callback_query
+    user = query.from_user
+    chat_id = int(query.data.split('_')[2])
+
+    state = JIRACHI_STATE.get(chat_id)
+    if not state or state['msg_id'] != query.message.message_id:
+        await query.answer("La estrella fugaz ya pasó...", show_alert=True)
+        return
+
+    # Si ya lo pulsó, no le dejamos repetir
+    if any(u['id'] == user.id for u in state['users']):
+        await query.answer("Ya has pedido tu deseo.", show_alert=True)
+        return
+
+    db.get_or_create_user(user.id, user.first_name)
+    state['users'].append({
+        'id': user.id,
+        'name': user.first_name,
+        'mention': user.mention_html()
+    })
+
+    await query.answer("Has pedido un deseo 💫", show_alert=True)
+
+
+async def close_jirachi_event(context: ContextTypes.DEFAULT_TYPE):
+    """Resuelve la entrega de Jirachi tras los 35 segundos."""
+    chat_id = context.job.data
+    state = JIRACHI_STATE.get(chat_id)
+    if not state: return
+
+    users = state['users']
+    is_shiny = state['is_shiny']
+    msg_id = state['msg_id']
+    del JIRACHI_STATE[chat_id]
+
+    if not users:
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_id,
+                                                text="Por aquí pasó una estrella fugaz, pero nadie se dio cuenta.")
+        except:
+            pass
+        return
+
+    # Construimos el texto del premio (Nombres arriba, capturas abajo)
+    final_text = "Jugadores que han pedido un deseo:\n\n"
+    for u in users:
+        safe_name = u['name'].replace('<', '').replace('>', '')
+        final_text += f"💫 {safe_name}\n"
+
+    final_text += "\n"
+
+    JIRACHI_ID = 385
+    poke_data = POKEMON_BY_ID[JIRACHI_ID]
+    is_shiny_val = 1 if is_shiny else 0
+    rarity = get_rarity(poke_data['category'], is_shiny)
+    p_display = get_formatted_name(poke_data, is_shiny)
+    r_emoji = RARITY_VISUALS.get(rarity, '')
+
+    for u in users:
+        u_id = u['id']
+        mention = u['mention']
+
+        db.increment_group_monthly_stickers(u_id, chat_id)
+        db.add_pokemon_to_group_pokedex(chat_id, JIRACHI_ID)
+        status = db.add_sticker_smart(u_id, JIRACHI_ID, is_shiny_val)
+
+        if status == 'NEW':
+            res_txt = f"🎉 ¡Felicidades, {mention}! Has conseguido un sticker de {p_display} {r_emoji}. Lo has registrado en tu Álbumdex."
+        elif status == 'DUPLICATE':
+            res_txt = f"♻ ¡Genial, {mention}! Conseguiste un sticker de {p_display} {r_emoji}. Como solo tenías 1, te lo guardas para intercambiarlo."
+        else:
+            money = DUPLICATE_MONEY_VALUES.get(rarity, 100)
+            db.update_money(u_id, money)
+            res_txt = f"✔️ ¡Genial, {mention}! Conseguiste un sticker de {p_display} {r_emoji}. Como ya lo tenías repetido, se convierte en <b>{format_money(money)}₽</b> 💰."
+            # Comprobar si completó Hoenn
+            if not db.is_hoenn_completed_by_user(u_id) and db.get_user_unique_hoenn_count(u_id) >= 135:
+                db.set_hoenn_completed_by_user(u_id)
+                db.update_money(u_id, 3000)
+                db.add_item_to_inventory(u_id, 'pack_shiny_hoenn', 1)
+                res_txt += f"\n\n🎊 ¡Felicidades, has completado <b>Hoenn</b>! 🎊\n¡Recibes 3000₽ y un Sobre Brillante Hoenn!"
+
+        final_text += f"{res_txt}\n\n"
+
+    try:
+        # Si hay demasiados jugadores, dividimos para no romper el límite de Telegram
+        if len(final_text) > 4000:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_id,
+                                                text="Por aquí pasó una estrella fugaz.")
+            await context.bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML',
+                                           disable_notification=True)
+        else:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=final_text, parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Error cerrando jirachi: {e}")
+
+    await check_and_unlock_regions(chat_id, context)
+
+
+# ----------------- COMANDO DE PRUEBA -----------------
+async def admin_test_jirachi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza la aparición inmediata de la Estrella Fugaz en el grupo."""
+    if update.effective_user.id != ADMIN_USER_ID: return
+    chat_id = update.effective_chat.id
+    await update.message.delete()
+
+    is_shiny = random.random() < SHINY_CHANCE
+    text = "Está pasando una estrella fugaz 💫 (Test)"
+    keyboard = [[InlineKeyboardButton("Pedir deseo", callback_data=f"jirachi_wish_{chat_id}")]]
+
+    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+    JIRACHI_STATE[chat_id] = {'msg_id': msg.message_id, 'users': [], 'is_shiny': is_shiny}
+    context.job_queue.run_once(close_jirachi_event, 35, chat_id=chat_id, data=chat_id,
+                               name=f"jirachi_close_test_{chat_id}")
+
+
 async def admin_force_unlock_johto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fuerza el desbloqueo de Johto en el grupo actual."""
     if update.effective_user.id != ADMIN_USER_ID: return
@@ -8011,6 +8234,7 @@ async def post_init(application: Application):
     # --- RECUPERACIÓN DE EVENTOS (DELIBIRD) ---
     # Comprobamos si había un evento pendiente al encender el bot
     await check_delibird_startup(application)
+    await check_jirachi_startup(application)
 
 
 async def daily_tombola_job(context: ContextTypes.DEFAULT_TYPE):
@@ -8082,6 +8306,16 @@ def main():
         time=dt_time(0, 5, tzinfo=TZ_SPAIN),
         days=(0,),  # 0 = Lunes (Corregido)
         name="delibird_scheduler"
+    )
+
+    # 4.1 Planificador Mensual de Estrella Fugaz (Jirachi)
+    old_jirachi = application.job_queue.get_jobs_by_name("jirachi_monthly_scheduler")
+    for job in old_jirachi: job.schedule_removal()
+
+    application.job_queue.run_daily(
+        schedule_jirachi_monthly_job,
+        time=dt_time(0, 10, tzinfo=TZ_SPAIN),
+        name="jirachi_monthly_scheduler"
     )
 
     # 5. Incubadora de Huevos (Cada 5 minutos)
@@ -8216,6 +8450,8 @@ def main():
         CommandHandler("multicompra", multicompra_cmd),
         CommandHandler("forcehoenn", force_hoenn_unlock_cmd),
         CommandHandler("godpack", admin_godpack_cmd),
+        CommandHandler("testjirachi", admin_test_jirachi),
+
 
         CallbackQueryHandler(claim_event_handler, pattern="^event_claim_"),
         CallbackQueryHandler(event_step_handler, pattern=r"^ev\|"),
@@ -8267,6 +8503,7 @@ def main():
         CallbackQueryHandler(inv_close_handler, pattern="^inv_close_"),
         CallbackQueryHandler(safari_hunt_btn_handler, pattern="^safari_hunt_"),
         CallbackQueryHandler(claim_hoenn_starter_handler, pattern="^hoenn_starter_claim$"),
+        CallbackQueryHandler(jirachi_wish_handler, pattern="^jirachi_wish_"),
 
         MessageHandler(filters.TEXT & ~filters.COMMAND, process_friend_code_msg),
     ]
