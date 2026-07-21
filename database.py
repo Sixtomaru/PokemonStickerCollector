@@ -315,8 +315,15 @@ def get_user_unique_unown_count(user_id):
 # --- MODIFICADO: Sistema de Pokedex Grupal Independiente ---
 def add_pokemon_to_group_pokedex(chat_id, pokemon_id):
     """Registra que un Pokémon ha sido avistado/capturado en este grupo."""
+    # Bloqueo de Johto
+    if 152 <= pokemon_id <= 251:
+        if not is_event_completed(chat_id, 'amelia_johto_unlock'): return
+    # Bloqueo de Hoenn
+    if pokemon_id >= 252:
+        if not is_event_completed(chat_id, 'amelia_hoenn_unlock'): return
+
     if DATABASE_URL:
-        query_db("INSERT INTO group_pokedex (chat_id, pokemon_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+        query_db("INSERT INTO group_pokedex (chat_id, pokemon_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                  (chat_id, pokemon_id))
     else:
         query_db("INSERT OR IGNORE INTO group_pokedex (chat_id, pokemon_id) VALUES (?, ?)", (chat_id, pokemon_id))
@@ -1029,6 +1036,27 @@ def add_event_button_claim(chat_id, event_id, user_id):
         claim_list.append(user_id)
         query_db("UPDATE group_events SET claim_list = %s WHERE chat_id = %s AND event_id = %s",
                  (json.dumps(claim_list), chat_id, event_id))
+
+
+# --- SISTEMA EVENTO JIRACHI ---
+def set_jirachi_schedule(chat_id, timestamp, month_int):
+    """Guarda el timestamp del evento Jirachi y el mes para un grupo."""
+    if DATABASE_URL:
+        query_db("INSERT INTO system_flags (flag_name, value) VALUES (%s, %s) ON CONFLICT (flag_name) DO UPDATE SET value = EXCLUDED.value", (f"jirachi_sched_{chat_id}", int(timestamp)))
+        query_db("INSERT INTO system_flags (flag_name, value) VALUES (%s, %s) ON CONFLICT (flag_name) DO UPDATE SET value = EXCLUDED.value", (f"jirachi_month_{chat_id}", int(month_int)))
+    else:
+        query_db("INSERT OR REPLACE INTO system_flags (flag_name, value) VALUES (?, ?)", (f"jirachi_sched_{chat_id}", int(timestamp)))
+        query_db("INSERT OR REPLACE INTO system_flags (flag_name, value) VALUES (?, ?)", (f"jirachi_month_{chat_id}", int(month_int)))
+
+def get_jirachi_schedule(chat_id):
+    """Devuelve (timestamp, mes) guardado de Jirachi."""
+    res1 = query_db("SELECT value FROM system_flags WHERE flag_name = ?", (f"jirachi_sched_{chat_id}",), one=True)
+    res2 = query_db("SELECT value FROM system_flags WHERE flag_name = ?", (f"jirachi_month_{chat_id}",), one=True)
+    return (res1[0] if res1 else None, res2[0] if res2 else None)
+
+def clear_jirachi_schedule(chat_id):
+    """Borra el evento Jirachi cuando ya se ha ejecutado."""
+    query_db("DELETE FROM system_flags WHERE flag_name = ?", (f"jirachi_sched_{chat_id}",))
 
 
 # Iniciar la DB
